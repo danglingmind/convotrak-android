@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -171,24 +170,24 @@ fun ConvoTrackBottomNav(
             .padding(horizontal = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        navItem(Icons.Outlined.Flag, CTTab.FLAGGED, activeTab, onSelect)
-        navItem(Icons.Outlined.NearMe, CTTab.TRACK, activeTab, onSelect)
-        navItem(Icons.Outlined.Person, CTTab.PROFILE, activeTab, onSelect)
+        navItem(Icons.Outlined.Flag, CTTab.FLAGGED, activeTab, onSelect, Modifier.weight(1f))
+        navItem(Icons.Outlined.NearMe, CTTab.TRACK, activeTab, onSelect, Modifier.weight(1f))
+        navItem(Icons.Outlined.Person, CTTab.PROFILE, activeTab, onSelect, Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.navItem(
+private fun navItem(
     icon: ImageVector,
     tab: CTTab,
     activeTab: CTTab,
     onSelect: (CTTab) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val isActive = activeTab == tab
     val bg by animateFloatAsState(if (isActive) 1f else 0f, spring(), label = "pill")
     Box(
-        modifier = Modifier
-            .weight(1f)
+        modifier = modifier
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
