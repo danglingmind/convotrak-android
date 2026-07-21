@@ -21,17 +21,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +50,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,19 +63,39 @@ import com.danglingmind.convotrack.ui.theme.CTType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class Provider { GOOGLE, APPLE }
+private const val FIELD_WIDTH = 350
+
+private enum class Provider { GOOGLE, EMAIL }
+
+/** Clerk email auth supports both sign-in and sign-up off the same form. */
+private enum class EmailMode { SIGN_IN, SIGN_UP }
 
 @Composable
 fun AuthScreen(onSignedIn: () -> Unit) {
-    var signingIn by remember { mutableStateOf<Provider?>(null) }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var busy by remember { mutableStateOf<Provider?>(null) }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
+    var mode by remember { mutableStateOf(EmailMode.SIGN_IN) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
-    fun signIn(provider: Provider) {
-        if (signingIn != null) return
-        signingIn = provider
-        // No real Clerk yet — simulate the round-trip, then advance.
+    val emailValid = email.contains("@") && email.contains(".") && email.length > 4
+    val passwordValid = password.length >= 8
+    val canSubmitEmail = emailValid && passwordValid && busy == null
+
+    // TODO [clerk]: replace the simulated delays below with the Clerk Android SDK.
+    //  - Google:  Clerk.signIn OAuth flow with provider "oauth_google"
+    //  - Sign in: create a SignIn with the password strategy (identifier = email)
+    //  - Sign up: create a SignUp with emailAddress + password, then verify the
+    //    emailed code before the session becomes active.
+    fun run(provider: Provider) {
+        if (busy != null) return
+        error = null
+        busy = provider
         scope.launch {
             delay(900)
+            busy = null
             onSignedIn()
         }
     }
@@ -85,14 +117,77 @@ fun AuthScreen(onSignedIn: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(top = 48.dp, bottom = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             BrandHeader()
-            Spacer(Modifier.weight(1f))
-            AuthButtons(signingIn) { signIn(it) }
-            Spacer(Modifier.weight(1f))
+
+            Spacer(Modifier.height(32.dp))
+
+            // Google — the primary CTA, keeps the lime treatment from iOS.
+            SignInButton(
+                label = "Continue with Google",
+                foreground = CT.onPrimaryFixed,
+                background = CT.primaryFixed,
+                border = CT.primaryFixed,
+                borderWidth = 2.dp,
+                isLoading = busy == Provider.GOOGLE,
+                enabled = busy == null,
+                leading = { GoogleGIcon() },
+                onClick = { run(Provider.GOOGLE) },
+            )
+
+            OrDivider()
+
+            EmailPasswordForm(
+                email = email,
+                password = password,
+                showPassword = showPassword,
+                mode = mode,
+                isLoading = busy == Provider.EMAIL,
+                enabled = busy == null,
+                canSubmit = canSubmitEmail,
+                onEmail = { email = it; error = null },
+                onPassword = { password = it; error = null },
+                onToggleVisibility = { showPassword = !showPassword },
+                onSubmit = { run(Provider.EMAIL) },
+            )
+
+            if (error != null) {
+                Text(
+                    error!!,
+                    style = CTType.captionMd,
+                    color = CT.errorColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 10.dp).width(FIELD_WIDTH.dp),
+                )
+            }
+
+            // Sign in <-> Create account
+            Row(
+                Modifier.padding(top = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    if (mode == EmailMode.SIGN_IN) "New rider?" else "Already riding?",
+                    style = CTType.captionMd,
+                    color = CT.onSurfaceVariant.copy(alpha = 0.7f),
+                )
+                Text(
+                    if (mode == EmailMode.SIGN_IN) "Create account" else "Sign in",
+                    style = CTType.captionMd.copy(fontWeight = FontWeight.Bold),
+                    color = CT.primaryFixed,
+                    modifier = Modifier.clickable(enabled = busy == null) {
+                        mode = if (mode == EmailMode.SIGN_IN) EmailMode.SIGN_UP else EmailMode.SIGN_IN
+                        error = null
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(32.dp))
             FooterSection()
         }
     }
@@ -113,12 +208,6 @@ private fun BrandHeader() {
             letterSpacing = 9.6.sp,
         )
         Spacer(Modifier.height(8.dp))
-        Box(
-            Modifier
-                .padding(top = 1.dp)
-                .background(CT.outlineVariant.copy(alpha = 0.3f))
-                .height(1.dp),
-        )
         Text(
             text = "RIDE TOGETHER IN REAL TIME",
             style = CTType.labelCaps,
@@ -130,36 +219,113 @@ private fun BrandHeader() {
 }
 
 @Composable
-private fun AuthButtons(signingIn: Provider?, onSignIn: (Provider) -> Unit) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+private fun OrDivider() {
+    Row(
+        Modifier.width(FIELD_WIDTH.dp).padding(vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        SignInButton(
-            label = "Continue with Google",
-            foreground = CT.onPrimaryFixed,
-            background = CT.primaryFixed,
-            border = CT.primaryFixed,
-            borderWidth = 2.dp,
-            isLoading = signingIn == Provider.GOOGLE,
-            enabled = signingIn == null,
-            leading = { GoogleGIcon() },
-            onClick = { onSignIn(Provider.GOOGLE) },
+        Box(Modifier.weight(1f).height(1.dp).background(CT.outlineVariant.copy(alpha = 0.4f)))
+        Text("OR", style = CTType.labelCaps, color = CT.onSurfaceVariant.copy(alpha = 0.6f), letterSpacing = 2.sp)
+        Box(Modifier.weight(1f).height(1.dp).background(CT.outlineVariant.copy(alpha = 0.4f)))
+    }
+}
+
+@Composable
+private fun EmailPasswordForm(
+    email: String,
+    password: String,
+    showPassword: Boolean,
+    mode: EmailMode,
+    isLoading: Boolean,
+    enabled: Boolean,
+    canSubmit: Boolean,
+    onEmail: (String) -> Unit,
+    onPassword: (String) -> Unit,
+    onToggleVisibility: () -> Unit,
+    onSubmit: () -> Unit,
+) {
+    Column(
+        Modifier.width(FIELD_WIDTH.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        OutlinedTextField(
+            value = email,
+            onValueChange = onEmail,
+            enabled = enabled,
+            placeholder = { Text("you@example.com", color = CT.onSurfaceVariant.copy(alpha = 0.4f)) },
+            label = { Text("EMAIL", style = CTType.labelCaps, letterSpacing = 1.sp) },
+            singleLine = true,
+            textStyle = CTType.bodyMd,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next,
+            ),
+            shape = RoundedCornerShape(4.dp),
+            colors = authFieldColors(),
+            modifier = Modifier.fillMaxWidth(),
         )
+
+        OutlinedTextField(
+            value = password,
+            onValueChange = onPassword,
+            enabled = enabled,
+            placeholder = { Text("••••••••", color = CT.onSurfaceVariant.copy(alpha = 0.4f)) },
+            label = { Text("PASSWORD", style = CTType.labelCaps, letterSpacing = 1.sp) },
+            singleLine = true,
+            textStyle = CTType.bodyMd,
+            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done,
+            ),
+            trailingIcon = {
+                Icon(
+                    imageVector = if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    contentDescription = if (showPassword) "Hide password" else "Show password",
+                    tint = CT.onSurfaceVariant,
+                    modifier = Modifier
+                        .clickable(onClick = onToggleVisibility)
+                        .padding(4.dp)
+                        .size(20.dp),
+                )
+            },
+            supportingText = {
+                if (mode == EmailMode.SIGN_UP) {
+                    Text("At least 8 characters", style = CTType.captionMd, color = CT.onSurfaceVariant.copy(alpha = 0.6f))
+                }
+            },
+            shape = RoundedCornerShape(4.dp),
+            colors = authFieldColors(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
         SignInButton(
-            label = "Continue with Apple",
-            foreground = Color.White,
+            label = if (mode == EmailMode.SIGN_IN) "Sign in with Email" else "Create account",
+            foreground = CT.onSurface,
             background = CT.surfaceContainerHighest,
             border = CT.outline.copy(alpha = 0.3f),
             borderWidth = 1.dp,
-            isLoading = signingIn == Provider.APPLE,
-            enabled = signingIn == null,
-            // No Apple glyph in Material icons; leading omitted (label carries the meaning).
-            leading = {},
-            onClick = { onSignIn(Provider.APPLE) },
+            isLoading = isLoading,
+            enabled = canSubmit,
+            leading = { Icon(Icons.Filled.Lock, null, tint = CT.onSurface, modifier = Modifier.size(18.dp)) },
+            onClick = onSubmit,
         )
     }
 }
+
+@Composable
+private fun authFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = CT.primaryFixed,
+    unfocusedBorderColor = CT.outline.copy(alpha = 0.3f),
+    focusedTextColor = CT.onSurface,
+    unfocusedTextColor = CT.onSurface,
+    cursorColor = CT.primaryFixed,
+    focusedLabelColor = CT.primaryFixed,
+    unfocusedLabelColor = CT.onSurfaceVariant,
+    focusedContainerColor = CT.surfaceContainerLow,
+    unfocusedContainerColor = CT.surfaceContainerLow,
+)
 
 @Composable
 private fun SignInButton(
@@ -175,11 +341,11 @@ private fun SignInButton(
 ) {
     Box(
         modifier = Modifier
-            .width(350.dp)
+            .width(FIELD_WIDTH.dp)
             .height(48.dp)
             .clip(RoundedCornerShape(4.dp))
-            .background(background)
-            .border(borderWidth, border, RoundedCornerShape(4.dp))
+            .background(if (enabled) background else background.copy(alpha = 0.5f))
+            .border(borderWidth, if (enabled) border else border.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -189,7 +355,7 @@ private fun SignInButton(
             Text(
                 text = label.uppercase(),
                 style = CTType.bodyMd.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
-                color = foreground,
+                color = if (enabled) foreground else foreground.copy(alpha = 0.5f),
                 letterSpacing = (-0.5).sp,
             )
             Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -212,7 +378,10 @@ private fun FooterSection() {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatusPill(dotColor = CT.tertiaryFixedDim, label = "SERVER ONLINE")
-            StatusPill(icon = { Icon(Icons.Filled.Lock, null, tint = CT.onSurfaceVariant, modifier = Modifier.size(11.dp)) }, label = "SSL ENCRYPTED")
+            StatusPill(
+                icon = { Icon(Icons.Filled.Lock, null, tint = CT.onSurfaceVariant, modifier = Modifier.size(11.dp)) },
+                label = "SSL ENCRYPTED",
+            )
         }
     }
 }
