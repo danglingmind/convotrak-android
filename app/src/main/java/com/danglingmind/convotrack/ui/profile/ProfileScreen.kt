@@ -40,7 +40,7 @@ import com.danglingmind.convotrack.ui.theme.CTType
 import com.danglingmind.convotrack.ui.theme.ConvoTrackTopBar
 
 @Composable
-fun ProfileScreen() {
+fun ProfileScreen(onOpenMembership: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
@@ -96,7 +96,11 @@ fun ProfileScreen() {
                     style = CTType.labelCaps,
                     color = CT.onPrimaryFixed,
                     letterSpacing = 1.sp,
-                    modifier = Modifier.clip(CircleShape).background(CT.primaryFixed).padding(horizontal = 14.dp, vertical = 8.dp),
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(CT.primaryFixed)
+                        .clickable(onClick = onOpenMembership)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
                 )
             }
 
@@ -107,7 +111,7 @@ fun ProfileScreen() {
             ) {
                 SettingsRow(Icons.Filled.Notifications, "Notifications")
                 Divider()
-                SettingsRow(Icons.Filled.CreditCard, "Membership & Billing")
+                SettingsRow(Icons.Filled.CreditCard, "Membership & Billing", onClick = onOpenMembership)
                 Divider()
                 SettingsRow(Icons.Filled.Shield, "Privacy")
                 Divider()
@@ -134,9 +138,14 @@ private fun StatTile(value: String, label: String, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun SettingsRow(icon: ImageVector, label: String, tint: androidx.compose.ui.graphics.Color = CT.onSurface) {
+private fun SettingsRow(
+    icon: ImageVector,
+    label: String,
+    tint: androidx.compose.ui.graphics.Color = CT.onSurface,
+    onClick: () -> Unit = {},
+) {
     Row(
-        Modifier.fillMaxWidth().clickable {}.padding(horizontal = 16.dp, vertical = 16.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {

@@ -28,6 +28,7 @@ fun MainScreen(
     onCreateRide: () -> Unit,
     onOpenLobby: () -> Unit,
     onOpenSummary: () -> Unit,
+    onOpenMembership: () -> Unit,
 ) {
     var activeTab by remember { mutableStateOf(CTTab.TRACK) }
     var showJoin by remember { mutableStateOf(false) }
@@ -43,7 +44,7 @@ fun MainScreen(
                 onSeeAllHistory = { activeTab = CTTab.FLAGGED },
                 onOpenSummary = onOpenSummary,
             )
-            CTTab.PROFILE -> ProfileScreen()
+            CTTab.PROFILE -> ProfileScreen(onOpenMembership = onOpenMembership)
         }
 
         // Bottom nav floats over content, pinned to the bottom safe area.

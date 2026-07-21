@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.danglingmind.convotrack.ui.auth.AuthScreen
 import com.danglingmind.convotrack.ui.main.MainScreen
+import com.danglingmind.convotrack.ui.membership.MembershipScreen
 import com.danglingmind.convotrack.ui.ride.CreateRideScreen
 import com.danglingmind.convotrack.ui.ride.RideLobbyScreen
 import com.danglingmind.convotrack.ui.ride.RideNavigationScreen
@@ -26,6 +27,7 @@ object Routes {
     const val RIDE_LOBBY = "ride_lobby"
     const val RIDE_NAVIGATION = "ride_navigation"
     const val RIDE_SUMMARY = "ride_summary"
+    const val MEMBERSHIP = "membership"
 }
 
 @Composable
@@ -52,6 +54,7 @@ fun AppRoot() {
                     onCreateRide = { nav.navigate(Routes.CREATE_RIDE) },
                     onOpenLobby = { nav.navigate(Routes.RIDE_LOBBY) },
                     onOpenSummary = { nav.navigate(Routes.RIDE_SUMMARY) },
+                    onOpenMembership = { nav.navigate(Routes.MEMBERSHIP) },
                 )
             }
             composable(Routes.CREATE_RIDE) {
@@ -68,6 +71,9 @@ fun AppRoot() {
             }
             composable(Routes.RIDE_NAVIGATION) {
                 RideNavigationScreen(
+                    // Leaving navigation only pops this screen — the ride stays running
+                    // and can be resumed from the lobby / active-ride card.
+                    onExit = { nav.popBackStack() },
                     onEndRide = {
                         nav.navigate(Routes.RIDE_SUMMARY) {
                             popUpTo(Routes.MAIN)
@@ -81,6 +87,9 @@ fun AppRoot() {
                         popUpTo(Routes.MAIN) { inclusive = true }
                     }
                 })
+            }
+            composable(Routes.MEMBERSHIP) {
+                MembershipScreen(onClose = { nav.popBackStack() })
             }
         }
     }
