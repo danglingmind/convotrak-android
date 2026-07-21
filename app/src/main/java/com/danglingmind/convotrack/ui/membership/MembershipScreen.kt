@@ -165,7 +165,10 @@ private fun BenefitsGrid() {
 @Composable
 private fun PlansSection(selected: Plan, onSelect: (Plan) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box {
+        // The SAVE badge straddles the card's top edge (iOS uses offset(x:-14, y:-10)),
+        // so the card is inset from the top to leave room — otherwise the badge would
+        // sit inside the card and collide with the price column on the right.
+        Box(Modifier.fillMaxWidth()) {
             PlanCard(
                 plan = Plan.YEARLY,
                 isSelected = selected == Plan.YEARLY,
@@ -174,6 +177,7 @@ private fun PlansSection(selected: Plan, onSelect: (Plan) -> Unit) {
                 price = YEARLY_PER_MONTH,
                 strikethrough = MONTHLY_PRICE,
                 onSelect = onSelect,
+                modifier = Modifier.padding(top = 12.dp),
             )
             Text(
                 "SAVE $SAVINGS_PCT%",
@@ -210,9 +214,10 @@ private fun PlanCard(
     strikethrough: String? = null,
     priceSuffix: String? = null,
     onSelect: (Plan) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(
