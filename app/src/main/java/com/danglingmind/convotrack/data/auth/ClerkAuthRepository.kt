@@ -24,8 +24,13 @@ import kotlinx.coroutines.flow.stateIn
  * this class is the only place that touches Clerk types, so the rest of the app stays
  * decoupled from the SDK.
  *
- * Runtime note: Google OAuth uses Clerk's redirect flow and requires the redirect URL to be
- * allowlisted in the Clerk dashboard for the Android app — a dashboard/config step, not code.
+ * Runtime note: the Clerk AAR already declares its own OAuth redirect activity
+ * (SSOReceiverActivity, via the ${applicationId} manifest placeholder), so no manifest
+ * changes are needed here. What IS required is allowlisting these redirect URLs under
+ * Clerk dashboard → Native applications → "Allowlist for mobile SSO redirect":
+ *     clerk://com.danglingmind.convotrack.callback
+ *     clerk://com.danglingmind.convotrack.oauth
+ * Until then, Google OAuth will fail at runtime even though it compiles.
  */
 class ClerkAuthRepository : AuthRepository {
 

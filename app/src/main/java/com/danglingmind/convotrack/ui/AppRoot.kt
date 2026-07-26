@@ -3,7 +3,11 @@ package com.danglingmind.convotrack.ui
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -43,11 +47,17 @@ fun AppRoot() {
     Surface(modifier = Modifier.fillMaxSize(), color = CT.surfaceDim) {
         NavHost(navController = nav, startDestination = Routes.SPLASH) {
             composable(Routes.SPLASH) {
+                val scope = rememberCoroutineScope()
                 SplashScreen(onFinished = {
-                    // If Clerk already has a session, skip straight into the app.
-                    val signedIn = ServiceLocator.auth.userState.value != null
-                    nav.navigate(if (signedIn) Routes.MAIN else Routes.AUTH) {
-                        popUpTo(Routes.SPLASH) { inclusive = true }
+                    // Per Clerk's docs, gate routing on isInitialized before reading the
+                    // session — otherwise a slow bootstrap races the 3.5s splash and we'd
+                    // wrongly route a signed-in user to Auth. Bounded so we never hang.
+                    scope.launch {
+                        withTimeoutOrNull(4000) { ServiceLocator.auth.isReady.first { it } }
+                        val signedIn = ServiceLocator.auth.userState.value != null
+                        nav.navigate(if (signedIn) Routes.MAIN else Routes.AUTH) {
+                            popUpTo(Routes.SPLASH) { inclusive = true }
+                        }
                     }
                 })
             }
