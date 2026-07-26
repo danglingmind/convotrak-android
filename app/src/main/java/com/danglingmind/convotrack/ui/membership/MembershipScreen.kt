@@ -42,7 +42,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.ui.theme.CT
@@ -173,9 +172,9 @@ private fun PlansSection(selected: Plan, onSelect: (Plan) -> Unit) {
                 plan = Plan.YEARLY,
                 isSelected = selected == Plan.YEARLY,
                 title = "YEARLY",
-                subtitle = "$YEARLY_PER_MONTH / mo · billed annually",
-                price = YEARLY_PER_MONTH,
-                strikethrough = MONTHLY_PRICE,
+                subtitle = "Billed every 12 months",
+                price = "$YEARLY_PRICE / yr",
+                perMonth = "≈ $YEARLY_PER_MONTH / mo",
                 onSelect = onSelect,
                 modifier = Modifier.padding(top = 12.dp),
             )
@@ -197,8 +196,7 @@ private fun PlansSection(selected: Plan, onSelect: (Plan) -> Unit) {
             isSelected = selected == Plan.MONTHLY,
             title = "MONTHLY",
             subtitle = "Billed every month",
-            price = MONTHLY_PRICE,
-            priceSuffix = "/ mo",
+            price = "$MONTHLY_PRICE / mo",
             onSelect = onSelect,
         )
     }
@@ -211,8 +209,7 @@ private fun PlanCard(
     title: String,
     subtitle: String,
     price: String,
-    strikethrough: String? = null,
-    priceSuffix: String? = null,
+    perMonth: String? = null,
     onSelect: (Plan) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -246,17 +243,16 @@ private fun PlanCard(
             Text(title, style = CTType.labelCaps, color = if (isSelected) CT.onSurface else CT.onSurfaceVariant, letterSpacing = 1.5.sp)
             Text(subtitle, style = CTType.captionMd, color = CT.onSurfaceVariant.copy(alpha = 0.7f))
         }
+        // Price block — the billed amount is always the dominant element
+        // (Apple Guideline 3.1.2(c)); calculated per-month pricing stays subordinate.
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(price, style = CTType.headlineMd, color = if (isSelected) CT.primaryFixed else CT.onSurface)
-            if (strikethrough != null) {
-                Text(
-                    strikethrough,
-                    style = CTType.captionMd.copy(textDecoration = TextDecoration.LineThrough),
-                    color = CT.onSurfaceVariant.copy(alpha = 0.5f),
-                )
-            }
-            if (priceSuffix != null) {
-                Text(priceSuffix, style = CTType.captionMd, color = CT.onSurfaceVariant.copy(alpha = 0.6f))
+            Text(
+                price,
+                style = CTType.headlineMd,
+                color = if (isSelected && plan == Plan.YEARLY) CT.primaryFixed else CT.onSurface,
+            )
+            if (perMonth != null) {
+                Text(perMonth, style = CTType.captionSm, color = CT.onSurfaceVariant.copy(alpha = 0.55f))
             }
         }
     }

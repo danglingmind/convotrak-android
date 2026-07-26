@@ -27,4 +27,5 @@ object CTType {
     )
     val toggleLabel = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     val captionMd = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal)
+    val captionSm = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Normal)
 }
