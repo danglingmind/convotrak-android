@@ -58,9 +58,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
+import com.danglingmind.convotrack.data.auth.AuthResult
+import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val FIELD_WIDTH = 350
@@ -71,7 +72,10 @@ private enum class Provider { GOOGLE, EMAIL }
 private enum class EmailMode { SIGN_IN, SIGN_UP }
 
 @Composable
-fun AuthScreen(onSignedIn: () -> Unit) {
+fun AuthScreen(
+    onSignedIn: () -> Unit,
+    onNeedsVerification: (email: String) -> Unit,
+) {
     var busy by remember { mutableStateOf<Provider?>(null) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -79,24 +83,30 @@ fun AuthScreen(onSignedIn: () -> Unit) {
     var mode by remember { mutableStateOf(EmailMode.SIGN_IN) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val auth = remember { ServiceLocator.auth }
 
     val emailValid = email.contains("@") && email.contains(".") && email.length > 4
     val passwordValid = password.length >= 8
     val canSubmitEmail = emailValid && passwordValid && busy == null
 
-    // TODO [clerk]: replace the simulated delays below with the Clerk Android SDK.
-    //  - Google:  Clerk.signIn OAuth flow with provider "oauth_google"
-    //  - Sign in: create a SignIn with the password strategy (identifier = email)
-    //  - Sign up: create a SignUp with emailAddress + password, then verify the
-    //    emailed code before the session becomes active.
     fun run(provider: Provider) {
         if (busy != null) return
         error = null
         busy = provider
         scope.launch {
-            delay(900)
+            val result = when (provider) {
+                Provider.GOOGLE -> auth.signInWithGoogle()
+                Provider.EMAIL -> when (mode) {
+                    EmailMode.SIGN_IN -> auth.signInWithEmail(email.trim(), password)
+                    EmailMode.SIGN_UP -> auth.signUpWithEmail(email.trim(), password)
+                }
+            }
             busy = null
-            onSignedIn()
+            when (result) {
+                is AuthResult.Success -> onSignedIn()
+                is AuthResult.NeedsEmailCode -> onNeedsVerification(email.trim())
+                is AuthResult.Error -> error = result.message
+            }
         }
     }
 

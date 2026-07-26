@@ -1,0 +1,30 @@
+package com.danglingmind.convotrack.di
+
+import android.app.Application
+import com.clerk.api.Clerk
+import com.danglingmind.convotrack.data.auth.AuthRepository
+import com.danglingmind.convotrack.data.auth.ClerkAuthRepository
+import com.danglingmind.convotrack.data.net.ApiClient
+import com.danglingmind.convotrack.data.net.ApiService
+
+/**
+ * Tiny manual DI. Holds the app-wide auth + networking singletons so composables can reach
+ * them without a full DI framework. Populated once from [com.danglingmind.convotrack.ConvoTrackApp].
+ */
+object ServiceLocator {
+
+    // Same Clerk instance the iOS app uses (ConvoTrackApp.swift).
+    private const val CLERK_PUBLISHABLE_KEY = "pk_live_Y2xlcmsuY29udm95LnZ5bmwuaW4k"
+
+    lateinit var auth: AuthRepository
+        private set
+
+    lateinit var api: ApiService
+        private set
+
+    fun init(app: Application) {
+        Clerk.initialize(app, CLERK_PUBLISHABLE_KEY)
+        auth = ClerkAuthRepository()
+        api = ApiClient.create(auth)
+    }
+}

@@ -7,8 +7,14 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.auth.AuthScreen
+import com.danglingmind.convotrack.ui.auth.VerificationScreen
 import com.danglingmind.convotrack.ui.main.MainScreen
+import java.net.URLEncoder
+import java.net.URLDecoder
 import com.danglingmind.convotrack.ui.membership.MembershipScreen
 import com.danglingmind.convotrack.ui.ride.CreateRideScreen
 import com.danglingmind.convotrack.ui.ride.RideLobbyScreen
@@ -22,6 +28,7 @@ import com.danglingmind.convotrack.ui.theme.CT
 object Routes {
     const val SPLASH = "splash"
     const val AUTH = "auth"
+    const val VERIFY = "verify"
     const val MAIN = "main"
     const val CREATE_RIDE = "create_ride"
     const val RIDE_LOBBY = "ride_lobby"
@@ -37,17 +44,42 @@ fun AppRoot() {
         NavHost(navController = nav, startDestination = Routes.SPLASH) {
             composable(Routes.SPLASH) {
                 SplashScreen(onFinished = {
-                    nav.navigate(Routes.AUTH) {
+                    // If Clerk already has a session, skip straight into the app.
+                    val signedIn = ServiceLocator.auth.userState.value != null
+                    nav.navigate(if (signedIn) Routes.MAIN else Routes.AUTH) {
                         popUpTo(Routes.SPLASH) { inclusive = true }
                     }
                 })
             }
             composable(Routes.AUTH) {
-                AuthScreen(onSignedIn = {
-                    nav.navigate(Routes.MAIN) {
-                        popUpTo(Routes.AUTH) { inclusive = true }
-                    }
-                })
+                AuthScreen(
+                    onSignedIn = {
+                        nav.navigate(Routes.MAIN) {
+                            popUpTo(Routes.AUTH) { inclusive = true }
+                        }
+                    },
+                    onNeedsVerification = { email ->
+                        val arg = URLEncoder.encode(email, "UTF-8")
+                        nav.navigate("${Routes.VERIFY}/$arg")
+                    },
+                )
+            }
+            composable(
+                route = "${Routes.VERIFY}/{email}",
+                arguments = listOf(navArgument("email") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val email = URLDecoder.decode(
+                    backStackEntry.arguments?.getString("email").orEmpty(), "UTF-8",
+                )
+                VerificationScreen(
+                    email = email,
+                    onVerified = {
+                        nav.navigate(Routes.MAIN) {
+                            popUpTo(Routes.AUTH) { inclusive = true }
+                        }
+                    },
+                    onBack = { nav.popBackStack() },
+                )
             }
             composable(Routes.MAIN) {
                 MainScreen(

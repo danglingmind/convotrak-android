@@ -1,8 +1,13 @@
 package com.danglingmind.convotrack
 
 import android.app.Application
+import com.danglingmind.convotrack.di.ServiceLocator
 
-// Application entry point. On iOS this is where Clerk + Google Maps are configured
-// (ConvoTrackApp.swift). Those integrations are intentionally deferred for the
-// UI-shell milestone — wire them here when backend integration begins.
-class ConvoTrackApp : Application()
+// Application entry point. Mirrors iOS ConvoTrackApp.swift: initialise Clerk here.
+// Google Maps init is still deferred until the maps phase.
+class ConvoTrackApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        ServiceLocator.init(this)
+    }
+}
