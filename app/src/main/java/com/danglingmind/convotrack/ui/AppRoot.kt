@@ -110,7 +110,14 @@ fun AppRoot() {
                 )
             }
             composable(Routes.CREATE_RIDE) {
-                CreateRideScreen(onBack = { nav.popBackStack() })
+                CreateRideScreen(
+                    onBack = { nav.popBackStack() },
+                    onCreated = { rideId ->
+                        nav.navigate(Routes.lobby(rideId)) {
+                            popUpTo(Routes.CREATE_RIDE) { inclusive = true }
+                        }
+                    },
+                )
             }
             composable(
                 route = "${Routes.RIDE_LOBBY}/{rideId}",

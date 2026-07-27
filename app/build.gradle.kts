@@ -1,9 +1,18 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
+
+// Google Maps key is read from local.properties (gitignored) so it never lands in source
+// control. Set `MAPS_API_KEY=...` there. Falls back to empty so the project still builds.
+val mapsApiKey: String = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}.getProperty("MAPS_API_KEY", "")
 
 android {
     namespace = "com.danglingmind.convotrack"
@@ -15,6 +24,10 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+
+        // Exposed to the manifest (Maps SDK meta-data) and to code (REST services).
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+        buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
     }
 
     buildTypes {
@@ -33,6 +46,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -64,6 +78,10 @@ dependencies {
 
     // Auth
     implementation(libs.clerk.android.api)
+
+    // Maps
+    implementation(libs.maps.compose)
+    implementation(libs.play.services.maps)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

@@ -48,6 +48,8 @@ import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.ErrorBlock
 import com.danglingmind.convotrack.ui.common.LoadingBlock
 import com.danglingmind.convotrack.ui.common.UiState
+import com.danglingmind.convotrack.ui.map.ConvoTrackMap
+import com.google.android.gms.maps.model.LatLng
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
 import com.danglingmind.convotrack.ui.theme.ConvoTrackTopBar
@@ -94,14 +96,17 @@ fun RideLobbyScreen(
                 val amLeader = myId != null && ride.leaderId == myId
                 val readyCount = ride.participants.count { it.status == "READY" }
 
-                // Non-interactive map preview (real map arrives with the maps phase).
-                Box(
-                    Modifier.fillMaxWidth().height(160.dp)
-                        .background(Brush.linearGradient(listOf(CT.surfaceContainerHigh, CT.surfaceContainerLow))),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Filled.Map, null, tint = CT.onSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(40.dp))
-                }
+                // Compute the route polyline between the ride's waypoints (iOS parity:
+                // ActiveRideCard.computeRoute) and show it on a non-interactive map.
+                var routeCoords by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+                LaunchedEffect(ride.id) { routeCoords = computeRoute(ride.waypoints) }
+
+                ConvoTrackMap(
+                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    routeCoords = routeCoords,
+                    markers = rideMarkers(ride),
+                    interactive = false,
+                )
 
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     // Invite code
