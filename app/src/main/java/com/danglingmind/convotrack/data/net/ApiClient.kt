@@ -42,6 +42,11 @@ object ApiClient {
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(auth))
             .addInterceptor(logging)
+            // The backend runs on Render's free tier, which cold-starts (~30-60s) after
+            // idling. Generous timeouts keep the first request after a spin-down alive.
+            .connectTimeout(java.time.Duration.ofSeconds(30))
+            .readTimeout(java.time.Duration.ofSeconds(60))
+            .writeTimeout(java.time.Duration.ofSeconds(30))
             .build()
 
         return Retrofit.Builder()

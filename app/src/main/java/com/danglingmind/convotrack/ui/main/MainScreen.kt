@@ -26,9 +26,10 @@ import com.danglingmind.convotrack.ui.theme.ConvoTrackBottomNav
 @Composable
 fun MainScreen(
     onCreateRide: () -> Unit,
-    onOpenLobby: () -> Unit,
-    onOpenSummary: () -> Unit,
+    onOpenLobby: (rideId: String) -> Unit,
+    onOpenSummary: (rideId: String) -> Unit,
     onOpenMembership: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     var activeTab by remember { mutableStateOf(CTTab.TRACK) }
     var showJoin by remember { mutableStateOf(false) }
@@ -40,11 +41,11 @@ fun MainScreen(
             CTTab.TRACK -> HomeScreen(
                 onCreateRide = onCreateRide,
                 onJoinRide = { showJoin = true },
-                onOpenActiveRide = onOpenLobby,
+                onOpenRide = onOpenLobby,
                 onSeeAllHistory = { activeTab = CTTab.FLAGGED },
                 onOpenSummary = onOpenSummary,
             )
-            CTTab.PROFILE -> ProfileScreen(onOpenMembership = onOpenMembership)
+            CTTab.PROFILE -> ProfileScreen(onOpenMembership = onOpenMembership, onSignedOut = onSignOut)
         }
 
         // Bottom nav floats over content, pinned to the bottom safe area.
@@ -60,9 +61,9 @@ fun MainScreen(
             containerColor = CT.surfaceDim,
         ) {
             JoinRideSheet(
-                onJoined = {
+                onJoined = { rideId ->
                     showJoin = false
-                    onOpenLobby()
+                    onOpenLobby(rideId)
                 },
             )
         }

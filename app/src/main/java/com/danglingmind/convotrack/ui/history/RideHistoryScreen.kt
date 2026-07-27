@@ -19,45 +19,93 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.danglingmind.convotrack.data.Dummy
-import com.danglingmind.convotrack.data.HistoryRideItem
+import com.danglingmind.convotrack.data.net.ApiException
+import com.danglingmind.convotrack.data.net.HistoryRide
+import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.di.ServiceLocator
+import com.danglingmind.convotrack.ui.common.EmptyCard
+import com.danglingmind.convotrack.ui.common.ErrorBlock
+import com.danglingmind.convotrack.ui.common.LoadingBlock
+import com.danglingmind.convotrack.ui.common.UiState
+import com.danglingmind.convotrack.ui.common.dateLabel
+import com.danglingmind.convotrack.ui.common.distanceLabel
+import com.danglingmind.convotrack.ui.common.durationLabel
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
 import com.danglingmind.convotrack.ui.theme.ConvoTrackTopBar
+import kotlinx.coroutines.launch
 
 @Composable
-fun RideHistoryScreen(onOpenSummary: () -> Unit) {
+fun RideHistoryScreen(onOpenSummary: (rideId: String) -> Unit) {
+    val api = remember { ServiceLocator.api }
+    val scope = rememberCoroutineScope()
+    var state by remember { mutableStateOf<UiState<List<HistoryRide>>>(UiState.Loading) }
+
+    suspend fun load() {
+        state = UiState.Loading
+        state = try {
+            UiState.Success(apiCall { api.getMyRides().rides })
+        } catch (e: ApiException) {
+            UiState.Error(e.message ?: "Couldn't load history")
+        } catch (e: Exception) {
+            UiState.Error("Couldn't load history")
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
     Column(
-        Modifier
-            .fillMaxSize()
-            .background(CT.surfaceDim)
-            .statusBarsPadding(),
+        Modifier.fillMaxSize().background(CT.surfaceDim).statusBarsPadding(),
     ) {
         ConvoTrackTopBar(title = "FLAGGED")
-        LazyColumn(
-            contentPadding = PaddingValues(20.dp, 20.dp, 20.dp, 120.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            items(Dummy.historyRides) { ride ->
-                HistoryCard(ride, onClick = onOpenSummary)
+        when (val s = state) {
+            is UiState.Loading -> LoadingBlock(Modifier.padding(top = 40.dp))
+            is UiState.Error -> Box(Modifier.padding(20.dp)) {
+                ErrorBlock(s.message, onRetry = { scope.launch { load() } })
+            }
+            is UiState.Success -> {
+                if (s.data.isEmpty()) {
+                    Box(Modifier.padding(20.dp)) {
+                        EmptyCard(
+                            title = "No rides yet",
+                            subtitle = "Rides you create or join will appear here once they're done.",
+                            actionLabel = null,
+                            onAction = null,
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(20.dp, 20.dp, 20.dp, 120.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(s.data, key = { it.rideId }) { ride ->
+                            HistoryCard(ride, onClick = { onOpenSummary(ride.rideId) })
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun HistoryCard(ride: HistoryRideItem, onClick: () -> Unit) {
+private fun HistoryCard(ride: HistoryRide, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -69,29 +117,27 @@ private fun HistoryCard(ride: HistoryRideItem, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        val medal = when (ride.rank) {
-            1 -> Color(0xFFFFD54F)
-            2 -> Color(0xFFB0BEC5)
-            3 -> Color(0xFFBCAAA4)
-            else -> CT.onSurfaceVariant
-        }
         Box(
             Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(CT.surfaceContainerHigh),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.EmojiEvents, null, tint = medal, modifier = Modifier.size(24.dp))
+            Icon(Icons.Outlined.Flag, null, tint = CT.primaryFixed, modifier = Modifier.size(24.dp))
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(ride.title, style = CTType.bodyLg.copy(fontWeight = FontWeight.Bold), color = CT.onSurface)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(ride.dateLabel, style = CTType.labelCaps, color = CT.onSurfaceVariant)
+                val date = ride.dateLabel()
+                if (date.isNotEmpty()) {
+                    Text(date, style = CTType.labelCaps, color = CT.onSurfaceVariant)
+                    Text("·", color = CT.onSurfaceVariant.copy(alpha = 0.5f))
+                }
+                Text(ride.distanceLabel(), style = CTType.dataMono, color = CT.onSurfaceVariant)
                 Text("·", color = CT.onSurfaceVariant.copy(alpha = 0.5f))
-                Text(ride.distanceLabel, style = CTType.dataMono, color = CT.onSurfaceVariant)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(ride.durationLabel, style = CTType.dataMono, color = CT.onSurfaceVariant)
-                Text("·", color = CT.onSurfaceVariant.copy(alpha = 0.5f))
-                Text("${ride.riderCount} RIDERS", style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 1.sp)
+                Text(ride.durationLabel(), style = CTType.dataMono, color = CT.onSurfaceVariant)
+                if (ride.isLeader == true) {
+                    Text("·", color = CT.onSurfaceVariant.copy(alpha = 0.5f))
+                    Text("LEADER", style = CTType.labelCaps, color = CT.primaryFixed)
+                }
             }
         }
         Spacer(Modifier.size(2.dp))

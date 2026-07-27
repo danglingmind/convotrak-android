@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.ui.theme.CT
@@ -58,13 +59,17 @@ private class RouteStop(val id: Long, text: String = "") {
 }
 
 @Composable
-fun CreateRideScreen(onBack: () -> Unit, onCreated: () -> Unit) {
+fun CreateRideScreen(onBack: () -> Unit) {
     var title by remember { mutableStateOf("") }
     var startStop by remember { mutableStateOf("") }
     var destStop by remember { mutableStateOf("") }
     val middleStops = remember { mutableStateListOf<RouteStop>() }
     var maxRiders by remember { mutableIntStateOf(5) }
     var nextId by remember { mutableStateOf(0L) }
+    // Creating a ride needs geocoded coordinates + a route polyline (POST /rides), which
+    // come from Google Places/Directions — that lands in the maps phase. Until then the
+    // form is complete but publishing is disabled with an explanatory note.
+    var notice by remember { mutableStateOf<String?>(null) }
 
     val canCreate = title.isNotBlank() && startStop.isNotBlank() && destStop.isNotBlank()
 
@@ -186,15 +191,32 @@ fun CreateRideScreen(onBack: () -> Unit, onCreated: () -> Unit) {
                 }
             }
 
-            LimePrimaryButton(text = "CREATE RIDE", enabled = canCreate, onClick = onCreated)
-
-            Text(
-                "READY FOR DEPARTURE",
-                style = CTType.labelCaps,
-                color = CT.onSurfaceVariant.copy(alpha = 0.4f),
-                letterSpacing = 8.sp,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
+            LimePrimaryButton(
+                text = "CREATE RIDE",
+                enabled = canCreate,
+                onClick = {
+                    notice = "Publishing rides turns on with the maps update — " +
+                        "we need route geocoding to send this to the backend."
+                },
             )
+
+            if (notice != null) {
+                Text(
+                    notice!!,
+                    style = CTType.bodyMd,
+                    color = CT.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                Text(
+                    "READY FOR DEPARTURE",
+                    style = CTType.labelCaps,
+                    color = CT.onSurfaceVariant.copy(alpha = 0.4f),
+                    letterSpacing = 8.sp,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                )
+            }
         }
     }
 }

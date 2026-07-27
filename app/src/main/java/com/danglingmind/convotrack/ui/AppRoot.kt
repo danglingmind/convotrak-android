@@ -39,6 +39,11 @@ object Routes {
     const val RIDE_NAVIGATION = "ride_navigation"
     const val RIDE_SUMMARY = "ride_summary"
     const val MEMBERSHIP = "membership"
+
+    // The ride flow carries the rideId through the URL so each screen can load its own data.
+    fun lobby(rideId: String) = "$RIDE_LOBBY/$rideId"
+    fun navigation(rideId: String) = "$RIDE_NAVIGATION/$rideId"
+    fun summary(rideId: String) = "$RIDE_SUMMARY/$rideId"
 }
 
 @Composable
@@ -94,41 +99,59 @@ fun AppRoot() {
             composable(Routes.MAIN) {
                 MainScreen(
                     onCreateRide = { nav.navigate(Routes.CREATE_RIDE) },
-                    onOpenLobby = { nav.navigate(Routes.RIDE_LOBBY) },
-                    onOpenSummary = { nav.navigate(Routes.RIDE_SUMMARY) },
+                    onOpenLobby = { rideId -> nav.navigate(Routes.lobby(rideId)) },
+                    onOpenSummary = { rideId -> nav.navigate(Routes.summary(rideId)) },
                     onOpenMembership = { nav.navigate(Routes.MEMBERSHIP) },
+                    onSignOut = {
+                        nav.navigate(Routes.AUTH) {
+                            popUpTo(Routes.MAIN) { inclusive = true }
+                        }
+                    },
                 )
             }
             composable(Routes.CREATE_RIDE) {
-                CreateRideScreen(
-                    onBack = { nav.popBackStack() },
-                    onCreated = { nav.navigate(Routes.RIDE_LOBBY) },
-                )
+                CreateRideScreen(onBack = { nav.popBackStack() })
             }
-            composable(Routes.RIDE_LOBBY) {
+            composable(
+                route = "${Routes.RIDE_LOBBY}/{rideId}",
+                arguments = listOf(navArgument("rideId") { type = NavType.StringType }),
+            ) { entry ->
+                val rideId = entry.arguments?.getString("rideId").orEmpty()
                 RideLobbyScreen(
+                    rideId = rideId,
                     onBack = { nav.popBackStack() },
-                    onStartRide = { nav.navigate(Routes.RIDE_NAVIGATION) },
+                    onStartRide = { nav.navigate(Routes.navigation(rideId)) },
                 )
             }
-            composable(Routes.RIDE_NAVIGATION) {
+            composable(
+                route = "${Routes.RIDE_NAVIGATION}/{rideId}",
+                arguments = listOf(navArgument("rideId") { type = NavType.StringType }),
+            ) { entry ->
+                val rideId = entry.arguments?.getString("rideId").orEmpty()
                 RideNavigationScreen(
                     // Leaving navigation only pops this screen — the ride stays running
                     // and can be resumed from the lobby / active-ride card.
                     onExit = { nav.popBackStack() },
                     onEndRide = {
-                        nav.navigate(Routes.RIDE_SUMMARY) {
+                        nav.navigate(Routes.summary(rideId)) {
                             popUpTo(Routes.MAIN)
                         }
                     },
                 )
             }
-            composable(Routes.RIDE_SUMMARY) {
-                RideSummaryScreen(onDone = {
-                    nav.navigate(Routes.MAIN) {
-                        popUpTo(Routes.MAIN) { inclusive = true }
-                    }
-                })
+            composable(
+                route = "${Routes.RIDE_SUMMARY}/{rideId}",
+                arguments = listOf(navArgument("rideId") { type = NavType.StringType }),
+            ) { entry ->
+                val rideId = entry.arguments?.getString("rideId").orEmpty()
+                RideSummaryScreen(
+                    rideId = rideId,
+                    onDone = {
+                        nav.navigate(Routes.MAIN) {
+                            popUpTo(Routes.MAIN) { inclusive = true }
+                        }
+                    },
+                )
             }
             composable(Routes.MEMBERSHIP) {
                 MembershipScreen(onClose = { nav.popBackStack() })
