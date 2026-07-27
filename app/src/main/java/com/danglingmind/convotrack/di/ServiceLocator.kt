@@ -6,6 +6,7 @@ import com.danglingmind.convotrack.data.auth.AuthRepository
 import com.danglingmind.convotrack.data.auth.ClerkAuthRepository
 import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.ApiService
+import com.danglingmind.convotrack.data.socket.SocketService
 
 /**
  * Tiny manual DI. Holds the app-wide auth + networking singletons so composables can reach
@@ -22,9 +23,13 @@ object ServiceLocator {
     lateinit var api: ApiService
         private set
 
+    lateinit var socket: SocketService
+        private set
+
     fun init(app: Application) {
         Clerk.initialize(app, CLERK_PUBLISHABLE_KEY)
         auth = ClerkAuthRepository()
         api = ApiClient.create(auth)
+        socket = SocketService(auth)
     }
 }

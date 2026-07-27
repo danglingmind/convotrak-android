@@ -136,6 +136,7 @@ fun AppRoot() {
             ) { entry ->
                 val rideId = entry.arguments?.getString("rideId").orEmpty()
                 RideNavigationScreen(
+                    rideId = rideId,
                     // Leaving navigation only pops this screen — the ride stays running
                     // and can be resumed from the lobby / active-ride card.
                     onExit = { nav.popBackStack() },

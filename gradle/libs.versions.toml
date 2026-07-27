@@ -15,6 +15,7 @@ coroutines = "1.9.0"
 clerk = "1.0.36"
 mapsCompose = "6.4.1"
 playServicesMaps = "19.0.0"
+socketIo = "2.1.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -37,6 +38,7 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 clerk-android-api = { group = "com.clerk", name = "clerk-android-api", version.ref = "clerk" }
 maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
 play-services-maps = { group = "com.google.android.gms", name = "play-services-maps", version.ref = "playServicesMaps" }
+socket-io-client = { group = "io.socket", name = "socket.io-client", version.ref = "socketIo" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

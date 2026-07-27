@@ -83,5 +83,8 @@ dependencies {
     implementation(libs.maps.compose)
     implementation(libs.play.services.maps)
 
+    // Realtime
+    implementation(libs.socket.io.client)
+
     debugImplementation(libs.androidx.ui.tooling)
 }

@@ -22,72 +22,121 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.danglingmind.convotrack.data.Dummy
-import com.danglingmind.convotrack.data.Rider
+import com.danglingmind.convotrack.data.net.LiveParticipant
+import com.danglingmind.convotrack.data.net.RegroupEvent
+import com.danglingmind.convotrack.data.net.Ride
+import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.di.ServiceLocator
+import com.danglingmind.convotrack.ui.map.ConvoTrackMap
+import com.danglingmind.convotrack.ui.map.MapMarker
+import com.danglingmind.convotrack.ui.map.MapMarkerKind
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
 import com.danglingmind.convotrack.ui.theme.FloatingStatPill
+import com.google.android.gms.maps.model.LatLng
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RideNavigationScreen(
+    rideId: String,
     onExit: () -> Unit,
     onEndRide: () -> Unit,
 ) {
+    val api = remember { ServiceLocator.api }
+    val auth = remember { ServiceLocator.auth }
+    val socket = remember { ServiceLocator.socket }
+    val scope = rememberCoroutineScope()
+    val myId = auth.userState.value?.id
+
+    var ride by remember { mutableStateOf<Ride?>(null) }
+    var routeCoords by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+    val live: SnapshotStateMap<String, LiveParticipant> = remember { mutableStateMapOf() }
+    var activeRegroup by remember { mutableStateOf<RegroupEvent?>(null) }
+    var isEmergency by remember { mutableStateOf(false) }
+
     var showRegroup by remember { mutableStateOf(false) }
-    var activeRegroup by remember { mutableStateOf<RegroupReason?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Hardware back leaves navigation without ending the ride, matching the on-screen
-    // back button (iOS `topBar` dismiss). Ending the ride is an explicit action only.
+    // Load the ride (route + roster), then go live over the socket.
+    LaunchedEffect(rideId) {
+        ride = runCatching { apiCall { api.getRide(rideId) } }.getOrNull()
+        ride?.let { routeCoords = computeRoute(it.waypoints) }
+        socket.connect()
+        socket.joinRoom(rideId)
+        launch {
+            socket.stateUpdates.collect { update ->
+                update.participants.forEach { p -> live[p.userId] = p }
+            }
+        }
+        launch { socket.regroupStarted.collect { activeRegroup = it; isEmergency = false } }
+        launch { socket.emergencyStarted.collect { isEmergency = true } }
+        launch { socket.regroupResolved.collect { id -> if (activeRegroup?.regroupId == id) activeRegroup = null } }
+    }
+
     BackHandler { onExit() }
 
+    val namesById = remember(ride) { ride?.participants?.associate { it.userId to it.name } ?: emptyMap() }
+    val mySpeed = myId?.let { live[it]?.speed }
+
     Box(Modifier.fillMaxSize().background(CT.surfaceDim)) {
-        // Full-bleed map placeholder
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.linearGradient(listOf(CT.surfaceContainerHigh, CT.surfaceDim, CT.surfaceContainerLowest))
-            ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Filled.Map, null, tint = CT.onSurfaceVariant.copy(alpha = 0.25f), modifier = Modifier.size(64.dp))
-        }
+        // Real map: route + destination/waypoint markers + live rider markers.
+        ConvoTrackMap(
+            modifier = Modifier.fillMaxSize(),
+            routeCoords = routeCoords,
+            markers = buildList {
+                ride?.let { addAll(rideMarkers(it)) }
+                live.values.forEach { p ->
+                    val lat = p.lat; val lng = p.lng
+                    if (lat != null && lng != null) {
+                        add(
+                            MapMarker(
+                                id = "rider_${p.userId}",
+                                position = LatLng(lat, lng),
+                                kind = if (p.userId == myId) MapMarkerKind.USER else MapMarkerKind.RIDER,
+                                label = namesById[p.userId],
+                            )
+                        )
+                    }
+                }
+            },
+            interactive = true,
+        )
 
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            // Top bar: back button + destination
+            // Top bar
             Row(
                 Modifier.fillMaxWidth().padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Box(
-                    Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(CT.surfaceContainerHigh.copy(alpha = 0.9f))
-                        .border(1.dp, CT.outlineVariant.copy(alpha = 0.3f), CircleShape)
-                        .clickable(onClick = onExit),
+                    Modifier.size(44.dp).clip(CircleShape).background(CT.surfaceContainerHigh.copy(alpha = 0.9f))
+                        .border(1.dp, CT.outlineVariant.copy(alpha = 0.3f), CircleShape).clickable(onClick = onExit),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -99,7 +148,7 @@ fun RideNavigationScreen(
                 }
                 Column {
                     Text("TO", style = CTType.labelCaps.copy(fontSize = 9.sp), color = CT.onSurfaceVariant, letterSpacing = 1.5.sp)
-                    Text(Dummy.destinationName, style = CTType.bodyLg, color = CT.onSurface)
+                    Text(ride?.destinationName ?: "Loading…", style = CTType.bodyLg, color = CT.onSurface)
                 }
             }
 
@@ -108,53 +157,65 @@ fun RideNavigationScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                FloatingStatPill(label = "SPEED", value = "64", unit = "KM/H", dotColor = CT.primaryFixed)
-                FloatingStatPill(label = "ETA", value = "24", unit = "MIN")
-                FloatingStatPill(label = "SPREAD", value = "0.4", unit = "KM")
+                FloatingStatPill(
+                    label = "SPEED",
+                    value = mySpeed?.let { String.format(java.util.Locale.US, "%.0f", it) } ?: "--",
+                    unit = "KM/H",
+                    dotColor = CT.primaryFixed,
+                )
+                FloatingStatPill(label = "RIDERS", value = "${maxOf(live.size, ride?.participants?.size ?: 0)}", unit = null)
+                FloatingStatPill(
+                    label = "LIVE",
+                    value = if (socket.connected.value) "ON" else "…",
+                    unit = null,
+                    dotColor = CT.tertiaryFixed,
+                )
             }
 
-            // Active regroup banner
-            if (activeRegroup != null) {
-                val r = activeRegroup!!
-                val accent = if (r.isEmergency) CT.errorColor else CT.primaryFixed
+            // Regroup / emergency banner
+            if (activeRegroup != null || isEmergency) {
+                val accent = if (isEmergency) CT.errorColor else CT.primaryFixed
                 Row(
-                    Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (r.isEmergency) CT.errorContainer.copy(alpha = 0.2f) else CT.primaryFixed.copy(alpha = 0.12f))
-                        .border(1.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                        .padding(14.dp),
+                    Modifier.padding(16.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .background(if (isEmergency) CT.errorContainer.copy(alpha = 0.2f) else CT.primaryFixed.copy(alpha = 0.12f))
+                        .border(1.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(12.dp)).padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Icon(r.icon, null, tint = accent, modifier = Modifier.size(20.dp))
+                    Icon(if (isEmergency) Icons.Filled.Warning else Icons.Filled.Groups, null, tint = accent, modifier = Modifier.size(20.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("REGROUP ACTIVE", style = CTType.labelCaps, color = accent, letterSpacing = 1.sp)
-                        Text(r.label, style = CTType.bodyMd, color = CT.onSurface)
+                        Text(if (isEmergency) "EMERGENCY" else "REGROUP ACTIVE", style = CTType.labelCaps, color = accent, letterSpacing = 1.sp)
+                        Text(activeRegroup?.type ?: "Group is regrouping", style = CTType.bodyMd, color = CT.onSurface)
                     }
-                    Text(
-                        "ARRIVED",
-                        style = CTType.labelCaps,
-                        color = CT.onPrimaryFixed,
-                        letterSpacing = 1.sp,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(CT.primaryFixed)
-                            .clickable { activeRegroup = null }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
+                    if (activeRegroup != null) {
+                        Text(
+                            "ARRIVED",
+                            style = CTType.labelCaps,
+                            color = CT.onPrimaryFixed,
+                            letterSpacing = 1.sp,
+                            modifier = Modifier.clip(CircleShape).background(CT.primaryFixed)
+                                .clickable {
+                                    activeRegroup?.let { socket.emitRegroupArrived(rideId, it.regroupId) }
+                                    activeRegroup = null
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                    }
                 }
             }
         }
 
-        // Bottom overlay: rider strip + controls
+        // Bottom overlay: live rider strip + controls
         Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(Dummy.navRiders) { RiderChip(it) }
+            if (live.isNotEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(live.values.toList(), key = { it.userId }) { p ->
+                        RiderChip(name = namesById[p.userId] ?: "Rider", speed = p.speed, isMe = p.userId == myId)
+                    }
+                }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -186,8 +247,15 @@ fun RideNavigationScreen(
             containerColor = CT.surfaceDim,
         ) {
             RegroupSheet(onBroadcast = { reason ->
-                activeRegroup = reason
                 showRegroup = false
+                // Location is a placeholder (0,0) until the GPS phase wires real coordinates.
+                // Emergency emits ride:emergency; the others emit ride:regroup (per CLAUDE.md).
+                if (reason.isEmergency) {
+                    socket.emitEmergency(rideId, 0.0, 0.0, "Emergency")
+                } else {
+                    val type = reason.name // FUEL / FOOD / SCENIC
+                    scope.launch { socket.emitRegroup(rideId, type, 0.0, 0.0) }
+                }
             })
         }
     }
@@ -203,12 +271,8 @@ private fun ControlButton(
     onClick: () -> Unit,
 ) {
     Box(
-        Modifier
-            .size(56.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(background)
-            .border(1.dp, border, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick),
+        Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(background)
+            .border(1.dp, border, RoundedCornerShape(12.dp)).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(20.dp))
@@ -216,22 +280,24 @@ private fun ControlButton(
 }
 
 @Composable
-private fun RiderChip(rider: Rider) {
+private fun RiderChip(name: String, speed: Double?, isMe: Boolean) {
     Row(
-        Modifier
-            .clip(CircleShape)
-            .background(CT.surfaceContainerHigh.copy(alpha = 0.85f))
-            .border(1.dp, if (rider.isLeader) CT.primaryFixed else CT.outline.copy(alpha = 0.3f), CircleShape)
+        Modifier.clip(CircleShape).background(CT.surfaceContainerHigh.copy(alpha = 0.85f))
+            .border(1.dp, if (isMe) CT.primaryFixed else CT.outline.copy(alpha = 0.3f), CircleShape)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.size(28.dp).clip(CircleShape).background(CT.surfaceContainerHighest), contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.Person, null, tint = if (rider.isLeader) CT.primaryFixed else CT.onSurfaceVariant, modifier = Modifier.size(16.dp))
+            Icon(Icons.Filled.Person, null, tint = if (isMe) CT.primaryFixed else CT.onSurfaceVariant, modifier = Modifier.size(16.dp))
         }
         Column {
-            Text(rider.name, style = CTType.labelCaps, color = CT.onSurface)
-            Text("${rider.speedKmh} KM/H", style = CTType.dataMono.copy(fontSize = 11.sp), color = CT.onSurfaceVariant)
+            Text(name, style = CTType.labelCaps, color = CT.onSurface)
+            Text(
+                "${speed?.let { String.format(java.util.Locale.US, "%.0f", it) } ?: "--"} KM/H",
+                style = CTType.dataMono.copy(fontSize = 11.sp),
+                color = CT.onSurfaceVariant,
+            )
         }
     }
 }

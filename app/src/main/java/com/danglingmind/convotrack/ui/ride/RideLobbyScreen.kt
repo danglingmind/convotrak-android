@@ -2,6 +2,7 @@ package com.danglingmind.convotrack.ui.ride
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -64,6 +66,7 @@ fun RideLobbyScreen(
 ) {
     val api = remember { ServiceLocator.api }
     val auth = remember { ServiceLocator.auth }
+    val socket = remember { ServiceLocator.socket }
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<UiState<Ride>>(UiState.Loading) }
     var starting by remember { mutableStateOf(false) }
@@ -94,10 +97,27 @@ fun RideLobbyScreen(
                 val ride = s.data
                 val myId = auth.userState.value?.id
                 val amLeader = myId != null && ride.leaderId == myId
-                val readyCount = ride.participants.count { it.status == "READY" }
 
-                // Compute the route polyline between the ride's waypoints (iOS parity:
-                // ActiveRideCard.computeRoute) and show it on a non-interactive map.
+                // Live roster seeded from REST, then kept current by socket events.
+                val riders = remember(ride.id) { mutableStateListOf(*ride.participants.toTypedArray()) }
+                fun setReady(userId: String) {
+                    val i = riders.indexOfFirst { it.userId == userId }
+                    if (i >= 0) riders[i] = riders[i].copy(status = "READY")
+                }
+                LaunchedEffect(ride.id) {
+                    socket.connect()
+                    socket.joinRoom(ride.id)
+                    launch { socket.lobbyRoster.collect { riders.clear(); riders.addAll(it.participants) } }
+                    launch { socket.participantReady.collect { setReady(it) } }
+                    launch { socket.participantJoined.collect { p -> if (riders.none { it.userId == p.userId }) riders.add(p) } }
+                    launch { socket.participantLeft.collect { uid -> riders.removeAll { it.userId == uid } } }
+                    // A leader starting the ride flips status to ACTIVE — follow it into navigation.
+                    launch { socket.stateUpdates.collect { if (it.status == "ACTIVE" || it.status == "IN_PROGRESS") onStartRide() } }
+                }
+
+                val readyCount = riders.count { it.status == "READY" }
+                val myReady = myId != null && riders.firstOrNull { it.userId == myId }?.status == "READY"
+
                 var routeCoords by remember { mutableStateOf<List<LatLng>>(emptyList()) }
                 LaunchedEffect(ride.id) { routeCoords = computeRoute(ride.waypoints) }
 
@@ -109,7 +129,6 @@ fun RideLobbyScreen(
                 )
 
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    // Invite code
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(CT.surfaceContainerLow)
                             .border(1.dp, CT.primaryFixed.copy(alpha = 0.3f), RoundedCornerShape(12.dp)).padding(16.dp),
@@ -128,7 +147,7 @@ fun RideLobbyScreen(
                         Text("RIDERS", style = CTType.headlineMd, color = CT.onSurface)
                         Spacer(Modifier.weight(1f))
                         Text(
-                            "$readyCount / ${ride.participants.size} READY",
+                            "$readyCount / ${riders.size} READY",
                             style = CTType.labelCaps, color = CT.primaryFixed, letterSpacing = 1.sp,
                         )
                     }
@@ -138,13 +157,22 @@ fun RideLobbyScreen(
                     Modifier.weight(1f).padding(horizontal = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(ride.participants, key = { it.userId }) { RiderRow(it) }
+                    items(riders, key = { it.userId }) { RiderRow(it) }
                 }
 
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (startError != null) {
                         Text(startError!!, style = CTType.bodyMd, color = CT.errorColor, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                     }
+
+                    // Everyone can mark ready; the emit is acked by the server.
+                    SecondaryButton(
+                        text = if (myReady) "YOU'RE READY ✓" else "MARK READY",
+                        enabled = !myReady,
+                        highlighted = myReady,
+                        onClick = { scope.launch { if (socket.emitReady(ride.id) && myId != null) setReady(myId) } },
+                    )
+
                     if (amLeader) {
                         LimePrimaryButton(
                             text = if (starting) "STARTING…" else "START RIDE",
@@ -155,7 +183,7 @@ fun RideLobbyScreen(
                                 startError = null
                                 scope.launch {
                                     try {
-                                        apiCall { api.startRide(rideId) }
+                                        apiCall { api.startRide(ride.id) }
                                         onStartRide()
                                     } catch (e: ApiException) {
                                         startError = e.message ?: "Couldn't start the ride."
@@ -174,12 +202,28 @@ fun RideLobbyScreen(
                             color = CT.onSurfaceVariant,
                             letterSpacing = 1.sp,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SecondaryButton(text: String, enabled: Boolean, highlighted: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (highlighted) CT.tertiaryFixed.copy(alpha = 0.15f) else CT.surfaceContainerHighest)
+            .border(1.dp, if (highlighted) CT.tertiaryFixed.copy(alpha = 0.5f) else CT.outlineVariant, RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, style = CTType.labelCaps, color = if (highlighted) CT.tertiaryFixed else CT.onSurface, letterSpacing = 1.sp)
     }
 }
 
