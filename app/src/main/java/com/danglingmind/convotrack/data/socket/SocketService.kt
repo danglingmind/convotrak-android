@@ -7,8 +7,13 @@ import com.danglingmind.convotrack.data.net.RideParticipant
 import com.danglingmind.convotrack.data.net.RideStateUpdate
 import io.socket.client.Ack
 import io.socket.client.IO
+import io.socket.client.Manager
 import io.socket.client.Socket
 import io.socket.emitter.Emitter
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -47,6 +52,16 @@ class SocketService(private val auth: AuthRepository) {
 
     private var socket: Socket? = null
 
+    // Room to (re)join, so a socket.io auto-reconnect rejoins the ride room.
+    @Volatile
+    private var currentRideId: String? = null
+
+    // The same mutable map instance is handed to socket.io as the handshake auth, so updating
+    // its token in place lets a reconnect send a fresh (non-expired) Clerk token.
+    private val authPayload = java.util.Collections.synchronizedMap(HashMap<String, String>())
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
@@ -72,23 +87,33 @@ class SocketService(private val auth: AuthRepository) {
     // MARK: - Lifecycle
 
     suspend fun connect() {
-        if (socket?.connected() == true) return
+        // Idempotent: keep the single socket across CONNECTING/reconnect states so lobby+nav
+        // never spin up a second connection.
+        if (socket != null) return
         val token = auth.getToken() ?: return
-        val opts = IO.Options().apply { auth = mapOf("token" to token) }
+        authPayload["token"] = token
+        val opts = IO.Options().apply { auth = authPayload }
         val s = IO.socket(ApiClient.BASE_URL, opts)
+        // Refresh the handshake token before each reconnect attempt so long rides survive
+        // token expiry (best-effort — a slow refresh just defers to the next attempt).
+        s.io().on(Manager.EVENT_RECONNECT_ATTEMPT) {
+            scope.launch { auth.getToken()?.let { authPayload["token"] = it } }
+        }
         registerHandlers(s)
         s.connect()
         socket = s
     }
 
     fun disconnect() {
-        socket?.disconnect()
+        currentRideId = null
         socket?.off()
+        socket?.disconnect()
         socket = null
         _connected.value = false
     }
 
     fun joinRoom(rideId: String) {
+        currentRideId = rideId
         socket?.emit("ride:join", JSONObject().put("rideId", rideId))
     }
 
@@ -142,7 +167,11 @@ class SocketService(private val auth: AuthRepository) {
     // MARK: - Incoming handlers
 
     private fun registerHandlers(s: Socket) {
-        s.on(Socket.EVENT_CONNECT) { _connected.value = true }
+        s.on(Socket.EVENT_CONNECT) {
+            _connected.value = true
+            // Rejoin the ride room after a fresh connect or an auto-reconnect.
+            currentRideId?.let { s.emit("ride:join", JSONObject().put("rideId", it)) }
+        }
         s.on(Socket.EVENT_DISCONNECT) { _connected.value = false }
 
         s.onDecoded("ride:state_update", RideStateUpdate.serializer(), stateUpdates)

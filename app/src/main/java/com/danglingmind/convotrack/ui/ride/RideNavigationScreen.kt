@@ -267,7 +267,17 @@ fun RideNavigationScreen(
                     tint = CT.errorColor,
                     background = CT.errorContainer.copy(alpha = 0.12f),
                     border = CT.errorColor.copy(alpha = 0.35f),
-                    onClick = onEndRide,
+                    onClick = {
+                        scope.launch {
+                            // Leader ends the ride for everyone (backend); a member just leaves.
+                            if (myId != null && ride?.leaderId == myId) {
+                                runCatching { apiCall { api.endRide(rideId) } }
+                                onEndRide()
+                            } else {
+                                onExit()
+                            }
+                        }
+                    },
                 )
             }
         }

@@ -103,6 +103,7 @@ fun AppRoot() {
                     onOpenSummary = { rideId -> nav.navigate(Routes.summary(rideId)) },
                     onOpenMembership = { nav.navigate(Routes.MEMBERSHIP) },
                     onSignOut = {
+                        ServiceLocator.socket.disconnect()
                         nav.navigate(Routes.AUTH) {
                             popUpTo(Routes.MAIN) { inclusive = true }
                         }
@@ -126,7 +127,11 @@ fun AppRoot() {
                 val rideId = entry.arguments?.getString("rideId").orEmpty()
                 RideLobbyScreen(
                     rideId = rideId,
-                    onBack = { nav.popBackStack() },
+                    // Leaving the lobby back to the tabs means leaving the ride — drop the socket.
+                    onBack = {
+                        ServiceLocator.socket.disconnect()
+                        nav.popBackStack()
+                    },
                     onStartRide = { nav.navigate(Routes.navigation(rideId)) },
                 )
             }
@@ -155,6 +160,8 @@ fun AppRoot() {
                 RideSummaryScreen(
                     rideId = rideId,
                     onDone = {
+                        // The ride is over — tear down the realtime connection.
+                        ServiceLocator.socket.disconnect()
                         nav.navigate(Routes.MAIN) {
                             popUpTo(Routes.MAIN) { inclusive = true }
                         }
