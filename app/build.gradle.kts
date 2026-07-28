@@ -83,6 +83,9 @@ dependencies {
     implementation(libs.maps.compose)
     implementation(libs.play.services.maps)
 
+    // Location
+    implementation(libs.play.services.location)
+
     // Realtime
     implementation(libs.socket.io.client)
 

@@ -42,25 +42,34 @@ fun ConvoTrackMap(
     routeCoords: List<LatLng> = emptyList(),
     markers: List<MapMarker> = emptyList(),
     interactive: Boolean = true,
+    // When set (navigation), the camera follows this point at a nav zoom instead of fitting
+    // the whole route — otherwise every location update would jarringly re-fit the map.
+    follow: LatLng? = null,
 ) {
     val context = LocalContext.current
     val darkStyle = remember { MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style_dark) }
     val cameraPositionState = rememberCameraPositionState()
 
-    // Fit the camera to the route + markers whenever they change. newLatLngBounds needs the
-    // map to be measured, so guard with runCatching and fall back to a centered zoom.
-    LaunchedEffect(routeCoords, markers) {
-        val points = routeCoords + markers.map { it.position }
-        when {
-            points.isEmpty() -> Unit
-            points.size == 1 ->
-                cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 13f)
-            else -> {
-                val bounds = LatLngBounds.builder().apply { points.forEach { include(it) } }.build()
-                runCatching { cameraPositionState.move(CameraUpdateFactory.newLatLngBounds(bounds, 140)) }
-                    .onFailure {
-                        cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 11f)
-                    }
+    if (follow != null) {
+        LaunchedEffect(follow) {
+            cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(follow, 16.5f))
+        }
+    } else {
+        // Fit the camera to the route + markers whenever they change. newLatLngBounds needs the
+        // map to be measured, so guard with runCatching and fall back to a centered zoom.
+        LaunchedEffect(routeCoords, markers) {
+            val points = routeCoords + markers.map { it.position }
+            when {
+                points.isEmpty() -> Unit
+                points.size == 1 ->
+                    cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 13f)
+                else -> {
+                    val bounds = LatLngBounds.builder().apply { points.forEach { include(it) } }.build()
+                    runCatching { cameraPositionState.move(CameraUpdateFactory.newLatLngBounds(bounds, 140)) }
+                        .onFailure {
+                            cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 11f)
+                        }
+                }
             }
         }
     }

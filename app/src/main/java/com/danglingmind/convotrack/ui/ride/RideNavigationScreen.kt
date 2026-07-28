@@ -1,6 +1,10 @@
 package com.danglingmind.convotrack.ui.ride
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,7 +35,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,7 +50,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.data.net.LiveParticipant
 import com.danglingmind.convotrack.data.net.RegroupEvent
@@ -70,6 +78,8 @@ fun RideNavigationScreen(
     val api = remember { ServiceLocator.api }
     val auth = remember { ServiceLocator.auth }
     val socket = remember { ServiceLocator.socket }
+    val locationController = remember { ServiceLocator.location }
+    val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val myId = auth.userState.value?.id
 
@@ -78,9 +88,33 @@ fun RideNavigationScreen(
     val live: SnapshotStateMap<String, LiveParticipant> = remember { mutableStateMapOf() }
     var activeRegroup by remember { mutableStateOf<RegroupEvent?>(null) }
     var isEmergency by remember { mutableStateOf(false) }
+    val myLoc by locationController.current.collectAsState()
 
     var showRegroup by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Location permission -> start broadcasting my position (foreground service).
+    val permLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        if (grants[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+            locationController.start(ctx, rideId)
+        }
+    }
+    LaunchedEffect(rideId) {
+        val fineGranted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (fineGranted) {
+            locationController.start(ctx, rideId)
+        } else {
+            permLauncher.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS),
+            )
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { locationController.stop(ctx) }
+    }
 
     // Load the ride (route + roster), then go live over the socket.
     LaunchedEffect(rideId) {
@@ -101,30 +135,29 @@ fun RideNavigationScreen(
     BackHandler { onExit() }
 
     val namesById = remember(ride) { ride?.participants?.associate { it.userId to it.name } ?: emptyMap() }
-    val mySpeed = myId?.let { live[it]?.speed }
+    // My own speed comes from GPS directly (m/s -> km/h); fall back to the socket echo.
+    val mySpeed = myLoc?.takeIf { it.hasSpeed() }?.speed?.toDouble()?.times(3.6)
+        ?: myId?.let { live[it]?.speed?.times(3.6) }
 
     Box(Modifier.fillMaxSize().background(CT.surfaceDim)) {
-        // Real map: route + destination/waypoint markers + live rider markers.
+        val myLatLng = myLoc?.let { LatLng(it.latitude, it.longitude) }
+
+        // Real map: route + destination/waypoint markers + other riders (socket) + me (GPS).
         ConvoTrackMap(
             modifier = Modifier.fillMaxSize(),
             routeCoords = routeCoords,
             markers = buildList {
                 ride?.let { addAll(rideMarkers(it)) }
-                live.values.forEach { p ->
+                live.values.filter { it.userId != myId }.forEach { p ->
                     val lat = p.lat; val lng = p.lng
                     if (lat != null && lng != null) {
-                        add(
-                            MapMarker(
-                                id = "rider_${p.userId}",
-                                position = LatLng(lat, lng),
-                                kind = if (p.userId == myId) MapMarkerKind.USER else MapMarkerKind.RIDER,
-                                label = namesById[p.userId],
-                            )
-                        )
+                        add(MapMarker("rider_${p.userId}", LatLng(lat, lng), MapMarkerKind.RIDER, namesById[p.userId]))
                     }
                 }
+                myLatLng?.let { add(MapMarker("me", it, MapMarkerKind.USER, "You")) }
             },
             interactive = true,
+            follow = myLatLng,
         )
 
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
@@ -248,13 +281,15 @@ fun RideNavigationScreen(
         ) {
             RegroupSheet(onBroadcast = { reason ->
                 showRegroup = false
-                // Location is a placeholder (0,0) until the GPS phase wires real coordinates.
-                // Emergency emits ride:emergency; the others emit ride:regroup (per CLAUDE.md).
+                // Broadcast at my current position. Emergency emits ride:emergency;
+                // the others emit ride:regroup (per CLAUDE.md architectural decision).
+                val lat = myLoc?.latitude ?: 0.0
+                val lng = myLoc?.longitude ?: 0.0
                 if (reason.isEmergency) {
-                    socket.emitEmergency(rideId, 0.0, 0.0, "Emergency")
+                    socket.emitEmergency(rideId, lat, lng, "Emergency")
                 } else {
                     val type = reason.name // FUEL / FOOD / SCENIC
-                    scope.launch { socket.emitRegroup(rideId, type, 0.0, 0.0) }
+                    scope.launch { socket.emitRegroup(rideId, type, lat, lng) }
                 }
             })
         }

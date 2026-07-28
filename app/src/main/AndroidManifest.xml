@@ -4,6 +4,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- A location foreground service lets the ride keep broadcasting position while
+         backgrounded, using only the foreground ("while using") location grant. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".ConvoTrackApp"
@@ -37,6 +42,13 @@
                 <data android:scheme="convotrack" android:host="join" />
             </intent-filter>
         </activity>
+
+        <!-- Broadcasts the rider's position during an active ride. -->
+        <service
+            android:name=".data.location.RideLocationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 
 </manifest>

@@ -4,6 +4,7 @@ import android.app.Application
 import com.clerk.api.Clerk
 import com.danglingmind.convotrack.data.auth.AuthRepository
 import com.danglingmind.convotrack.data.auth.ClerkAuthRepository
+import com.danglingmind.convotrack.data.location.LocationController
 import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.ApiService
 import com.danglingmind.convotrack.data.socket.SocketService
@@ -25,6 +26,8 @@ object ServiceLocator {
 
     lateinit var socket: SocketService
         private set
+
+    val location: LocationController = LocationController()
 
     fun init(app: Application) {
         Clerk.initialize(app, CLERK_PUBLISHABLE_KEY)
