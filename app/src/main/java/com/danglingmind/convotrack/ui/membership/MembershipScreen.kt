@@ -31,19 +31,27 @@ import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import com.danglingmind.convotrack.data.billing.BillingManager
+import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
 import com.danglingmind.convotrack.ui.theme.LimePrimaryButton
@@ -70,8 +78,22 @@ private val benefits = listOf(
 
 @Composable
 fun MembershipScreen(onClose: () -> Unit) {
+    val context = LocalContext.current
+    val billing = remember { ServiceLocator.billing }
     var selected by remember { mutableStateOf(Plan.YEARLY) }
     var showSuccess by remember { mutableStateOf(false) }
+
+    val isPremium by billing.isPremium.collectAsState()
+    val error by billing.lastError.collectAsState()
+    billing.products.collectAsState() // recompose when live prices arrive
+
+    // Connect to Play + load products/entitlement on open; flip to success once entitled.
+    LaunchedEffect(Unit) { billing.start() }
+    LaunchedEffect(isPremium) { if (isPremium) showSuccess = true }
+
+    // Live Play prices when available, else the placeholder figures.
+    val monthlyPrice = billing.formattedPrice(BillingManager.MONTHLY_ID) ?: MONTHLY_PRICE
+    val yearlyPrice = billing.formattedPrice(BillingManager.YEARLY_ID) ?: YEARLY_PRICE
 
     Box(
         Modifier
@@ -110,12 +132,28 @@ fun MembershipScreen(onClose: () -> Unit) {
                 ) {
                     HeroSection()
                     BenefitsGrid()
-                    PlansSection(selected) { selected = it }
-                    CtaStack(selected, onPurchase = { showSuccess = true })
+                    PlansSection(selected, monthlyPrice, yearlyPrice) { selected = it }
+                    CtaStack(
+                        selected = selected,
+                        monthlyPrice = monthlyPrice,
+                        yearlyPrice = yearlyPrice,
+                        error = error,
+                        onPurchase = {
+                            val activity = context.findActivity()
+                            val productId = if (selected == Plan.YEARLY) BillingManager.YEARLY_ID else BillingManager.MONTHLY_ID
+                            if (activity != null) billing.purchase(activity, productId)
+                        },
+                    )
                 }
             }
         }
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @Composable
@@ -162,7 +200,7 @@ private fun BenefitsGrid() {
 }
 
 @Composable
-private fun PlansSection(selected: Plan, onSelect: (Plan) -> Unit) {
+private fun PlansSection(selected: Plan, monthlyPrice: String, yearlyPrice: String, onSelect: (Plan) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // The SAVE badge straddles the card's top edge (iOS uses offset(x:-14, y:-10)),
         // so the card is inset from the top to leave room — otherwise the badge would
@@ -173,7 +211,8 @@ private fun PlansSection(selected: Plan, onSelect: (Plan) -> Unit) {
                 isSelected = selected == Plan.YEARLY,
                 title = "YEARLY",
                 subtitle = "Billed every 12 months",
-                price = "$YEARLY_PRICE / yr",
+                price = "$yearlyPrice / yr",
+                // Per-month + savings are marketing approximations (placeholder figures).
                 perMonth = "≈ $YEARLY_PER_MONTH / mo",
                 onSelect = onSelect,
                 modifier = Modifier.padding(top = 12.dp),
@@ -196,7 +235,7 @@ private fun PlansSection(selected: Plan, onSelect: (Plan) -> Unit) {
             isSelected = selected == Plan.MONTHLY,
             title = "MONTHLY",
             subtitle = "Billed every month",
-            price = "$MONTHLY_PRICE / mo",
+            price = "$monthlyPrice / mo",
             onSelect = onSelect,
         )
     }
@@ -259,12 +298,27 @@ private fun PlanCard(
 }
 
 @Composable
-private fun CtaStack(selected: Plan, onPurchase: () -> Unit) {
+private fun CtaStack(
+    selected: Plan,
+    monthlyPrice: String,
+    yearlyPrice: String,
+    error: String?,
+    onPurchase: () -> Unit,
+) {
     val period = if (selected == Plan.YEARLY) "year" else "month"
-    val price = if (selected == Plan.YEARLY) YEARLY_PRICE else MONTHLY_PRICE
-    val ctaLabel = if (selected == Plan.YEARLY) "GET PRO  ·  $YEARLY_PRICE/yr" else "GET PRO  ·  $MONTHLY_PRICE/mo"
+    val price = if (selected == Plan.YEARLY) yearlyPrice else monthlyPrice
+    val ctaLabel = if (selected == Plan.YEARLY) "GET PRO  ·  $yearlyPrice/yr" else "GET PRO  ·  $monthlyPrice/mo"
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        if (error != null) {
+            Text(
+                error,
+                style = CTType.captionMd,
+                color = CT.errorColor,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 10.dp),
+            )
+        }
         LimePrimaryButton(text = ctaLabel, onClick = onPurchase)
 
         Row(

@@ -96,5 +96,8 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.mlkit.barcode.scanning)
 
+    // Billing
+    implementation(libs.billing.ktx)
+
     debugImplementation(libs.androidx.ui.tooling)
 }

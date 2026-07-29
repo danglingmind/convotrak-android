@@ -4,6 +4,7 @@ import android.app.Application
 import com.clerk.api.Clerk
 import com.danglingmind.convotrack.data.auth.AuthRepository
 import com.danglingmind.convotrack.data.auth.ClerkAuthRepository
+import com.danglingmind.convotrack.data.billing.BillingManager
 import com.danglingmind.convotrack.data.location.LocationController
 import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.ApiService
@@ -29,10 +30,14 @@ object ServiceLocator {
 
     val location: LocationController = LocationController()
 
+    lateinit var billing: BillingManager
+        private set
+
     fun init(app: Application) {
         Clerk.initialize(app, CLERK_PUBLISHABLE_KEY)
         auth = ClerkAuthRepository()
         api = ApiClient.create(auth)
         socket = SocketService(auth)
+        billing = BillingManager(app)
     }
 }

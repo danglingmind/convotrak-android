@@ -69,8 +69,11 @@ fun ProfileScreen(
 ) {
     val api = remember { ServiceLocator.api }
     val auth = remember { ServiceLocator.auth }
+    val billing = remember { ServiceLocator.billing }
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<UiState<ProfileData>>(UiState.Loading) }
+
+    LaunchedEffect(Unit) { billing.start() }
 
     suspend fun load() {
         state = UiState.Loading
@@ -78,7 +81,8 @@ fun ProfileScreen(
             val me = apiCall { api.fetchMe() }
             // Ride aggregates are derived from history; non-fatal if that call fails.
             val rides = runCatching { apiCall { api.getMyRides().rides } }.getOrDefault(emptyList())
-            val premium = me.plan.isPremium
+            // Local Play entitlement upgrades the server plan (never downgrades), mirroring iOS.
+            val premium = me.plan.isPremium || billing.isPremium.value
             val count = rides.size
             UiState.Success(
                 ProfileData(
