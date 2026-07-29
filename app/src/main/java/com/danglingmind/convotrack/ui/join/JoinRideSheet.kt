@@ -2,6 +2,7 @@ package com.danglingmind.convotrack.ui.join
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -39,7 +41,10 @@ import com.danglingmind.convotrack.ui.theme.LimePrimaryButton
 import kotlinx.coroutines.launch
 
 @Composable
-fun JoinRideSheet(onJoined: (rideId: String) -> Unit) {
+fun JoinRideSheet(
+    onJoined: (rideId: String) -> Unit,
+    onScanQr: () -> Unit,
+) {
     var code by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -100,7 +105,9 @@ fun JoinRideSheet(onJoined: (rideId: String) -> Unit) {
         Row(
             Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
                 .border(1.dp, CT.outlineVariant, RoundedCornerShape(12.dp))
+                .clickable(enabled = !busy, onClick = onScanQr)
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
