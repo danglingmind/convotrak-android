@@ -1,13 +1,35 @@
 package com.danglingmind.convotrack.ui.map
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
 import com.danglingmind.convotrack.ui.theme.CT
+import com.danglingmind.convotrack.ui.theme.CTType
 import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.MapsInitializer
+import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
@@ -18,57 +40,78 @@ import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapType
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberMarkerState
 
-enum class MapMarkerKind { DESTINATION, WAYPOINT, RIDER, USER, REGROUP }
+enum class MapMarkerKind { DESTINATION, WAYPOINT, START, RIDER, REGROUP }
 
 data class MapMarker(
     val id: String,
     val position: LatLng,
     val kind: MapMarkerKind,
     val label: String? = null,
+    val isMe: Boolean = false,
 )
 
+/** The rider's own position + travel heading, drawn as a rotating arrow puck. */
+data class UserPuck(val position: LatLng, val bearing: Float = 0f)
+
+/** Camera behaviour: fit everything, or 3D-follow the target (navigation). */
+sealed interface MapCamera {
+    data object Fit : MapCamera
+    data class Nav(val target: LatLng, val bearing: Float, val zoom: Float) : MapCamera
+}
+
+private const val NAV_TILT = 45f
+
 /**
- * Reusable dark Google map — the Android analogue of iOS GoogleMapView. Draws the lime
- * route polyline plus typed markers, and fits the camera to whatever it's given. Set
- * [interactive] = false for non-interactive previews (lobby / home card).
+ * Reusable dark Google map — the Android analogue of iOS GoogleMapView. Draws a dim planned
+ * route + a bright active route, typed & labelled markers, the user heading puck, and either
+ * fits bounds or follows the user with a tilted 3D camera (navigation).
  */
 @Composable
 fun ConvoTrackMap(
     modifier: Modifier = Modifier,
     routeCoords: List<LatLng> = emptyList(),
+    fullRouteCoords: List<LatLng> = emptyList(),
     markers: List<MapMarker> = emptyList(),
+    user: UserPuck? = null,
+    camera: MapCamera = MapCamera.Fit,
     interactive: Boolean = true,
-    // When set (navigation), the camera follows this point at a nav zoom instead of fitting
-    // the whole route — otherwise every location update would jarringly re-fit the map.
-    follow: LatLng? = null,
 ) {
     val context = LocalContext.current
     val darkStyle = remember { MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style_dark) }
     val cameraPositionState = rememberCameraPositionState()
+    // BitmapDescriptorFactory needs the Maps SDK initialised before use (idempotent).
+    val userArrow = remember {
+        MapsInitializer.initialize(context)
+        userArrowDescriptor()
+    }
 
-    if (follow != null) {
-        LaunchedEffect(follow) {
-            cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(follow, 16.5f))
-        }
-    } else {
-        // Fit the camera to the route + markers whenever they change. newLatLngBounds needs the
-        // map to be measured, so guard with runCatching and fall back to a centered zoom.
-        LaunchedEffect(routeCoords, markers) {
-            val points = routeCoords + markers.map { it.position }
-            when {
-                points.isEmpty() -> Unit
-                points.size == 1 ->
-                    cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 13f)
-                else -> {
-                    val bounds = LatLngBounds.builder().apply { points.forEach { include(it) } }.build()
-                    runCatching { cameraPositionState.move(CameraUpdateFactory.newLatLngBounds(bounds, 140)) }
-                        .onFailure {
-                            cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 11f)
-                        }
+    // In nav mode push the map centre down so the puck sits in the lower third and more of the
+    // road ahead is visible (mirrors iOS padding.top = height*0.3).
+    val contentPadding = if (camera is MapCamera.Nav) PaddingValues(top = 260.dp) else PaddingValues(0.dp)
+
+    LaunchedEffect(camera) {
+        when (camera) {
+            is MapCamera.Nav -> {
+                val pos = CameraPosition.Builder()
+                    .target(camera.target).zoom(camera.zoom).tilt(NAV_TILT).bearing(camera.bearing).build()
+                cameraPositionState.animate(CameraUpdateFactory.newCameraPosition(pos), 700)
+            }
+            MapCamera.Fit -> {
+                val points = routeCoords + fullRouteCoords + markers.map { it.position } + listOfNotNull(user?.position)
+                when {
+                    points.isEmpty() -> Unit
+                    points.size == 1 -> cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 13f)
+                    else -> {
+                        val bounds = LatLngBounds.builder().apply { points.forEach { include(it) } }.build()
+                        runCatching { cameraPositionState.move(CameraUpdateFactory.newLatLngBounds(bounds, 140)) }
+                            .onFailure { cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 11f) }
+                    }
                 }
             }
         }
@@ -77,6 +120,7 @@ fun ConvoTrackMap(
     GoogleMap(
         modifier = modifier,
         cameraPositionState = cameraPositionState,
+        contentPadding = contentPadding,
         properties = MapProperties(mapType = MapType.NORMAL, mapStyleOptions = darkStyle),
         uiSettings = MapUiSettings(
             zoomControlsEnabled = false,
@@ -88,23 +132,119 @@ fun ConvoTrackMap(
             zoomGesturesEnabled = interactive,
         ),
     ) {
-        if (routeCoords.size >= 2) {
-            Polyline(points = routeCoords, color = CT.primaryFixed, width = 12f)
+        // Dim planned route underneath, bright active route on top.
+        if (fullRouteCoords.size >= 2) {
+            Polyline(points = fullRouteCoords, color = CT.primaryFixed.copy(alpha = 0.28f), width = 9f, zIndex = 1f)
         }
-        markers.forEach { marker ->
+        if (routeCoords.size >= 2) {
+            Polyline(points = routeCoords, color = CT.primaryFixed, width = 14f, zIndex = 2f)
+        }
+
+        markers.forEach { marker -> LabeledMarker(marker) }
+
+        if (user != null) {
+            val state = rememberMarkerState(position = user.position)
+            LaunchedEffect(user.position) { state.position = user.position }
             Marker(
-                state = MarkerState(position = marker.position),
-                title = marker.label,
-                icon = BitmapDescriptorFactory.defaultMarker(hueFor(marker.kind)),
+                state = state,
+                icon = userArrow,
+                rotation = user.bearing,
+                flat = true,
+                anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f),
+                zIndex = 10f,
             )
         }
     }
 }
 
-private fun hueFor(kind: MapMarkerKind): Float = when (kind) {
-    MapMarkerKind.DESTINATION -> BitmapDescriptorFactory.HUE_GREEN
-    MapMarkerKind.WAYPOINT -> BitmapDescriptorFactory.HUE_VIOLET
-    MapMarkerKind.RIDER -> BitmapDescriptorFactory.HUE_AZURE
-    MapMarkerKind.USER -> BitmapDescriptorFactory.HUE_YELLOW
-    MapMarkerKind.REGROUP -> BitmapDescriptorFactory.HUE_ORANGE
+@Composable
+private fun LabeledMarker(marker: MapMarker) {
+    val state = rememberMarkerState(position = marker.position)
+    LaunchedEffect(marker.position) { state.position = marker.position }
+    MarkerComposable(
+        marker.id, marker.label.orEmpty(), marker.isMe,
+        state = state,
+        anchor = androidx.compose.ui.geometry.Offset(0.5f, 1f),
+    ) {
+        PinContent(marker)
+    }
+}
+
+@Composable
+private fun PinContent(marker: MapMarker) {
+    val accent = when (marker.kind) {
+        MapMarkerKind.DESTINATION -> CT.primaryFixed
+        MapMarkerKind.START -> CT.tertiaryFixed
+        MapMarkerKind.WAYPOINT -> CT.primaryFixed
+        MapMarkerKind.RIDER -> if (marker.isMe) CT.primaryFixed else CT.onSurface
+        MapMarkerKind.REGROUP -> CT.errorColor
+    }
+    Box(
+        Modifier
+            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(8.dp)),
+    ) {
+        androidx.compose.foundation.layout.Row(
+            Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+        ) {
+            when (marker.kind) {
+                MapMarkerKind.DESTINATION ->
+                    androidx.compose.material3.Icon(Icons.Filled.Flag, null, tint = accent, modifier = Modifier.size(13.dp))
+                MapMarkerKind.RIDER ->
+                    Box(Modifier.size(13.dp).clip(RoundedCornerShape(50)).background(accent))
+                else ->
+                    androidx.compose.material3.Icon(Icons.Filled.Place, null, tint = accent, modifier = Modifier.size(13.dp))
+            }
+            Text(
+                (marker.label ?: labelFor(marker.kind)).uppercase(),
+                style = CTType.labelCaps.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                color = androidx.compose.ui.graphics.Color.White,
+                letterSpacing = 0.5.sp,
+            )
+        }
+    }
+}
+
+private fun labelFor(kind: MapMarkerKind): String = when (kind) {
+    MapMarkerKind.DESTINATION -> "Destination"
+    MapMarkerKind.START -> "Start"
+    MapMarkerKind.WAYPOINT -> "Stop"
+    MapMarkerKind.RIDER -> "Rider"
+    MapMarkerKind.REGROUP -> "Regroup"
+}
+
+/** Lime heading arrow puck (drawn pointing up; the Marker's rotation applies the heading). */
+private fun userArrowDescriptor(): BitmapDescriptor {
+    val size = 96
+    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    val cx = size / 2f
+    val cy = size / 2f
+    val lime = CT.primaryFixed.toArgb()
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // Outer glow
+    paint.color = CT.primaryFixed.copy(alpha = 0.22f).toArgb()
+    c.drawCircle(cx, cy, size / 2f, paint)
+    // Inner disc
+    paint.color = lime
+    c.drawCircle(cx, cy, 24f, paint)
+    // White ring
+    paint.style = Paint.Style.STROKE
+    paint.strokeWidth = 6f
+    paint.color = android.graphics.Color.WHITE
+    c.drawCircle(cx, cy, 21f, paint)
+    // Dark arrow pointing up
+    paint.style = Paint.Style.FILL
+    paint.color = CT.onPrimaryFixed.toArgb()
+    val arrow = Path().apply {
+        moveTo(cx, cy - 15f)
+        lineTo(cx - 9f, cy + 9f)
+        lineTo(cx + 9f, cy + 9f)
+        close()
+    }
+    c.drawPath(arrow, paint)
+    return BitmapDescriptorFactory.fromBitmap(bmp)
 }

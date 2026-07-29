@@ -6,6 +6,7 @@ import com.danglingmind.convotrack.data.net.Waypoint
 import com.danglingmind.convotrack.ui.map.MapMarker
 import com.danglingmind.convotrack.ui.map.MapMarkerKind
 import com.google.android.gms.maps.model.LatLng
+import kotlin.math.cos
 
 /**
  * Stitches Directions routes between consecutive waypoints into one polyline — the Kotlin
@@ -26,25 +27,60 @@ suspend fun computeRoute(waypoints: List<Waypoint>): List<LatLng> {
     return all
 }
 
-/** Destination + middle-waypoint markers for a ride. */
-fun rideMarkers(ride: Ride): List<MapMarker> {
-    val markers = mutableListOf(
-        MapMarker(
-            id = "dest",
-            position = LatLng(ride.destinationLat, ride.destinationLng),
-            kind = MapMarkerKind.DESTINATION,
-            label = ride.destinationName,
-        ),
-    )
-    ride.waypoints
-        .filter { it.type == "WAYPOINT" }
-        .forEach { wp ->
-            markers += MapMarker(
-                id = "wp_${wp.order}",
-                position = LatLng(wp.lat, wp.lng),
-                kind = MapMarkerKind.WAYPOINT,
-                label = wp.name,
-            )
+/** Start / waypoint / destination markers for a ride, labelled with their names. */
+fun rideMarkers(ride: Ride): List<MapMarker> = buildList {
+    val sorted = ride.waypoints.sortedBy { it.order }
+    sorted.forEach { wp ->
+        val kind = when (wp.type) {
+            "START" -> MapMarkerKind.START
+            "DESTINATION" -> MapMarkerKind.DESTINATION
+            else -> MapMarkerKind.WAYPOINT
         }
-    return markers
+        add(MapMarker("wp_${wp.order}", LatLng(wp.lat, wp.lng), kind, wp.name))
+    }
+    if (sorted.none { it.type == "DESTINATION" }) {
+        add(MapMarker("dest", LatLng(ride.destinationLat, ride.destinationLng), MapMarkerKind.DESTINATION, ride.destinationName))
+    }
+}
+
+/**
+ * Trims [route] so it begins at the user's projected position on the nearest segment — the
+ * bright active route then starts exactly at the rider (iOS trimActiveRoute).
+ */
+fun trimRouteToUser(route: List<LatLng>, user: LatLng): List<LatLng> {
+    if (route.size < 2) return route
+    var bestIdx = 0
+    var bestDist = Double.MAX_VALUE
+    var bestProj = route.first()
+    for (i in 0 until route.size - 1) {
+        val (proj, dist) = projectOntoSegment(user, route[i], route[i + 1])
+        if (dist < bestDist) {
+            bestDist = dist
+            bestIdx = i
+            bestProj = proj
+        }
+    }
+    return buildList {
+        add(bestProj)
+        addAll(route.subList(bestIdx + 1, route.size))
+    }
+}
+
+/** Projects [p] onto segment a→b in a flat-earth frame; returns the projected point + distance². */
+private fun projectOntoSegment(p: LatLng, a: LatLng, b: LatLng): Pair<LatLng, Double> {
+    val cosLat = cos(a.latitude * Math.PI / 180)
+    val ax = a.longitude * cosLat; val ay = a.latitude
+    val bx = b.longitude * cosLat; val by = b.latitude
+    val px = p.longitude * cosLat; val py = p.latitude
+    val dx = bx - ax; val dy = by - ay
+    val lenSq = dx * dx + dy * dy
+    val proj = if (lenSq < 1e-18) {
+        a
+    } else {
+        val t = ((px - ax) * dx + (py - ay) * dy) / lenSq
+        val tc = t.coerceIn(0.0, 1.0)
+        LatLng(a.latitude + tc * (b.latitude - a.latitude), a.longitude + tc * (b.longitude - a.longitude))
+    }
+    val ex = proj.longitude * cosLat - px; val ey = proj.latitude - py
+    return proj to (ex * ex + ey * ey)
 }

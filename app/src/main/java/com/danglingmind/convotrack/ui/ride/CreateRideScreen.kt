@@ -176,7 +176,7 @@ fun CreateRideScreen(
                 SectionLabel("ROUTE PREVIEW")
                 val coords = preview?.coords ?: emptyList()
                 val markers = buildList {
-                    startStop.place?.let { add(MapMarker("start", it.latLng, MapMarkerKind.USER, it.name)) }
+                    startStop.place?.let { add(MapMarker("start", it.latLng, MapMarkerKind.START, it.name)) }
                     middleStops.mapNotNull { it.place }.forEachIndexed { i, p ->
                         add(MapMarker("wp$i", p.latLng, MapMarkerKind.WAYPOINT, p.name))
                     }

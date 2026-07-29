@@ -60,8 +60,10 @@ import com.danglingmind.convotrack.data.net.Ride
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.map.ConvoTrackMap
+import com.danglingmind.convotrack.ui.map.MapCamera
 import com.danglingmind.convotrack.ui.map.MapMarker
 import com.danglingmind.convotrack.ui.map.MapMarkerKind
+import com.danglingmind.convotrack.ui.map.UserPuck
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
 import com.danglingmind.convotrack.ui.theme.FloatingStatPill
@@ -141,11 +143,17 @@ fun RideNavigationScreen(
 
     Box(Modifier.fillMaxSize().background(CT.surfaceDim)) {
         val myLatLng = myLoc?.let { LatLng(it.latitude, it.longitude) }
+        val bearing = myLoc?.takeIf { it.hasBearing() }?.bearing ?: 0f
+        // Speed-based zoom, matching iOS navZoom.
+        val navZoom = when { (mySpeed ?: 0.0) < 20 -> 17.5f; (mySpeed ?: 0.0) < 60 -> 16.5f; else -> 16.0f }
+        // Bright route starts at the rider; the full planned route stays dim underneath.
+        val activeRoute = if (myLatLng != null && routeCoords.size >= 2) trimRouteToUser(routeCoords, myLatLng) else routeCoords
 
-        // Real map: route + destination/waypoint markers + other riders (socket) + me (GPS).
+        // Live navigation map: 3D follow camera, heading puck, trimmed route, live riders.
         ConvoTrackMap(
             modifier = Modifier.fillMaxSize(),
-            routeCoords = routeCoords,
+            routeCoords = activeRoute,
+            fullRouteCoords = routeCoords,
             markers = buildList {
                 ride?.let { addAll(rideMarkers(it)) }
                 live.values.filter { it.userId != myId }.forEach { p ->
@@ -154,10 +162,10 @@ fun RideNavigationScreen(
                         add(MapMarker("rider_${p.userId}", LatLng(lat, lng), MapMarkerKind.RIDER, namesById[p.userId]))
                     }
                 }
-                myLatLng?.let { add(MapMarker("me", it, MapMarkerKind.USER, "You")) }
             },
+            user = myLatLng?.let { UserPuck(it, bearing) },
+            camera = myLatLng?.let { MapCamera.Nav(it, bearing, navZoom) } ?: MapCamera.Fit,
             interactive = true,
-            follow = myLatLng,
         )
 
         Column(Modifier.fillMaxSize().statusBarsPadding()) {

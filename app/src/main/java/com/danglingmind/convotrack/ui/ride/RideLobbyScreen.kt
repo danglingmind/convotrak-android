@@ -96,6 +96,11 @@ fun RideLobbyScreen(
                 val myId = auth.userState.value?.id
                 val amLeader = myId != null && ride.leaderId == myId
 
+                // A ride that's already running resumes straight into navigation (iOS parity).
+                LaunchedEffect(ride.status) {
+                    if (ride.status == "ACTIVE" || ride.status == "IN_PROGRESS") onStartRide()
+                }
+
                 // Live roster seeded from REST, then kept current by socket events.
                 val riders = remember(ride.id) { mutableStateListOf(*ride.participants.toTypedArray()) }
                 fun setReady(userId: String) {

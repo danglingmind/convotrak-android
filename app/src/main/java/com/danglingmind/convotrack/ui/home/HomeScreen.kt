@@ -49,6 +49,10 @@ import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.HistoryRide
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.di.ServiceLocator
+import com.danglingmind.convotrack.ui.map.ConvoTrackMap
+import com.danglingmind.convotrack.ui.ride.computeRoute
+import com.google.android.gms.maps.model.LatLng
+import androidx.compose.ui.graphics.Brush
 import com.danglingmind.convotrack.ui.common.EmptyCard
 import com.danglingmind.convotrack.ui.common.ErrorBlock
 import com.danglingmind.convotrack.ui.common.LoadingBlock
@@ -199,6 +203,14 @@ private fun statusLabel(status: String): String = when (status) {
 
 @Composable
 private fun ActiveRideSection(ride: HistoryRide, onClick: () -> Unit) {
+    val api = remember { ServiceLocator.api }
+    // Fetch the full ride to draw its route as the card background (iOS ActiveRideCard).
+    var route by remember(ride.rideId) { mutableStateOf<List<LatLng>>(emptyList()) }
+    LaunchedEffect(ride.rideId) {
+        val full = runCatching { apiCall { api.getRide(ride.rideId) } }.getOrNull()
+        full?.let { route = computeRoute(it.waypoints) }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("ACTIVE RIDE", style = CTType.headlineMd, color = CT.onSurface)
@@ -213,16 +225,33 @@ private fun ActiveRideSection(ride: HistoryRide, onClick: () -> Unit) {
                 .height(150.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .border(1.dp, CT.primaryFixed.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                .background(CT.surfaceContainerHigh)
-                .clickable(onClick = onClick)
-                .padding(18.dp),
+                .background(CT.surfaceContainerHigh),
         ) {
-            Column(Modifier.fillMaxSize()) {
+            if (route.isNotEmpty()) {
+                ConvoTrackMap(
+                    modifier = Modifier.matchParentSize(),
+                    routeCoords = route,
+                    interactive = false,
+                )
+            }
+            // Dark scrim so the title/RESUME stay legible over the map. It also sits above the
+            // map view and carries the click, since the (non-interactive) map consumes touches.
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clickable(onClick = onClick)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Black.copy(alpha = 0.15f), Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.82f)),
+                        ),
+                    ),
+            )
+            Column(Modifier.fillMaxSize().padding(18.dp)) {
                 Spacer(Modifier.weight(1f))
                 Row(verticalAlignment = Alignment.Bottom) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(ride.title, style = CTType.headlineMd, color = CT.onSurface)
-                        Text(ride.distanceLabel(), style = CTType.dataMono, color = CT.onSurfaceVariant)
+                        Text(ride.title, style = CTType.headlineMd, color = Color.White)
+                        Text(ride.distanceLabel(), style = CTType.dataMono, color = Color.White.copy(alpha = 0.75f))
                     }
                     Spacer(Modifier.weight(1f))
                     Text(
