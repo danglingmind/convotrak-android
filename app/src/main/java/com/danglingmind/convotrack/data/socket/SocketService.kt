@@ -90,14 +90,14 @@ class SocketService(private val auth: AuthRepository) {
         // Idempotent: keep the single socket across CONNECTING/reconnect states so lobby+nav
         // never spin up a second connection.
         if (socket != null) return
-        val token = auth.getToken() ?: return
+        val token = auth.getToken(forceRefresh = true) ?: return
         authPayload["token"] = token
         val opts = IO.Options().apply { auth = authPayload }
         val s = IO.socket(ApiClient.BASE_URL, opts)
         // Refresh the handshake token before each reconnect attempt so long rides survive
         // token expiry (best-effort — a slow refresh just defers to the next attempt).
         s.io().on(Manager.EVENT_RECONNECT_ATTEMPT) {
-            scope.launch { auth.getToken()?.let { authPayload["token"] = it } }
+            scope.launch { auth.getToken(forceRefresh = true)?.let { authPayload["token"] = it } }
         }
         registerHandlers(s)
         s.connect()

@@ -62,15 +62,28 @@ object ApiClient {
  * Attaches `Authorization: Bearer <jwt>` to every request. OkHttp interceptors are
  * synchronous, so the suspend token fetch is bridged with runBlocking — acceptable on
  * OkHttp's background dispatcher thread.
+ *
+ * If the server rejects the token (401/403 — e.g. a stale token under device clock skew),
+ * force a fresh token and retry the request once. This keeps the app resilient to token
+ * expiry races on any device.
  */
 private class AuthInterceptor(private val auth: AuthRepository) : okhttp3.Interceptor {
     override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
         val token = runBlocking { auth.getToken() } ?: throw NotAuthenticatedException()
-        val authed: Request = chain.request().newBuilder()
-            .header("Authorization", "Bearer $token")
-            .build()
-        return chain.proceed(authed)
+        val response = chain.proceed(chain.request().withBearer(token))
+
+        if (response.code == 401 || response.code == 403) {
+            val fresh = runBlocking { auth.getToken(forceRefresh = true) }
+            if (fresh != null && fresh != token) {
+                response.close()
+                return chain.proceed(chain.request().withBearer(fresh))
+            }
+        }
+        return response
     }
+
+    private fun Request.withBearer(token: String): Request =
+        newBuilder().header("Authorization", "Bearer $token").build()
 }
 
 /**

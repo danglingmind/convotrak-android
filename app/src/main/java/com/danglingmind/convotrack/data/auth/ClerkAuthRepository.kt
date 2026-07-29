@@ -4,6 +4,7 @@ import com.clerk.api.Clerk
 import com.clerk.api.network.model.error.ClerkErrorResponse
 import com.clerk.api.network.serialization.ClerkResult
 import com.clerk.api.network.serialization.shortErrorMessageOrNull
+import com.clerk.api.session.GetTokenOptions
 import com.clerk.api.signup.SignUp
 import com.clerk.api.signup.attemptVerification
 import com.clerk.api.signup.prepareVerification
@@ -43,11 +44,15 @@ class ClerkAuthRepository : AuthRepository {
 
     override val isReady: StateFlow<Boolean> = Clerk.isInitialized
 
-    override suspend fun getToken(): String? =
-        when (val r = Clerk.auth.getToken()) {
+    override suspend fun getToken(forceRefresh: Boolean): String? {
+        // skipCache mints a fresh token from Clerk, sidestepping a locally-cached token that
+        // a skewed device clock still believes is valid but the server has already expired.
+        val options = GetTokenOptions().copy(skipCache = forceRefresh)
+        return when (val r = Clerk.auth.getToken(options)) {
             is ClerkResult.Success -> r.value
             is ClerkResult.Failure -> null
         }
+    }
 
     override suspend fun signInWithEmail(email: String, password: String): AuthResult {
         // Aliased to locals so the builder's own `identifier`/`password` members don't shadow them.

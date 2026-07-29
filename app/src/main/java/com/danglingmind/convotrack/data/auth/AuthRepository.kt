@@ -34,8 +34,12 @@ interface AuthRepository {
     /** True once Clerk has finished bootstrapping its session on launch. */
     val isReady: StateFlow<Boolean>
 
-    /** Current session JWT for the Authorization header, or null when signed out. */
-    suspend fun getToken(): String?
+    /**
+     * Current session JWT for the Authorization header, or null when signed out.
+     * Pass [forceRefresh] to bypass Clerk's cache and mint a brand-new token — used to
+     * recover from a rejected (stale/expired) token, e.g. under device clock skew.
+     */
+    suspend fun getToken(forceRefresh: Boolean = false): String?
 
     suspend fun signInWithEmail(email: String, password: String): AuthResult
 
