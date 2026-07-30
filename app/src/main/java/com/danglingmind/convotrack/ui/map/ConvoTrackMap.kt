@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
@@ -35,6 +36,7 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MapStyleOptions
+import com.google.maps.android.compose.CameraMoveStartedReason
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapType
@@ -59,10 +61,12 @@ data class MapMarker(
 /** The rider's own position + travel heading, drawn as a rotating arrow puck. */
 data class UserPuck(val position: LatLng, val bearing: Float = 0f)
 
-/** Camera behaviour: fit everything, or 3D-follow the target (navigation). */
+/** Camera behaviour: fit everything, 3D-follow the target (navigation), or leave it alone. */
 sealed interface MapCamera {
     data object Fit : MapCamera
     data class Nav(val target: LatLng, val bearing: Float, val zoom: Float) : MapCamera
+    /** Free-look: the user panned; don't move the camera until told to recenter. */
+    data object Free : MapCamera
 }
 
 private const val NAV_TILT = 45f
@@ -81,6 +85,7 @@ fun ConvoTrackMap(
     user: UserPuck? = null,
     camera: MapCamera = MapCamera.Fit,
     interactive: Boolean = true,
+    onUserPan: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val darkStyle = remember { MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style_dark) }
@@ -102,6 +107,7 @@ fun ConvoTrackMap(
                     .target(camera.target).zoom(camera.zoom).tilt(NAV_TILT).bearing(camera.bearing).build()
                 cameraPositionState.animate(CameraUpdateFactory.newCameraPosition(pos), 700)
             }
+            MapCamera.Free -> Unit // user is panning; leave the camera where they left it
             MapCamera.Fit -> {
                 val points = routeCoords + fullRouteCoords + markers.map { it.position } + listOfNotNull(user?.position)
                 when {
@@ -115,6 +121,12 @@ fun ConvoTrackMap(
                 }
             }
         }
+    }
+
+    // Report user-initiated pans/zooms so navigation can switch to free-look.
+    LaunchedEffect(cameraPositionState) {
+        snapshotFlow { cameraPositionState.cameraMoveStartedReason }
+            .collect { if (it == CameraMoveStartedReason.GESTURE) onUserPan() }
     }
 
     GoogleMap(

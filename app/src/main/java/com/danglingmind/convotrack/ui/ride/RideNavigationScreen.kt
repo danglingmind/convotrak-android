@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
@@ -92,6 +93,23 @@ fun RideNavigationScreen(
     var isEmergency by remember { mutableStateOf(false) }
     val myLoc by locationController.current.collectAsState()
 
+    // Course-up heading: GPS bearing while moving, else derived from movement between fixes
+    // (mock/indoor GPS often omits bearing). Free-look pauses the follow camera after a pan.
+    var heading by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    var prevLoc by remember { mutableStateOf<android.location.Location?>(null) }
+    var isFreeLooking by remember { mutableStateOf(false) }
+    LaunchedEffect(myLoc) {
+        val loc = myLoc ?: return@LaunchedEffect
+        val prev = prevLoc
+        val moving = loc.hasSpeed() && loc.speed > 0.5f
+        heading = when {
+            loc.hasBearing() && moving -> loc.bearing
+            prev != null && prev.distanceTo(loc) > 3f -> (prev.bearingTo(loc) + 360f) % 360f
+            else -> heading
+        }
+        prevLoc = loc
+    }
+
     var showRegroup by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -143,7 +161,6 @@ fun RideNavigationScreen(
 
     Box(Modifier.fillMaxSize().background(CT.surfaceDim)) {
         val myLatLng = myLoc?.let { LatLng(it.latitude, it.longitude) }
-        val bearing = myLoc?.takeIf { it.hasBearing() }?.bearing ?: 0f
         // Speed-based zoom, matching iOS navZoom.
         val navZoom = when { (mySpeed ?: 0.0) < 20 -> 17.5f; (mySpeed ?: 0.0) < 60 -> 16.5f; else -> 16.0f }
         // Bright route starts at the rider; the full planned route stays dim underneath.
@@ -162,10 +179,16 @@ fun RideNavigationScreen(
                         add(MapMarker("rider_${p.userId}", LatLng(lat, lng), MapMarkerKind.RIDER, namesById[p.userId]))
                     }
                 }
+                activeRegroup?.let { add(MapMarker("regroup", LatLng(it.lat, it.lng), MapMarkerKind.REGROUP, "Regroup")) }
             },
-            user = myLatLng?.let { UserPuck(it, bearing) },
-            camera = myLatLng?.let { MapCamera.Nav(it, bearing, navZoom) } ?: MapCamera.Fit,
+            user = myLatLng?.let { UserPuck(it, heading) },
+            camera = when {
+                myLatLng == null -> MapCamera.Fit
+                isFreeLooking -> MapCamera.Free
+                else -> MapCamera.Nav(myLatLng, heading, navZoom)
+            },
             interactive = true,
+            onUserPan = { isFreeLooking = true },
         )
 
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
@@ -250,7 +273,24 @@ fun RideNavigationScreen(
         Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // Re-center pill appears once the rider pans away from the follow camera.
+            if (isFreeLooking) {
+                Row(
+                    Modifier
+                        .clip(CircleShape)
+                        .background(CT.primaryFixed)
+                        .clickable { isFreeLooking = false }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(Icons.Filled.MyLocation, null, tint = CT.onPrimaryFixed, modifier = Modifier.size(16.dp))
+                    Text("RE-CENTER", style = CTType.labelCaps, color = CT.onPrimaryFixed, letterSpacing = 1.sp)
+                }
+            }
+
             if (live.isNotEmpty()) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(live.values.toList(), key = { it.userId }) { p ->
