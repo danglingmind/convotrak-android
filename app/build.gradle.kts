@@ -99,5 +99,8 @@ dependencies {
     // Billing
     implementation(libs.billing.ktx)
 
+    // QR code generation (invite-code sharing)
+    implementation(libs.zxing.core)
+
     debugImplementation(libs.androidx.ui.tooling)
 }

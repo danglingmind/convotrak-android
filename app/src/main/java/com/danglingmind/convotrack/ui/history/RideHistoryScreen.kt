@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.data.net.ApiException
@@ -45,6 +46,7 @@ import com.danglingmind.convotrack.ui.common.LoadingBlock
 import com.danglingmind.convotrack.ui.common.UiState
 import com.danglingmind.convotrack.ui.common.dateLabel
 import com.danglingmind.convotrack.ui.common.distanceLabel
+import com.danglingmind.convotrack.ui.common.isCompleted
 import com.danglingmind.convotrack.ui.common.durationLabel
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
@@ -52,7 +54,10 @@ import com.danglingmind.convotrack.ui.theme.ConvoTrackTopBar
 import kotlinx.coroutines.launch
 
 @Composable
-fun RideHistoryScreen(onOpenSummary: (rideId: String) -> Unit) {
+fun RideHistoryScreen(
+    onOpenSummary: (rideId: String) -> Unit,
+    onOpenRide: (rideId: String) -> Unit,
+) {
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<UiState<List<HistoryRide>>>(UiState.Loading) }
@@ -95,7 +100,12 @@ fun RideHistoryScreen(onOpenSummary: (rideId: String) -> Unit) {
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(s.data, key = { it.rideId }) { ride ->
-                            HistoryCard(ride, onClick = { onOpenSummary(ride.rideId) })
+                            // Completed rides open their summary; anything still live (LOBBY/
+                            // ACTIVE/PAUSED) opens the lobby — matches iOS RideHistoryView.handleTap.
+                            HistoryCard(
+                                ride,
+                                onClick = { if (ride.isCompleted) onOpenSummary(ride.rideId) else onOpenRide(ride.rideId) },
+                            )
                         }
                     }
                 }
@@ -124,23 +134,47 @@ private fun HistoryCard(ride: HistoryRide, onClick: () -> Unit) {
             Icon(Icons.Outlined.Flag, null, tint = CT.primaryFixed, modifier = Modifier.size(24.dp))
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(ride.title, style = CTType.bodyLg.copy(fontWeight = FontWeight.Bold), color = CT.onSurface)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    ride.title,
+                    style = CTType.bodyLg.copy(fontWeight = FontWeight.Bold),
+                    color = CT.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (ride.isLeader == true) LeaderBadge()
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 val date = ride.dateLabel()
                 if (date.isNotEmpty()) {
-                    Text(date, style = CTType.labelCaps, color = CT.onSurfaceVariant)
+                    Text(date, style = CTType.labelCaps, color = CT.onSurfaceVariant, maxLines = 1, softWrap = false)
                     Text("·", color = CT.onSurfaceVariant.copy(alpha = 0.5f))
                 }
-                Text(ride.distanceLabel(), style = CTType.dataMono, color = CT.onSurfaceVariant)
+                Text(ride.distanceLabel(), style = CTType.dataMono, color = CT.onSurfaceVariant, maxLines = 1, softWrap = false)
                 Text("·", color = CT.onSurfaceVariant.copy(alpha = 0.5f))
-                Text(ride.durationLabel(), style = CTType.dataMono, color = CT.onSurfaceVariant)
-                if (ride.isLeader == true) {
-                    Text("·", color = CT.onSurfaceVariant.copy(alpha = 0.5f))
-                    Text("LEADER", style = CTType.labelCaps, color = CT.primaryFixed)
-                }
+                Text(ride.durationLabel(), style = CTType.dataMono, color = CT.onSurfaceVariant, maxLines = 1, softWrap = false)
             }
         }
         Spacer(Modifier.size(2.dp))
         Icon(Icons.Filled.ChevronRight, null, tint = CT.onSurfaceVariant.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
     }
+}
+
+/** Compact non-wrapping "LEADER" chip shown on rides the user led. */
+@Composable
+fun LeaderBadge() {
+    Text(
+        "LEADER",
+        style = CTType.labelCaps.copy(fontSize = 10.sp),
+        color = CT.primaryFixed,
+        letterSpacing = 0.5.sp,
+        maxLines = 1,
+        softWrap = false,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(CT.primaryFixed.copy(alpha = 0.14f))
+            .border(1.dp, CT.primaryFixed.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+    )
 }

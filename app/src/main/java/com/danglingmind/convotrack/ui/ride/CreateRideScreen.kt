@@ -67,12 +67,12 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 // A route stop: free text plus the geocoded place once the user picks a suggestion.
-private class RouteStop(val id: Long) {
+internal class RouteStop(val id: Long) {
     var text by mutableStateOf("")
     var place by mutableStateOf<PlaceResult?>(null)
 }
 
-private data class RoutePreview(
+internal data class RoutePreview(
     val coords: List<LatLng>,
     val distanceMeters: Double,
     val durationSeconds: Double,
@@ -278,7 +278,7 @@ fun CreateRideScreen(
 }
 
 /** Sums per-leg Directions results into one route (coords + total distance + duration). */
-private suspend fun computePreview(points: List<LatLng>): RoutePreview? {
+internal suspend fun computePreview(points: List<LatLng>): RoutePreview? {
     if (points.size < 2) return null
     val coords = mutableListOf<LatLng>()
     var distance = 0.0
@@ -292,18 +292,18 @@ private suspend fun computePreview(points: List<LatLng>): RoutePreview? {
     return RoutePreview(coords, distance, duration)
 }
 
-private fun durationText(seconds: Double): String {
+internal fun durationText(seconds: Double): String {
     val minutes = (seconds / 60).toInt()
     return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m"
 }
 
 @Composable
-private fun SectionLabel(text: String) {
+internal fun SectionLabel(text: String) {
     Text(text, style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 2.sp)
 }
 
 @Composable
-private fun StopRow(dotColor: androidx.compose.ui.graphics.Color, content: @Composable () -> Unit) {
+internal fun StopRow(dotColor: androidx.compose.ui.graphics.Color, content: @Composable () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
         Box(
             Modifier.padding(top = 34.dp).size(14.dp).clip(CircleShape).background(dotColor).border(2.dp, CT.surfaceDim, CircleShape),
@@ -314,7 +314,7 @@ private fun StopRow(dotColor: androidx.compose.ui.graphics.Color, content: @Comp
 
 /** Text field with debounced Places search + a suggestion list. Writes the picked place back to [stop]. */
 @Composable
-private fun PlacesField(stop: RouteStop, placeholder: String, leading: ImageVector) {
+internal fun PlacesField(stop: RouteStop, placeholder: String, leading: ImageVector) {
     var suggestions by remember { mutableStateOf<List<PlaceResult>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
 
@@ -379,7 +379,7 @@ private fun PlacesField(stop: RouteStop, placeholder: String, leading: ImageVect
 }
 
 @Composable
-private fun PlainField(value: String, placeholder: String, onChange: (String) -> Unit) {
+internal fun PlainField(value: String, placeholder: String, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
@@ -401,7 +401,7 @@ private fun PlainField(value: String, placeholder: String, onChange: (String) ->
 }
 
 @Composable
-private fun RouteStatCard(icon: ImageVector, label: String, value: String, modifier: Modifier = Modifier) {
+internal fun RouteStatCard(icon: ImageVector, label: String, value: String, modifier: Modifier = Modifier) {
     Row(
         modifier.clip(RoundedCornerShape(12.dp)).background(CT.surfaceContainerLow)
             .border(1.dp, CT.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)).padding(14.dp),
@@ -417,7 +417,7 @@ private fun RouteStatCard(icon: ImageVector, label: String, value: String, modif
 }
 
 @Composable
-private fun StepperButton(label: String, onClick: () -> Unit) {
+internal fun StepperButton(label: String, onClick: () -> Unit) {
     Box(
         Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(CT.surfaceContainerHighest).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,

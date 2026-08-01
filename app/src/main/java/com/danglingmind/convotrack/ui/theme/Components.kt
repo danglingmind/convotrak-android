@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -79,6 +80,7 @@ fun ConvoTrackTopBar(
     title: String,
     showBack: Boolean = false,
     onBack: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
         modifier = Modifier
@@ -110,8 +112,12 @@ fun ConvoTrackTopBar(
             text = title,
             style = CTType.headlineLg,
             color = CT.primaryFixed,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
         )
         Spacer(Modifier.weight(1f))
+        actions()
         Icon(
             imageVector = Icons.Outlined.SettingsInputAntenna,
             contentDescription = null,

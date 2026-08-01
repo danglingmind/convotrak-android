@@ -55,6 +55,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
@@ -213,9 +214,12 @@ private fun BrandHeader() {
         )
         Text(
             text = "CONVOTRACK",
-            style = CTType.displayMetrics.copy(fontSize = 42.sp),
+            style = CTType.displayMetrics.copy(fontSize = 38.sp),
             color = CT.primaryFixed,
-            letterSpacing = 9.6.sp,
+            letterSpacing = 6.sp,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible,
         )
         Spacer(Modifier.height(8.dp))
         Text(

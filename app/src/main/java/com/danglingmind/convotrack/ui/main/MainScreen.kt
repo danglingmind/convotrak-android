@@ -45,7 +45,7 @@ fun MainScreen(
 
     Box(Modifier.fillMaxSize()) {
         when (activeTab) {
-            CTTab.FLAGGED -> RideHistoryScreen(onOpenSummary = onOpenSummary)
+            CTTab.FLAGGED -> RideHistoryScreen(onOpenSummary = onOpenSummary, onOpenRide = onOpenLobby)
             CTTab.TRACK -> HomeScreen(
                 onCreateRide = onCreateRide,
                 onJoinRide = { showJoin = true },

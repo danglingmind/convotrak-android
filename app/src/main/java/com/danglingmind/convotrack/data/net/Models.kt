@@ -183,8 +183,9 @@ data class RideSummary(
 
 @Serializable
 data class SummaryParticipant(
-    val userId: String,
-    val name: String,
+    // Defaults keep a stray/empty participant object from failing the whole summary decode.
+    val userId: String = "",
+    val name: String = "",
     val avatarUrl: String? = null,
     val rideTitle: String? = null,
     val syncScore: Int? = null,

@@ -5,6 +5,7 @@ import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.RegroupEvent
 import com.danglingmind.convotrack.data.net.RideParticipant
 import com.danglingmind.convotrack.data.net.RideStateUpdate
+import com.danglingmind.convotrack.data.net.RideUpdatedEvent
 import io.socket.client.Ack
 import io.socket.client.IO
 import io.socket.client.Manager
@@ -19,11 +20,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNamingStrategy
 import org.json.JSONObject
 import kotlin.coroutines.resume
 
@@ -41,13 +40,22 @@ data class SocketEmergency(
     val message: String? = null,
 )
 
+/** ride:split_detected payload — the group has spread past the split threshold. */
+@Serializable
+data class SplitEvent(
+    val gapMeters: Double = 0.0,
+    val leaderId: String? = null,
+    val lastRiderId: String? = null,
+)
+
 /**
  * Socket.IO client — the Android port of iOS SocketClient.swift. Same event names, same
- * `auth.token` handshake (Clerk JWT). Socket payloads are snake_case (iOS uses
- * convertFromSnakeCase), so a dedicated Json with the SnakeCase naming strategy decodes
- * them into the same models the REST layer uses.
+ * `auth.token` handshake (Clerk JWT). The backend emits camelCase JSON on the socket wire
+ * (verified against src/sockets/handlers.ts) — the same convention as the REST API — so the
+ * decoder uses plain camelCase (NO naming strategy). Using a snake_case strategy here silently
+ * dropped every multi-word field and hard-failed decode of models with required multi-word
+ * fields (joinedAt, gapMeters, createdBy…), breaking lobby_roster / state_update / regroup.
  */
-@OptIn(ExperimentalSerializationApi::class)
 class SocketService(private val auth: AuthRepository) {
 
     private var socket: Socket? = null
@@ -66,7 +74,7 @@ class SocketService(private val auth: AuthRepository) {
         ignoreUnknownKeys = true
         coerceInputValues = true
         explicitNulls = false
-        namingStrategy = JsonNamingStrategy.SnakeCase
+        // camelCase wire format — matches the backend socket payloads and the REST client.
     }
 
     // MARK: - Exposed streams
@@ -78,9 +86,13 @@ class SocketService(private val auth: AuthRepository) {
     val participantReady = event<String>()        // userId
     val participantJoined = event<RideParticipant>()
     val participantLeft = event<String>()          // userId
+    val participantOffline = event<String>()       // userId (disconnected — presence dot)
     val regroupStarted = event<RegroupEvent>()
     val regroupResolved = event<String>()          // regroupId
     val emergencyStarted = event<SocketEmergency>()
+    val splitDetected = event<SplitEvent>()
+    val splitResolved = event<Unit>()
+    val rideUpdated = event<RideUpdatedEvent>()     // leader edited the ride
 
     private fun <T> event() = MutableSharedFlow<T>(extraBufferCapacity = 16)
 
@@ -179,10 +191,19 @@ class SocketService(private val auth: AuthRepository) {
         s.onDecoded("ride:participant_joined", RideParticipant.serializer(), participantJoined)
         s.onDecoded("ride:regroup_started", RegroupEvent.serializer(), regroupStarted)
         s.onDecoded("ride:emergency_started", SocketEmergency.serializer(), emergencyStarted)
+        s.onDecoded("ride:split_detected", SplitEvent.serializer(), splitDetected)
+        s.onDecoded("ride:updated", RideUpdatedEvent.serializer(), rideUpdated)
 
-        s.onField("ride:participant_ready", "user_id", participantReady)
-        s.onField("ride:participant_left", "user_id", participantLeft)
-        s.onField("ride:regroup_resolved", "regroup_id", regroupResolved)
+        s.onField("ride:participant_ready", "userId", participantReady)
+        s.onField("ride:participant_left", "userId", participantLeft)
+        s.onField("ride:participant_offline", "userId", participantOffline)
+        s.onField("ride:regroup_resolved", "regroupId", regroupResolved)
+        s.onSignal("ride:split_resolved", splitResolved)
+    }
+
+    /** For payload-carrying events we only need as a signal (e.g. split resolved). */
+    private fun Socket.onSignal(event: String, sink: MutableSharedFlow<Unit>) {
+        on(event, Emitter.Listener { sink.tryEmit(Unit) })
     }
 
     private fun <T> Socket.onDecoded(event: String, serializer: KSerializer<T>, sink: MutableSharedFlow<T>) {

@@ -49,6 +49,7 @@ import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.HistoryRide
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.di.ServiceLocator
+import com.danglingmind.convotrack.ui.history.LeaderBadge
 import com.danglingmind.convotrack.ui.map.ConvoTrackMap
 import com.danglingmind.convotrack.ui.ride.computeRoute
 import com.google.android.gms.maps.model.LatLng
@@ -306,13 +307,13 @@ private fun RecentRideCard(ride: HistoryRide, onClick: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 val date = ride.dateLabel()
                 if (date.isNotEmpty()) {
-                    Text(date, style = CTType.labelCaps, color = CT.onSurfaceVariant)
+                    Text(date, style = CTType.labelCaps, color = CT.onSurfaceVariant, maxLines = 1, softWrap = false)
                     Text("·", color = CT.onSurfaceVariant.copy(alpha = 0.5f))
                 }
-                Text(ride.distanceLabel(), style = CTType.dataMono, color = CT.onSurfaceVariant)
+                Text(ride.distanceLabel(), style = CTType.dataMono, color = CT.onSurfaceVariant, maxLines = 1, softWrap = false)
                 if (ride.isLeader == true) {
-                    Text("·", color = CT.onSurfaceVariant.copy(alpha = 0.5f))
-                    Text("LEADER", style = CTType.labelCaps, color = CT.primaryFixed)
+                    Spacer(Modifier.size(2.dp))
+                    LeaderBadge()
                 }
             }
         }

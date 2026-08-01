@@ -1,6 +1,7 @@
 package com.danglingmind.convotrack.ui.ride
 
 import com.danglingmind.convotrack.data.maps.DirectionsService
+import com.danglingmind.convotrack.data.maps.DirectionsStep
 import com.danglingmind.convotrack.data.net.Ride
 import com.danglingmind.convotrack.data.net.Waypoint
 import com.danglingmind.convotrack.ui.map.MapMarker
@@ -25,6 +26,28 @@ suspend fun computeRoute(waypoints: List<Waypoint>): List<LatLng> {
         all += if (i == 0) result.coordinates else result.coordinates.drop(1)
     }
     return all
+}
+
+/** Route coordinates paired with their turn-by-turn steps (for the navigation banner). */
+data class RouteWithSteps(val coords: List<LatLng>, val steps: List<DirectionsStep>)
+
+/**
+ * Like [computeRoute] but also returns the stitched turn-by-turn steps across all legs —
+ * used by the navigation screen to drive the maneuver banner (iOS calculateRoute parity).
+ */
+suspend fun computeRouteWithSteps(waypoints: List<Waypoint>): RouteWithSteps {
+    val sorted = waypoints.sortedBy { it.order }
+    if (sorted.size < 2) return RouteWithSteps(emptyList(), emptyList())
+    val coords = mutableListOf<LatLng>()
+    val steps = mutableListOf<DirectionsStep>()
+    for (i in 0 until sorted.size - 1) {
+        val origin = LatLng(sorted[i].lat, sorted[i].lng)
+        val dest = LatLng(sorted[i + 1].lat, sorted[i + 1].lng)
+        val result = runCatching { DirectionsService.route(origin, dest) }.getOrNull() ?: continue
+        coords += if (i == 0) result.coordinates else result.coordinates.drop(1)
+        steps += result.steps
+    }
+    return RouteWithSteps(coords, steps)
 }
 
 /** Start / waypoint / destination markers for a ride, labelled with their names. */

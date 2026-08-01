@@ -34,8 +34,10 @@ import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.JointType
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MapStyleOptions
+import com.google.android.gms.maps.model.RoundCap
 import com.google.maps.android.compose.CameraMoveStartedReason
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
@@ -144,12 +146,29 @@ fun ConvoTrackMap(
             zoomGesturesEnabled = interactive,
         ),
     ) {
-        // Dim planned route underneath, bright active route on top.
+        // Dim planned route underneath, bright active route on top. Rounded end caps + joints
+        // give each line a soft "dot" terminus everywhere the map is used.
         if (fullRouteCoords.size >= 2) {
-            Polyline(points = fullRouteCoords, color = CT.primaryFixed.copy(alpha = 0.28f), width = 9f, zIndex = 1f)
+            Polyline(
+                points = fullRouteCoords,
+                color = CT.primaryFixed.copy(alpha = 0.28f),
+                width = 9f,
+                zIndex = 1f,
+                startCap = RoundCap(),
+                endCap = RoundCap(),
+                jointType = JointType.ROUND,
+            )
         }
         if (routeCoords.size >= 2) {
-            Polyline(points = routeCoords, color = CT.primaryFixed, width = 14f, zIndex = 2f)
+            Polyline(
+                points = routeCoords,
+                color = CT.primaryFixed,
+                width = 14f,
+                zIndex = 2f,
+                startCap = RoundCap(),
+                endCap = RoundCap(),
+                jointType = JointType.ROUND,
+            )
         }
 
         markers.forEach { marker -> LabeledMarker(marker) }

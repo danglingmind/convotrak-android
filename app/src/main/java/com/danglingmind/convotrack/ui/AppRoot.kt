@@ -21,6 +21,7 @@ import java.net.URLEncoder
 import java.net.URLDecoder
 import com.danglingmind.convotrack.ui.membership.MembershipScreen
 import com.danglingmind.convotrack.ui.ride.CreateRideScreen
+import com.danglingmind.convotrack.ui.ride.EditRideScreen
 import com.danglingmind.convotrack.ui.ride.RideLobbyScreen
 import com.danglingmind.convotrack.ui.ride.RideNavigationScreen
 import com.danglingmind.convotrack.ui.ride.RideSummaryScreen
@@ -38,12 +39,14 @@ object Routes {
     const val RIDE_LOBBY = "ride_lobby"
     const val RIDE_NAVIGATION = "ride_navigation"
     const val RIDE_SUMMARY = "ride_summary"
+    const val EDIT_RIDE = "edit_ride"
     const val MEMBERSHIP = "membership"
 
     // The ride flow carries the rideId through the URL so each screen can load its own data.
     fun lobby(rideId: String) = "$RIDE_LOBBY/$rideId"
     fun navigation(rideId: String) = "$RIDE_NAVIGATION/$rideId"
     fun summary(rideId: String) = "$RIDE_SUMMARY/$rideId"
+    fun edit(rideId: String) = "$EDIT_RIDE/$rideId"
 }
 
 @Composable
@@ -133,6 +136,7 @@ fun AppRoot() {
                         nav.popBackStack()
                     },
                     onStartRide = { nav.navigate(Routes.navigation(rideId)) },
+                    onEdit = { editRideId -> nav.navigate(Routes.edit(editRideId)) },
                 )
             }
             composable(
@@ -142,8 +146,8 @@ fun AppRoot() {
                 val rideId = entry.arguments?.getString("rideId").orEmpty()
                 RideNavigationScreen(
                     rideId = rideId,
-                    // Leaving navigation only pops this screen — the ride stays running
-                    // and can be resumed from the lobby / active-ride card.
+                    // Leaving navigation pops back to the lobby, which holds on ACTIVE and shows
+                    // RESUME NAVIGATION (iOS parity). The ride keeps running.
                     onExit = { nav.popBackStack() },
                     onEndRide = {
                         nav.navigate(Routes.summary(rideId)) {
@@ -166,6 +170,17 @@ fun AppRoot() {
                             popUpTo(Routes.MAIN) { inclusive = true }
                         }
                     },
+                )
+            }
+            composable(
+                route = "${Routes.EDIT_RIDE}/{rideId}",
+                arguments = listOf(navArgument("rideId") { type = NavType.StringType }),
+            ) { entry ->
+                val rideId = entry.arguments?.getString("rideId").orEmpty()
+                EditRideScreen(
+                    rideId = rideId,
+                    onBack = { nav.popBackStack() },
+                    onSaved = { nav.popBackStack() },
                 )
             }
             composable(Routes.MEMBERSHIP) {
