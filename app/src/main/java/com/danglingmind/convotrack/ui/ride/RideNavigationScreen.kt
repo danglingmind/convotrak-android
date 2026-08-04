@@ -178,6 +178,14 @@ fun RideNavigationScreen(
         }
         socket.connect()
         socket.joinRoom(rideId)
+        // Presence heartbeat (in addition to location broadcasts) so a stationary rider still
+        // reads as online during navigation.
+        launch {
+            while (true) {
+                socket.emitHeartbeat(rideId)
+                kotlinx.coroutines.delay(8_000)
+            }
+        }
         launch {
             socket.stateUpdates.collect { update ->
                 update.participants.forEach { p -> live[p.userId] = p }

@@ -24,8 +24,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,6 +47,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.Ride
 import com.danglingmind.convotrack.data.net.RideParticipant
@@ -128,17 +133,14 @@ fun RideLobbyScreen(
                 var liveStatus by remember(ride.id) { mutableStateOf(ride.status) }
                 val isActive = liveStatus == "ACTIVE" || liveStatus == "IN_PROGRESS"
 
-                // Live roster seeded from REST, then kept current by socket events.
+                // Live roster (membership) seeded from REST, then kept current by socket events.
                 val riders = remember(ride.id) { mutableStateListOf(*ride.participants.toTypedArray()) }
-                // Online presence: roster membership == online (iOS onlineUserIds), maintained by
-                // participant_joined / _left / _offline. Seeded from REST + self.
+                // Online presence is a SEPARATE, server-authoritative set driven only by the
+                // heartbeat-based ride:presence snapshot — never inferred from roster membership
+                // or socket connect/disconnect. Seeded with self so we don't flash offline.
                 val onlineIds = remember(ride.id) {
-                    mutableStateListOf<String>().apply {
-                        addAll(ride.participants.map { it.userId })
-                        myId?.let { if (!contains(it)) add(it) }
-                    }
+                    mutableStateListOf<String>().apply { myId?.let { add(it) } }
                 }
-                fun setOnline(userId: String) { if (!onlineIds.contains(userId)) onlineIds.add(userId) }
                 fun setReady(userId: String) {
                     val i = riders.indexOfFirst { it.userId == userId }
                     if (i >= 0) riders[i] = riders[i].copy(status = "READY")
@@ -146,25 +148,35 @@ fun RideLobbyScreen(
                 LaunchedEffect(ride.id) {
                     socket.connect()
                     socket.joinRoom(ride.id)
-                    myId?.let { setOnline(it) }
+                    // Presence heartbeat while this screen is composed & foregrounded. Backgrounding
+                    // suspends the socket (ConvoTrackApp), so emits no-op and the server TTL lapses
+                    // us to offline — robust to locked/killed phones.
                     launch {
-                        socket.lobbyRoster.collect { roster ->
-                            riders.clear(); riders.addAll(roster.participants)
-                            // Roster snapshot is the authoritative online set (iOS parity).
-                            onlineIds.clear(); onlineIds.addAll(roster.participants.map { it.userId })
-                            myId?.let { setOnline(it) }
+                        while (true) {
+                            socket.emitHeartbeat(ride.id)
+                            kotlinx.coroutines.delay(8_000)
                         }
                     }
+                    // Authoritative green-dot source.
+                    launch { socket.presence.collect { online -> onlineIds.clear(); onlineIds.addAll(online) } }
+                    // Roster membership only (no presence side effects).
+                    launch { socket.lobbyRoster.collect { roster -> riders.clear(); riders.addAll(roster.participants) } }
                     launch { socket.participantReady.collect { setReady(it) } }
                     launch {
                         socket.participantJoined.collect { p ->
                             if (riders.none { it.userId == p.userId }) riders.add(p)
-                            setOnline(p.userId)
+                            // Robustness: if the socket payload lacks a real name, reconcile from
+                            // REST (authoritative) so a new rider never lingers as a placeholder.
+                            if (p.name.isBlank() || p.name == "Unknown") {
+                                runCatching { apiCall { api.getRide(rideId) } }.getOrNull()?.let { fresh ->
+                                    val i = riders.indexOfFirst { it.userId == p.userId }
+                                    val real = fresh.participants.firstOrNull { it.userId == p.userId }
+                                    if (i >= 0 && real != null) riders[i] = real
+                                }
+                            }
                         }
                     }
-                    launch { socket.participantLeft.collect { uid -> riders.removeAll { it.userId == uid }; onlineIds.remove(uid) } }
-                    // Disconnected (may reconnect) — drop the presence dot but keep them in the roster.
-                    launch { socket.participantOffline.collect { uid -> onlineIds.remove(uid) } }
+                    launch { socket.participantLeft.collect { uid -> riders.removeAll { it.userId == uid } } }
                     // A leader starting the ride flips status to ACTIVE — surface the RESUME
                     // button (don't auto-jump; the rider decides when to enter navigation).
                     launch { socket.stateUpdates.collect { if (it.status == "ACTIVE" || it.status == "IN_PROGRESS") liveStatus = it.status } }
@@ -181,6 +193,23 @@ fun RideLobbyScreen(
                 val others = riders.filter { !it.isLeader }
                 val canStart = others.isEmpty() || others.all { it.status == "READY" }
                 var showQr by remember { mutableStateOf(false) }
+
+                // Leader-only rider management (remove from ride).
+                var riderToManage by remember(ride.id) { mutableStateOf<RideParticipant?>(null) }
+                var removing by remember(ride.id) { mutableStateOf(false) }
+                var removeError by remember(ride.id) { mutableStateOf<String?>(null) }
+                // Set when the leader removes *me* — surface a dialog then leave the ride.
+                var removedFromRide by remember(ride.id) { mutableStateOf(false) }
+
+                // Live removal: drop the rider from the roster for everyone; if it's me, exit.
+                LaunchedEffect(ride.id) {
+                    socket.participantRemoved.collect { uid ->
+                        riders.removeAll { it.userId == uid }
+                        onlineIds.remove(uid)
+                        if (riderToManage?.userId == uid) { riderToManage = null; removing = false }
+                        if (uid == myId) removedFromRide = true
+                    }
+                }
 
                 var routeCoords by remember { mutableStateOf<List<LatLng>>(emptyList()) }
                 // Keyed on waypoints so a live ride:updated edit re-draws the route.
@@ -249,13 +278,52 @@ fun RideLobbyScreen(
                     Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(riders, key = { it.userId }) {
-                        RiderRow(rider = it, isMe = it.userId == myId, isOnline = onlineIds.contains(it.userId))
+                    items(riders, key = { it.userId }) { rider ->
+                        // Leader can tap any non-leader rider to open the management sheet.
+                        val canManage = amLeader && !rider.isLeader
+                        RiderRow(
+                            rider = rider,
+                            isMe = rider.userId == myId,
+                            isOnline = onlineIds.contains(rider.userId),
+                            onClick = if (canManage) ({ riderToManage = rider }) else null,
+                        )
                     }
                 }
 
                 if (showQr) {
                     QrCodeDialog(inviteCode = ride.inviteCode, onDismiss = { showQr = false })
+                }
+
+                riderToManage?.let { rider ->
+                    RemoveRiderSheet(
+                        rider = rider,
+                        removing = removing,
+                        error = removeError,
+                        onRemove = {
+                            if (removing) return@RemoveRiderSheet
+                            removing = true
+                            removeError = null
+                            scope.launch {
+                                try {
+                                    apiCall { api.removeParticipant(ride.id, rider.userId) }
+                                    // The ride:participant_removed broadcast (which the leader
+                                    // also receives) removes the rider from the roster.
+                                    riderToManage = null
+                                } catch (e: ApiException) {
+                                    removeError = e.message ?: "Couldn't remove rider."
+                                } catch (e: Exception) {
+                                    removeError = "Couldn't remove rider."
+                                } finally {
+                                    removing = false
+                                }
+                            }
+                        },
+                        onDismiss = { if (!removing) { riderToManage = null; removeError = null } },
+                    )
+                }
+
+                if (removedFromRide) {
+                    RemovedFromRideDialog(onConfirm = { removedFromRide = false; onBack() })
                 }
 
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -335,11 +403,13 @@ private fun SecondaryButton(text: String, enabled: Boolean, highlighted: Boolean
 }
 
 @Composable
-private fun RiderRow(rider: RideParticipant, isMe: Boolean, isOnline: Boolean) {
+private fun RiderRow(rider: RideParticipant, isMe: Boolean, isOnline: Boolean, onClick: (() -> Unit)? = null) {
     val ready = rider.status == "READY"
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(CT.surfaceContainerHigh.copy(alpha = 0.7f))
-            .border(1.dp, if (ready) CT.primaryFixed else CT.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp)).padding(14.dp),
+            .border(1.dp, if (ready) CT.primaryFixed else CT.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -389,6 +459,70 @@ private fun RiderRow(rider: RideParticipant, isMe: Boolean, isOnline: Boolean) {
     }
 }
 
+/** Bottom sheet the leader uses to remove a rider from the ride (iOS RemoveRiderSheet parity). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RemoveRiderSheet(
+    rider: RideParticipant,
+    removing: Boolean,
+    error: String?,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CT.surfaceContainer) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Box(
+                Modifier.size(72.dp).clip(CircleShape).background(CT.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(rider.name.take(1).uppercase(), style = CTType.headlineLg, color = CT.onSurface)
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(rider.name, style = CTType.headlineMd, color = CT.onSurface, maxLines = 1)
+                Text(
+                    if (rider.isLeader) "RIDE LEADER" else "FORMATION RIDER",
+                    style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 2.sp,
+                )
+            }
+
+            if (error != null) {
+                Text(error, style = CTType.bodyMd, color = CT.errorColor, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            }
+
+            Box(
+                Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(12.dp)).background(CT.errorContainer)
+                    .clickable(enabled = !removing, onClick = onRemove),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(if (removing) "REMOVING…" else "REMOVE FROM RIDE", style = CTType.labelCaps, color = CT.errorColor, letterSpacing = 1.sp)
+            }
+            Box(
+                Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(12.dp)).background(CT.surfaceContainerHighest)
+                    .clickable(enabled = !removing, onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("CANCEL", style = CTType.labelCaps, color = CT.onSurface, letterSpacing = 1.sp)
+            }
+        }
+    }
+}
+
+/** Shown to a rider the leader has removed — acknowledging it leaves the ride. */
+@Composable
+private fun RemovedFromRideDialog(onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onConfirm,
+        containerColor = CT.surfaceContainer,
+        title = { Text("Removed From Ride", style = CTType.headlineMd, color = CT.onSurface) },
+        text = { Text("The ride leader removed you from this ride.", style = CTType.bodyMd, color = CT.onSurfaceVariant) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("OK", color = CT.primaryFixed) } },
+    )
+}
+
 /** Small square icon action button used in the roster header (share / QR). */
 @Composable
 private fun LobbyActionButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
@@ -411,7 +545,7 @@ private fun QrCodeDialog(inviteCode: String, onDismiss: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             Text("JOIN CONVOTRACK", style = CTType.headlineMd, color = CT.primaryFixed, letterSpacing = 2.sp)
-            val qr = rememberQrBitmap("convotrack://join/$inviteCode")
+            val qr = rememberQrBitmap(ApiClient.joinLink(inviteCode))
             Box(
                 Modifier.size(240.dp).clip(RoundedCornerShape(16.dp)).background(Color.White),
                 contentAlignment = Alignment.Center,
@@ -437,7 +571,9 @@ private fun QrCodeDialog(inviteCode: String, onDismiss: () -> Unit) {
 /** Fires the Android share sheet with the invite deep link (iOS ShareSheetPresenter parity). */
 private fun shareInvite(ctx: android.content.Context, inviteCode: String, title: String) {
     val text = if (inviteCode.isNotEmpty()) {
-        "Join my ConvoTrack ride \"$title\"! Tap to open: convotrack://join/$inviteCode"
+        // HTTPS App Link — tappable in every messaging app, opens the app if
+        // installed and falls back to a web page + store links otherwise.
+        "Join my ConvoTrack ride \"$title\"! Tap to open: ${ApiClient.joinLink(inviteCode)}"
     } else {
         "Join my ConvoTrack ride \"$title\"!"
     }

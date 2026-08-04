@@ -86,7 +86,9 @@ class SocketService(private val auth: AuthRepository) {
     val participantReady = event<String>()        // userId
     val participantJoined = event<RideParticipant>()
     val participantLeft = event<String>()          // userId
-    val participantOffline = event<String>()       // userId (disconnected — presence dot)
+    val participantRemoved = event<String>()        // userId removed by the leader
+    val participantOffline = event<String>()       // userId (legacy; superseded by presence)
+    val presence = event<List<String>>()           // authoritative online userIds (heartbeat)
     val regroupStarted = event<RegroupEvent>()
     val regroupResolved = event<String>()          // regroupId
     val emergencyStarted = event<SocketEmergency>()
@@ -122,6 +124,25 @@ class SocketService(private val auth: AuthRepository) {
         socket?.disconnect()
         socket = null
         _connected.value = false
+    }
+
+    /**
+     * Drop the live connection while the app is backgrounded (so the server marks us offline
+     * promptly) but REMEMBER the room, unlike [disconnect]. [resumeConnection] re-establishes it
+     * and the EVENT_CONNECT handler auto-rejoins. Not used during an active ride — the location
+     * foreground service keeps that connection alive.
+     */
+    fun suspendConnection() {
+        if (socket == null) return
+        socket?.off()
+        socket?.disconnect()
+        socket = null
+        _connected.value = false
+    }
+
+    /** Re-open a connection suspended by [suspendConnection], rejoining the remembered room. */
+    fun resumeConnection() {
+        if (socket == null && currentRideId != null) scope.launch { connect() }
     }
 
     fun joinRoom(rideId: String) {
@@ -176,6 +197,11 @@ class SocketService(private val auth: AuthRepository) {
         socket?.emit("ride:regroup_arrived", JSONObject().put("rideId", rideId).put("regroupId", regroupId))
     }
 
+    /** Presence heartbeat — keeps this rider in the ride's online set while foregrounded. */
+    fun emitHeartbeat(rideId: String) {
+        socket?.emit("ride:heartbeat", JSONObject().put("rideId", rideId))
+    }
+
     // MARK: - Incoming handlers
 
     private fun registerHandlers(s: Socket) {
@@ -196,9 +222,18 @@ class SocketService(private val auth: AuthRepository) {
 
         s.onField("ride:participant_ready", "userId", participantReady)
         s.onField("ride:participant_left", "userId", participantLeft)
+        s.onField("ride:participant_removed", "userId", participantRemoved)
         s.onField("ride:participant_offline", "userId", participantOffline)
         s.onField("ride:regroup_resolved", "regroupId", regroupResolved)
         s.onSignal("ride:split_resolved", splitResolved)
+
+        // Presence snapshot: { online: [userId, ...] } — the sole driver of the green dot.
+        s.on("ride:presence", Emitter.Listener { args ->
+            val obj = args.firstOrNull() as? JSONObject ?: return@Listener
+            val arr = obj.optJSONArray("online") ?: return@Listener
+            val ids = (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotEmpty() }
+            presence.tryEmit(ids)
+        })
     }
 
     /** For payload-carrying events we only need as a signal (e.g. split resolved). */

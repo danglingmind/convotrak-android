@@ -1,6 +1,7 @@
 package com.danglingmind.convotrack.data.net
 
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
@@ -26,6 +27,9 @@ interface ApiService {
 
     @POST("/rides/{rideId}/join")
     suspend fun joinRide(@Path("rideId") rideId: String)
+
+    @DELETE("/rides/{rideId}/participants/{userId}")
+    suspend fun removeParticipant(@Path("rideId") rideId: String, @Path("userId") userId: String)
 
     @POST("/rides/{rideId}/start")
     suspend fun startRide(@Path("rideId") rideId: String)

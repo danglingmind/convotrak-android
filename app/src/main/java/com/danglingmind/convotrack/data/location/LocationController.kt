@@ -17,6 +17,11 @@ class LocationController {
     private val _current = MutableStateFlow<Location?>(null)
     val current: StateFlow<Location?> = _current
 
+    // True while a ride's foreground location service is running. Presence logic uses this to
+    // keep the socket alive in the background during an active ride (vs. dropping it in a lobby).
+    private val _active = MutableStateFlow(false)
+    val active: StateFlow<Boolean> = _active
+
     fun update(location: Location) { _current.value = location }
 
     /** Starts broadcasting position for a ride (foreground service). Caller must hold FINE_LOCATION. */
@@ -24,10 +29,12 @@ class LocationController {
         val intent = Intent(context, RideLocationService::class.java)
             .putExtra(RideLocationService.EXTRA_RIDE_ID, rideId)
         ContextCompat.startForegroundService(context, intent)
+        _active.value = true
     }
 
     fun stop(context: Context) {
         context.stopService(Intent(context, RideLocationService::class.java))
         _current.value = null
+        _active.value = false
     }
 }

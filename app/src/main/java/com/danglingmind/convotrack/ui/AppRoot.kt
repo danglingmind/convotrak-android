@@ -50,7 +50,10 @@ object Routes {
 }
 
 @Composable
-fun AppRoot() {
+fun AppRoot(
+    deepLinkCode: String? = null,
+    onDeepLinkConsumed: () -> Unit = {},
+) {
     val nav = rememberNavController()
     Surface(modifier = Modifier.fillMaxSize(), color = CT.surfaceDim) {
         NavHost(navController = nav, startDestination = Routes.SPLASH) {
@@ -101,6 +104,8 @@ fun AppRoot() {
             }
             composable(Routes.MAIN) {
                 MainScreen(
+                    initialInviteCode = deepLinkCode,
+                    onInviteConsumed = onDeepLinkConsumed,
                     onCreateRide = { nav.navigate(Routes.CREATE_RIDE) },
                     onOpenLobby = { rideId -> nav.navigate(Routes.lobby(rideId)) },
                     onOpenSummary = { rideId -> nav.navigate(Routes.summary(rideId)) },

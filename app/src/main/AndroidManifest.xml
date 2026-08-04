@@ -37,12 +37,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep link: convotrack://join/INVITECODE -->
+            <!-- Legacy deep link: convotrack://join/INVITECODE (QR back-compat) -->
             <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="convotrack" android:host="join" />
+            </intent-filter>
+
+            <!-- HTTPS App Link: https://convoy-backend-hx3c.onrender.com/convotrack/join/CODE
+                 autoVerify checks /.well-known/assetlinks.json so the link opens the
+                 app directly (no chooser). Host must match ApiClient.JOIN_LINK_HOST. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                    android:host="convoy-backend-hx3c.onrender.com"
+                    android:pathPrefix="/convotrack/join" />
             </intent-filter>
         </activity>
 

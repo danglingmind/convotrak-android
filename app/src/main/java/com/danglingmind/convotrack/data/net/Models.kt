@@ -48,11 +48,13 @@ data class Waypoint(
 @Serializable
 data class RideParticipant(
     val userId: String,
-    val name: String,
+    val name: String = "",
     val avatarUrl: String? = null,
-    val status: String,
+    // Defaults so the leaner `ride:participant_joined` socket payload (which omits status/
+    // joinedAt on active rides) still decodes instead of being dropped.
+    val status: String = "JOINED",
     val isLeader: Boolean = false,
-    val joinedAt: String,
+    val joinedAt: String = "",
 )
 
 // MARK: - Create / Update Ride

@@ -62,8 +62,11 @@ import kotlinx.coroutines.launch
 fun JoinRideSheet(
     onJoined: (rideId: String) -> Unit,
     onScanQr: () -> Unit,
+    prefillCode: String = "",
 ) {
-    var code by remember { mutableStateOf("") }
+    // Seeded from a deep link when present; the LaunchedEffect(code) below then
+    // auto-verifies it, mirroring iOS JoinRideView(prefillCode:).
+    var code by remember { mutableStateOf(prefillCode) }
     var preview by remember { mutableStateOf<InviteCodeResponse?>(null) }
     var lookingUp by remember { mutableStateOf(false) }
     var joining by remember { mutableStateOf(false) }

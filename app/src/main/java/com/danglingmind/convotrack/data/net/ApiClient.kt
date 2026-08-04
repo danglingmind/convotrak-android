@@ -28,6 +28,15 @@ object ApiClient {
     // Single source of truth for the backend — matches iOS AppURLs.backendBaseURL.
     const val BASE_URL = "https://convoy-backend-hx3c.onrender.com"
 
+    // Host used for the ride-invite HTTPS App Link. Must match the manifest's
+    // https intent-filter host and the backend's assetlinks.json. Shared invite
+    // links use this instead of the convotrack:// scheme so they're tappable in
+    // messaging apps and fall back to a web page when the app isn't installed.
+    const val JOIN_LINK_HOST = "convoy-backend-hx3c.onrender.com"
+
+    /** Canonical shareable invite link, e.g. https://…/convotrack/join/ABC123 */
+    fun joinLink(code: String): String = "$BASE_URL/convotrack/join/$code"
+
     val json: Json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true

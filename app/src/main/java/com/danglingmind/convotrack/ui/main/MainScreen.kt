@@ -8,6 +8,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,13 +36,28 @@ fun MainScreen(
     onOpenSummary: (rideId: String) -> Unit,
     onOpenMembership: () -> Unit,
     onSignOut: () -> Unit,
+    initialInviteCode: String? = null,
+    onInviteConsumed: () -> Unit = {},
 ) {
     var activeTab by remember { mutableStateOf(CTTab.TRACK) }
     var showJoin by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
+    var prefillCode by remember { mutableStateOf("") }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
+
+    // A ride-invite deep link (convotrack://join/CODE or the https App Link)
+    // opens the join sheet with the code prefilled. Consumed once so rotation
+    // or backstack changes don't reopen it.
+    LaunchedEffect(initialInviteCode) {
+        val code = initialInviteCode
+        if (!code.isNullOrEmpty()) {
+            prefillCode = code
+            showJoin = true
+            onInviteConsumed()
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         when (activeTab) {
@@ -64,13 +80,15 @@ fun MainScreen(
 
     if (showJoin) {
         ModalBottomSheet(
-            onDismissRequest = { showJoin = false },
+            onDismissRequest = { showJoin = false; prefillCode = "" },
             sheetState = sheetState,
             containerColor = CT.surfaceDim,
         ) {
             JoinRideSheet(
+                prefillCode = prefillCode,
                 onJoined = { rideId ->
                     showJoin = false
+                    prefillCode = ""
                     onOpenLobby(rideId)
                 },
                 onScanQr = {
