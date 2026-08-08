@@ -129,6 +129,20 @@ fun JoinRideSheet(
     ) {
         HeroSection(preview = preview, lookingUp = lookingUp)
 
+        // Active Join button sits directly beneath the verified ride details so it's reachable
+        // without scrolling to the bottom. Hidden until a ride is looked up (code, link, or QR).
+        if (preview != null) {
+            LimePrimaryButton(
+                text = if (joining) "JOINING…" else "JOIN RIDE",
+                enabled = canJoin,
+                onClick = { join() },
+            )
+        }
+
+        if (error != null) {
+            Text(error!!, style = CTType.bodyMd, color = CT.errorColor, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        }
+
         CodeInputSection(
             code = code,
             codeReady = codeReady,
@@ -140,16 +154,6 @@ fun JoinRideSheet(
         OrDivider()
 
         QrScanTarget(enabled = !joining, onClick = onScanQr)
-
-        if (error != null) {
-            Text(error!!, style = CTType.bodyMd, color = CT.errorColor, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-        }
-
-        LimePrimaryButton(
-            text = if (joining) "JOINING…" else "JOIN RIDE",
-            enabled = canJoin,
-            onClick = { join() },
-        )
     }
 }
 
