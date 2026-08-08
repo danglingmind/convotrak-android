@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.data.net.ApiClient
@@ -430,23 +431,20 @@ private fun RiderRow(rider: RideParticipant, isMe: Boolean, isOnline: Boolean, o
                     .border(2.dp, CT.surfaceDim, CircleShape),
             )
         }
+        // Name on its own line (ellipsised so it never crowds the trailing status badge); the
+        // rider title below it conveys the leader/rider role — no separate inline "LEADER" badge.
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (isMe) "${rider.name} (You)" else rider.name, style = CTType.bodyLg, color = CT.onSurface, maxLines = 1)
-                if (rider.isLeader) {
-                    Text(
-                        "LEADER",
-                        style = CTType.labelCaps.copy(fontSize = 8.sp),
-                        color = CT.onPrimaryFixed,
-                        letterSpacing = 1.sp,
-                        modifier = Modifier.clip(CircleShape).background(CT.primaryFixed).padding(horizontal = 5.dp, vertical = 2.dp),
-                    )
-                }
-            }
+            Text(
+                if (isMe) "${rider.name} (You)" else rider.name,
+                style = CTType.bodyLg,
+                color = CT.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 if (rider.isLeader) "RIDE LEADER" else "FORMATION RIDER",
                 style = CTType.labelCaps.copy(fontSize = 10.sp),
-                color = CT.onSurfaceVariant,
+                color = if (rider.isLeader) CT.primaryFixed else CT.onSurfaceVariant,
                 letterSpacing = 1.sp,
             )
         }
