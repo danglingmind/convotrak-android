@@ -27,6 +27,14 @@ data class DirectionsResult(
     val steps: List<DirectionsStep>,
 )
 
+/** One selectable alternative for a direct origin→destination route (iOS RouteOption). */
+data class RouteOption(
+    val coordinates: List<LatLng>,
+    val distanceMeters: Double,
+    val durationSeconds: Double,
+    val label: String?,   // Routes API routeLabels, e.g. DEFAULT_ROUTE / FUEL_EFFICIENT
+)
+
 object DirectionsService {
 
     private val client = OkHttpClient()
@@ -85,6 +93,67 @@ object DirectionsService {
                 steps = steps,
             )
         }
+    }
+
+    /**
+     * Alternative whole-trip routes for a DIRECT origin→destination request. Google's Routes API
+     * returns no alternatives once intermediate waypoints are present, so callers use this only for
+     * the no-middle-stop case (iOS GoogleDirectionsService.alternativeRoutes).
+     */
+    suspend fun alternativeRoutes(
+        origin: LatLng,
+        destination: LatLng,
+        trafficAware: Boolean = true,
+    ): List<RouteOption> = withContext(Dispatchers.IO) {
+        val bodyJson = JSONObject().apply {
+            put("origin", latLngNode(origin))
+            put("destination", latLngNode(destination))
+            put("travelMode", "DRIVE")
+            put("routingPreference", if (trafficAware) "TRAFFIC_AWARE" else "TRAFFIC_UNAWARE")
+            put("polylineQuality", "HIGH_QUALITY")
+            put("computeAlternativeRoutes", true)
+            put("languageCode", "en-US")
+            put("units", "METRIC")
+        }.toString()
+
+        val request = Request.Builder()
+            .url("https://routes.googleapis.com/directions/v2:computeRoutes")
+            .addHeader("Content-Type", "application/json")
+            .addHeader("X-Goog-Api-Key", BuildConfig.MAPS_API_KEY)
+            // Whole-route fields (one polyline per alternative) — no per-step data needed here.
+            .addHeader(
+                "X-Goog-FieldMask",
+                "routes.polyline.encodedPolyline,routes.distanceMeters," +
+                    "routes.duration,routes.routeLabels",
+            )
+            .post(bodyJson.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) error("Directions HTTP ${resp.code}")
+            val parsed = json.decodeFromString(RoutesResponse.serializer(), text)
+            parsed.routes.mapNotNull { route ->
+                val encoded = route.polyline?.encodedPolyline ?: return@mapNotNull null
+                RouteOption(
+                    coordinates = decodePolyline(encoded),
+                    distanceMeters = (route.distanceMeters ?: 0).toDouble(),
+                    durationSeconds = parseDuration(route.duration ?: "0s"),
+                    label = route.routeLabels.firstOrNull(),
+                )
+            }
+        }
+    }
+
+    /**
+     * Decodes a stored route polyline into coordinates, or null if absent/too short to draw. Ride
+     * views render the leader-selected route with this instead of recomputing a default (iOS
+     * GoogleDirectionsService.decodedRoute) — so every rider sees the same geometry.
+     */
+    fun decodedRoute(polyline: String?): List<LatLng>? {
+        if (polyline.isNullOrEmpty()) return null
+        val coords = decodePolyline(polyline)
+        return if (coords.size >= 2) coords else null
     }
 
     private fun latLngNode(c: LatLng) = JSONObject().apply {

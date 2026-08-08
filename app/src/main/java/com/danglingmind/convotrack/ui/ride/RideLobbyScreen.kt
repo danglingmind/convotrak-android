@@ -165,6 +165,8 @@ fun RideLobbyScreen(
                     launch {
                         socket.participantJoined.collect { p ->
                             if (riders.none { it.userId == p.userId }) riders.add(p)
+                            // Optimistic online (presence snapshot reconciles) — avoids a grey flash.
+                            if (!onlineIds.contains(p.userId)) onlineIds.add(p.userId)
                             // Robustness: if the socket payload lacks a real name, reconcile from
                             // REST (authoritative) so a new rider never lingers as a placeholder.
                             if (p.name.isBlank() || p.name == "Unknown") {
@@ -212,8 +214,9 @@ fun RideLobbyScreen(
                 }
 
                 var routeCoords by remember { mutableStateOf<List<LatLng>>(emptyList()) }
-                // Keyed on waypoints so a live ride:updated edit re-draws the route.
-                LaunchedEffect(ride.waypoints) { routeCoords = computeRoute(ride.waypoints) }
+                // Draw the leader-selected polyline so every rider sees the same line; re-keyed on
+                // the stored geometry + waypoints so a live ride:updated edit re-draws the route.
+                LaunchedEffect(ride.routePolyline, ride.waypoints) { routeCoords = rideRoute(ride) }
 
                 // Map with a floating stat-pill strip over its lower edge (iOS lobby mapSection).
                 Box(Modifier.fillMaxWidth().height(260.dp)) {

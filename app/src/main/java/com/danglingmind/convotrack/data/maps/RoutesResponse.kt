@@ -8,7 +8,17 @@ data class RoutesResponse(
     val routes: List<Route> = emptyList(),
 ) {
     @Serializable
-    data class Route(val legs: List<Leg> = emptyList())
+    data class Route(
+        val legs: List<Leg> = emptyList(),
+        // Whole-route fields — populated only for the alternatives field mask (no per-leg data).
+        val polyline: RoutePolyline? = null,
+        val distanceMeters: Int? = null,
+        val duration: String? = null,
+        val routeLabels: List<String> = emptyList(),
+    )
+
+    @Serializable
+    data class RoutePolyline(val encodedPolyline: String)
 
     @Serializable
     data class Leg(

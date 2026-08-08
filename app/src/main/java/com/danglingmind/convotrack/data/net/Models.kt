@@ -29,6 +29,7 @@ data class Ride(
     val distanceMeters: Double,
     val estimatedDurationSeconds: Int,
     val maxAllowedParticipants: Int,
+    val routePolyline: String? = null,   // leader-selected route geometry (Google encoded polyline)
     val startedAt: String? = null,
     val endedAt: String? = null,
     val createdAt: String? = null,
@@ -109,6 +110,7 @@ data class RideUpdatedEvent(
     val distanceMeters: Double,
     val estimatedDurationSeconds: Int,
     val maxAllowedParticipants: Int,
+    val routePolyline: String? = null,
     val waypoints: List<Waypoint> = emptyList(),
 )
 

@@ -3,6 +3,7 @@ package com.danglingmind.convotrack.ui.ride
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.data.maps.DirectionsService
 import com.danglingmind.convotrack.data.maps.PlaceResult
 import com.danglingmind.convotrack.data.maps.PlacesService
+import com.danglingmind.convotrack.data.maps.RouteOption
 import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.CreateRideRequest
 import com.danglingmind.convotrack.data.net.CreateWaypoint
@@ -97,19 +99,48 @@ fun CreateRideScreen(
     var creating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    // Alternative routes — only populated for a direct start→destination (no middle stops), since
+    // Google returns no alternatives once intermediate waypoints are present.
+    var routeAlternatives by remember { mutableStateOf<List<RouteOption>>(emptyList()) }
+    var selectedRouteIndex by remember { mutableIntStateOf(0) }
+
     // Ordered, fully-resolved stops (START → WAYPOINT* → DESTINATION).
     val orderedStops = listOf(startStop) + middleStops + listOf(destStop)
     val allResolved = startStop.place != null && destStop.place != null
     val canCreate = title.isNotBlank() && allResolved && preview != null && !creating
 
+    // Applies the alternative at [index] as the active route (updates stats + submit geometry).
+    fun selectRoute(index: Int) {
+        val option = routeAlternatives.getOrNull(index) ?: return
+        selectedRouteIndex = index
+        preview = RoutePreview(option.coordinates, option.distanceMeters, option.durationSeconds)
+    }
+
     // Recompute the route whenever the set of picked places changes.
     val routeKey = orderedStops.joinToString("|") { it.place?.id ?: "-" }
     androidx.compose.runtime.LaunchedEffect(routeKey) {
         val places = orderedStops.mapNotNull { it.place }
-        preview = if (startStop.place != null && destStop.place != null && places.size >= 2) {
-            computePreview(places.map { it.latLng })
+        if (startStop.place != null && destStop.place != null && places.size >= 2) {
+            // Direct start→destination: offer selectable alternatives.
+            if (places.size == 2) {
+                val options = runCatching {
+                    DirectionsService.alternativeRoutes(places[0].latLng, places[1].latLng)
+                }.getOrNull().orEmpty()
+                if (options.size > 1) {
+                    routeAlternatives = options
+                    selectedRouteIndex = 0
+                    preview = RoutePreview(options[0].coordinates, options[0].distanceMeters, options[0].durationSeconds)
+                    return@LaunchedEffect
+                }
+            }
+            // Has middle stops, or one/zero alternatives: single stitched route.
+            routeAlternatives = emptyList()
+            selectedRouteIndex = 0
+            preview = computePreview(places.map { it.latLng })
         } else {
-            null
+            routeAlternatives = emptyList()
+            selectedRouteIndex = 0
+            preview = null
         }
     }
 
@@ -188,6 +219,14 @@ fun CreateRideScreen(
                         routeCoords = coords,
                         markers = markers,
                         interactive = true,
+                        alternativeRoutes = routeAlternatives.map { it.coordinates },
+                        selectedRouteIndex = selectedRouteIndex,
+                        onSelectRoute = { selectRoute(it) },
+                    )
+                    RouteSelectorChips(
+                        options = routeAlternatives,
+                        selectedIndex = selectedRouteIndex,
+                        onSelect = { selectRoute(it) },
                     )
                 } else {
                     Box(
@@ -398,6 +437,60 @@ internal fun PlainField(value: String, placeholder: String, onChange: (String) -
         ),
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+/**
+ * Horizontally-scrollable route options — shown only for a direct start→destination with more than
+ * one alternative. Tapping a chip (or the dim map line) selects it (iOS routeSelectorChips).
+ */
+@Composable
+internal fun RouteSelectorChips(
+    options: List<RouteOption>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+) {
+    if (options.size <= 1) return
+    val fastest = options.minOf { it.durationSeconds }
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        options.forEachIndexed { index, option ->
+            val isSelected = index == selectedIndex
+            val delta = ((option.durationSeconds - fastest) / 60).toInt()
+            Column(
+                Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isSelected) CT.primaryFixed else CT.surfaceContainerHigh)
+                    .border(
+                        1.dp,
+                        if (isSelected) androidx.compose.ui.graphics.Color.Transparent else CT.outline.copy(alpha = 0.3f),
+                        RoundedCornerShape(10.dp),
+                    )
+                    .clickable { onSelect(index) }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    if (delta == 0) "FASTEST" else "+$delta MIN",
+                    style = CTType.labelCaps,
+                    color = if (isSelected) CT.onPrimaryFixed.copy(alpha = 0.7f) else CT.tertiaryFixed,
+                    letterSpacing = 1.sp,
+                )
+                Text(
+                    durationText(option.durationSeconds),
+                    style = CTType.dataMono,
+                    color = if (isSelected) CT.onPrimaryFixed else CT.onSurface,
+                )
+                Text(
+                    "${formatKm(option.distanceMeters)} KM",
+                    style = CTType.labelCaps,
+                    color = if (isSelected) CT.onPrimaryFixed.copy(alpha = 0.7f) else CT.onSurfaceVariant,
+                    letterSpacing = 1.sp,
+                )
+            }
+        }
+    }
 }
 
 @Composable

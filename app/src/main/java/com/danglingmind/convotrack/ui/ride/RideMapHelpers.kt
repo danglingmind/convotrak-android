@@ -28,8 +28,27 @@ suspend fun computeRoute(waypoints: List<Waypoint>): List<LatLng> {
     return all
 }
 
+/**
+ * The route geometry to draw for a ride: the leader-selected [Ride.routePolyline] if present,
+ * otherwise a freshly stitched route from the waypoints. Preferring the stored polyline is what
+ * keeps every rider's lobby/home/navigation map showing the *same* line the leader chose (iOS
+ * calculateRoute(from:polyline:)).
+ */
+suspend fun rideRoute(ride: Ride): List<LatLng> =
+    DirectionsService.decodedRoute(ride.routePolyline) ?: computeRoute(ride.waypoints)
+
 /** Route coordinates paired with their turn-by-turn steps (for the navigation banner). */
 data class RouteWithSteps(val coords: List<LatLng>, val steps: List<DirectionsStep>)
+
+/**
+ * Navigation variant of [rideRoute]: draws the stored leader-selected geometry when present, while
+ * still stitching per-leg steps (not stored) for the maneuver banner.
+ */
+suspend fun rideRouteWithSteps(ride: Ride): RouteWithSteps {
+    val computed = computeRouteWithSteps(ride.waypoints)
+    val stored = DirectionsService.decodedRoute(ride.routePolyline)
+    return if (stored != null) RouteWithSteps(stored, computed.steps) else computed
+}
 
 /**
  * Like [computeRoute] but also returns the stitched turn-by-turn steps across all legs —

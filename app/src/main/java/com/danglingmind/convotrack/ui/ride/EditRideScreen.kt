@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.data.maps.DirectionsService
 import com.danglingmind.convotrack.data.maps.PlaceResult
+import com.danglingmind.convotrack.data.maps.RouteOption
 import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.CreateWaypoint
 import com.danglingmind.convotrack.data.net.Ride
@@ -130,18 +131,43 @@ private fun EditRideForm(ride: Ride, onSaved: () -> Unit) {
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    // Alternative routes for a direct start→destination (no middle stops) — see CreateRideScreen.
+    var routeAlternatives by remember(ride.id) { mutableStateOf<List<RouteOption>>(emptyList()) }
+    var selectedRouteIndex by remember(ride.id) { mutableIntStateOf(0) }
+
     val orderedStops = listOf(startStop) + middleStops + listOf(destStop)
     val allResolved = startStop.place != null && destStop.place != null
     val canSave = title.isNotBlank() && allResolved && preview != null && !saving
+
+    fun selectRoute(index: Int) {
+        val option = routeAlternatives.getOrNull(index) ?: return
+        selectedRouteIndex = index
+        preview = RoutePreview(option.coordinates, option.distanceMeters, option.durationSeconds)
+    }
 
     // Recompute the route whenever the set of picked places changes (also on first load).
     val routeKey = orderedStops.joinToString("|") { it.place?.id ?: "-" }
     LaunchedEffect(routeKey) {
         val places = orderedStops.mapNotNull { it.place }
-        preview = if (startStop.place != null && destStop.place != null && places.size >= 2) {
-            computePreview(places.map { it.latLng })
+        if (startStop.place != null && destStop.place != null && places.size >= 2) {
+            if (places.size == 2) {
+                val options = runCatching {
+                    DirectionsService.alternativeRoutes(places[0].latLng, places[1].latLng)
+                }.getOrNull().orEmpty()
+                if (options.size > 1) {
+                    routeAlternatives = options
+                    selectedRouteIndex = 0
+                    preview = RoutePreview(options[0].coordinates, options[0].distanceMeters, options[0].durationSeconds)
+                    return@LaunchedEffect
+                }
+            }
+            routeAlternatives = emptyList()
+            selectedRouteIndex = 0
+            preview = computePreview(places.map { it.latLng })
         } else {
-            null
+            routeAlternatives = emptyList()
+            selectedRouteIndex = 0
+            preview = null
         }
     }
 
@@ -214,6 +240,14 @@ private fun EditRideForm(ride: Ride, onSaved: () -> Unit) {
                     routeCoords = coords,
                     markers = markers,
                     interactive = true,
+                    alternativeRoutes = routeAlternatives.map { it.coordinates },
+                    selectedRouteIndex = selectedRouteIndex,
+                    onSelectRoute = { selectRoute(it) },
+                )
+                RouteSelectorChips(
+                    options = routeAlternatives,
+                    selectedIndex = selectedRouteIndex,
+                    onSelect = { selectRoute(it) },
                 )
             } else {
                 Box(

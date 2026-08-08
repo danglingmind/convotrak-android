@@ -171,7 +171,8 @@ fun RideNavigationScreen(
     LaunchedEffect(rideId) {
         ride = runCatching { apiCall { api.getRide(rideId) } }.getOrNull()
         ride?.let {
-            val rws = computeRouteWithSteps(it.waypoints)
+            // Draw the leader-selected polyline (shared by all riders) but keep per-leg steps.
+            val rws = rideRouteWithSteps(it)
             routeCoords = rws.coords
             navSteps = rws.steps
             currentStep = 0
@@ -199,6 +200,8 @@ fun RideNavigationScreen(
         // Group-split alerts (engine detects the pack spreading past threshold).
         launch { socket.splitDetected.collect { splitGapMeters = it.gapMeters } }
         launch { socket.splitResolved.collect { splitGapMeters = null } }
+        // If the leader removes me mid-ride, leave navigation (iOS wasRemoved exit).
+        launch { socket.participantRemoved.collect { uid -> if (uid == myId) onExit() } }
     }
 
     BackHandler { onExit() }

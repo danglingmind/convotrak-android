@@ -51,7 +51,7 @@ import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.history.LeaderBadge
 import com.danglingmind.convotrack.ui.map.ConvoTrackMap
-import com.danglingmind.convotrack.ui.ride.computeRoute
+import com.danglingmind.convotrack.ui.ride.rideRoute
 import com.google.android.gms.maps.model.LatLng
 import androidx.compose.ui.graphics.Brush
 import com.danglingmind.convotrack.ui.common.EmptyCard
@@ -209,7 +209,7 @@ private fun ActiveRideSection(ride: HistoryRide, onClick: () -> Unit) {
     var route by remember(ride.rideId) { mutableStateOf<List<LatLng>>(emptyList()) }
     LaunchedEffect(ride.rideId) {
         val full = runCatching { apiCall { api.getRide(ride.rideId) } }.getOrNull()
-        full?.let { route = computeRoute(it.waypoints) }
+        full?.let { route = rideRoute(it) }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {

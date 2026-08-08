@@ -88,6 +88,11 @@ fun ConvoTrackMap(
     camera: MapCamera = MapCamera.Fit,
     interactive: Boolean = true,
     onUserPan: () -> Unit = {},
+    // All alternative routes (index == position). The one at [selectedRouteIndex] is drawn bright
+    // via [routeCoords]; the rest render dim + tappable so the leader can pick one.
+    alternativeRoutes: List<List<LatLng>> = emptyList(),
+    selectedRouteIndex: Int = 0,
+    onSelectRoute: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val darkStyle = remember { MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style_dark) }
@@ -146,6 +151,27 @@ fun ConvoTrackMap(
             zoomGesturesEnabled = interactive,
         ),
     ) {
+        // Dim, tappable alternatives sit below the bright selected route (iOS applyAlternatives).
+        // Only shown when there's more than one option to choose between.
+        if (alternativeRoutes.size > 1) {
+            alternativeRoutes.forEachIndexed { index, coords ->
+                if (index != selectedRouteIndex && coords.size >= 2) {
+                    Polyline(
+                        points = coords,
+                        color = androidx.compose.ui.graphics.Color(0xFFC7C7C7).copy(alpha = 0.42f),
+                        width = 10f,
+                        zIndex = 0f,
+                        clickable = onSelectRoute != null,
+                        tag = index,
+                        startCap = RoundCap(),
+                        endCap = RoundCap(),
+                        jointType = JointType.ROUND,
+                        onClick = { line -> (line.tag as? Int)?.let { onSelectRoute?.invoke(it) } },
+                    )
+                }
+            }
+        }
+
         // Dim planned route underneath, bright active route on top. Rounded end caps + joints
         // give each line a soft "dot" terminus everywhere the map is used.
         if (fullRouteCoords.size >= 2) {
