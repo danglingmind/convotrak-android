@@ -34,10 +34,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.RideSummary
 import com.danglingmind.convotrack.data.net.SummaryParticipant
 import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.data.net.displayTitle
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.ErrorBlock
@@ -60,10 +60,8 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
         state = UiState.Loading
         state = try {
             UiState.Success(apiCall { api.getRideSummary(rideId) })
-        } catch (e: ApiException) {
-            UiState.Error(e.message ?: "Couldn't load summary")
         } catch (e: Exception) {
-            UiState.Error("Couldn't load summary")
+            UiState.Error(e.riderMessage)
         }
     }
 

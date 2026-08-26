@@ -6,145 +6,216 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Straight
-import androidx.compose.material.icons.filled.TurnLeft
-import androidx.compose.material.icons.filled.TurnRight
-import androidx.compose.material.icons.filled.UTurnLeft
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateMap
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.compose.ui.unit.sp
-import com.danglingmind.convotrack.data.maps.DirectionsStep
-import com.danglingmind.convotrack.data.net.LiveLeaderboardEntry
-import com.danglingmind.convotrack.data.net.LiveParticipant
-import com.danglingmind.convotrack.data.net.RegroupEvent
-import com.danglingmind.convotrack.data.net.Ride
-import com.danglingmind.convotrack.data.net.apiCall
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.danglingmind.convotrack.data.audio.SirenPlayer
+import com.danglingmind.convotrack.data.socket.SocketEmergency
 import com.danglingmind.convotrack.di.ServiceLocator
-import com.danglingmind.convotrack.ui.map.ConvoTrackMap
+import com.danglingmind.convotrack.ui.map.EdgeChipModel
 import com.danglingmind.convotrack.ui.map.MapCamera
+import com.danglingmind.convotrack.ui.map.MapFraming
 import com.danglingmind.convotrack.ui.map.MapMarker
 import com.danglingmind.convotrack.ui.map.MapMarkerKind
+import com.danglingmind.convotrack.ui.map.NavCamera
+import com.danglingmind.convotrack.ui.map.OffscreenIndicatorsOverlay
 import com.danglingmind.convotrack.ui.map.UserPuck
+import com.danglingmind.convotrack.ui.map.clusterIndicators
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
 import com.google.android.gms.maps.model.LatLng
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** One row of the live leaderboard, sourced from socket data or the seeded roster. */
-private data class LbRow(val rank: Int, val userId: String, val name: String, val isMe: Boolean)
-
+/**
+ * Live navigation.
+ *
+ * Two phases: a **route preview** (whole route framed, destination + ETA, START NAVIGATION), then
+ * **guidance** (follow camera, turn banner, leaderboard, stat bar). Landscape moves the entire HUD
+ * into a right-hand side panel and gives the map the remaining two thirds — landscape has ~390dp
+ * of height and ~850dp of width, so a full-width bottom bar spends the scarce dimension and wastes
+ * the plentiful one.
+ *
+ * All realtime state comes from the graph-scoped [RideSessionViewModel]; everything derived from a
+ * GPS fix comes from [NavigationViewModel]. This composable is arrangement only.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RideNavigationScreen(
     rideId: String,
+    sessionVm: RideSessionViewModel,
     onExit: () -> Unit,
     onEndRide: () -> Unit,
 ) {
-    val api = remember { ServiceLocator.api }
     val auth = remember { ServiceLocator.auth }
-    val socket = remember { ServiceLocator.socket }
     val locationController = remember { ServiceLocator.location }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val myId = auth.userState.value?.id
+    val density = LocalDensity.current
+    val myId = auth.userState.value?.id.orEmpty()
 
-    var ride by remember { mutableStateOf<Ride?>(null) }
-    var routeCoords by remember { mutableStateOf<List<LatLng>>(emptyList()) }
-    val live: SnapshotStateMap<String, LiveParticipant> = remember { mutableStateMapOf() }
-    var leaderboard by remember { mutableStateOf<List<LiveLeaderboardEntry>>(emptyList()) }
-    var activeRegroup by remember { mutableStateOf<RegroupEvent?>(null) }
-    var isEmergency by remember { mutableStateOf(false) }
-    var splitGapMeters by remember { mutableStateOf<Double?>(null) }
+    val vm: NavigationViewModel = viewModel()
+    val session = sessionVm.session
+
+    // --- Session state -------------------------------------------------------------------------
+    val ride by sessionVm.ride.collectAsState()
+    val liveState by session.liveState.collectAsState()
+    val participants by session.participants.collectAsState()
+    val onlineIds by session.onlineUserIds.collectAsState()
+    val splitGapMeters by session.splitGapMeters.collectAsState()
+    val sessionRegroup by session.latestRegroup.collectAsState()
+    val sessionRegroupResolvedId by session.latestRegroupResolvedId.collectAsState()
+    val sessionEmergency by session.latestEmergency.collectAsState()
+    val sessionEmergencyResolvedId by session.latestEmergencyResolvedId.collectAsState()
+    val sessionRideUpdated by session.rideUpdated.collectAsState()
+    val wasRemoved by session.wasRemoved.collectAsState()
+    val wasDeleted by session.wasDeleted.collectAsState()
+    val connectionState by session.connectionState.collectAsState()
+
+    // --- Navigation state ----------------------------------------------------------------------
+    val riders by vm.riders.collectAsState()
+    val leaderboardRows by vm.leaderboardRows.collectAsState()
+    val mySpeedKmh by vm.mySpeedKmh.collectAsState()
+    val hasLocationFix by vm.hasLocationFix.collectAsState()
+    val myDistanceKm by vm.myDistanceToGoalKm.collectAsState()
+    val routeCoords by vm.routeCoordinates.collectAsState()
+    val activeRoute by vm.activeRouteCoordinates.collectAsState()
+    val routeVersion by vm.routeVersion.collectAsState()
+    val userLocation by vm.userLocation.collectAsState()
+    val userHeading by vm.userHeading.collectAsState()
+    val locationTick by vm.locationTick.collectAsState()
+    val instruction by vm.currentInstruction.collectAsState()
+    val maneuver by vm.currentManeuver.collectAsState()
+    val distToTurn by vm.distanceToNextTurnMeters.collectAsState()
+    val isOffRoute by vm.isOffRoute.collectAsState()
+    val isEnding by vm.isEnding.collectAsState()
+    val endError by vm.endError.collectAsState()
+    val rideCompleted by vm.rideCompleted.collectAsState()
+    val etaText by vm.etaText.collectAsState()
+    val destination by vm.destinationCoordinate.collectAsState()
+    val middleWaypoints by vm.middleWaypoints.collectAsState()
+
     val myLoc by locationController.current.collectAsState()
+    val compassHeading by locationController.compassHeading.collectAsState()
 
-    // Turn-by-turn steps (client-side via MKDirections/Routes API — no backend involvement).
-    var navSteps by remember { mutableStateOf<List<DirectionsStep>>(emptyList()) }
-    var currentStep by remember { androidx.compose.runtime.mutableIntStateOf(0) }
-    var distToTurn by remember { mutableStateOf(0.0) }
-
-    // Course-up heading: GPS bearing while moving, else derived from movement between fixes
-    // (mock/indoor GPS often omits bearing). Free-look pauses the follow camera after a pan.
-    var heading by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    var prevLoc by remember { mutableStateOf<android.location.Location?>(null) }
+    // --- Local UI state ------------------------------------------------------------------------
+    // rememberSaveable, not remember: rotating into (or out of) the landscape panel must not
+    // drop a rider who is mid-ride back into the route preview.
+    var isNavigationActive by rememberSaveable { mutableStateOf(false) }
     var isFreeLooking by remember { mutableStateOf(false) }
-    LaunchedEffect(myLoc) {
-        val loc = myLoc ?: return@LaunchedEffect
-        val prev = prevLoc
-        val moving = loc.hasSpeed() && loc.speed > 0.5f
-        heading = when {
-            loc.hasBearing() && moving -> loc.bearing
-            prev != null && prev.distanceTo(loc) > 3f -> (prev.bearingTo(loc) + 360f) % 360f
-            else -> heading
-        }
-        prevLoc = loc
-    }
-
-    // Advance the turn banner as the rider passes each step's end point (iOS updateCurrentStep).
-    LaunchedEffect(myLoc, navSteps) {
-        val loc = myLoc ?: return@LaunchedEffect
-        if (navSteps.isEmpty() || currentStep >= navSteps.size) return@LaunchedEffect
-        val step = navSteps[currentStep]
-        val out = FloatArray(1)
-        android.location.Location.distanceBetween(loc.latitude, loc.longitude, step.end.latitude, step.end.longitude, out)
-        distToTurn = out[0].toDouble()
-        if (distToTurn < 30 && currentStep + 1 < navSteps.size) currentStep++
-    }
-
+    var lastInteractionAt by remember { mutableLongStateOf(0L) }
+    var selectedRiderId by remember { mutableStateOf<String?>(null) }
     var showRegroup by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var isBroadcasting by remember { mutableStateOf(false) }
+    var showEndConfirm by remember { mutableStateOf(false) }
+    var showEndError by remember { mutableStateOf(false) }
 
-    // Location permission -> start broadcasting my position (foreground service).
+    var activeRegroup by remember(rideId) { mutableStateOf<com.danglingmind.convotrack.data.net.RegroupEvent?>(null) }
+    var hasMarkedArrived by remember(rideId) { mutableStateOf(false) }
+    var showRegroupToast by remember(rideId) { mutableStateOf(false) }
+    var showRegroupResolved by remember(rideId) { mutableStateOf(false) }
+    var activeEmergency by remember(rideId) { mutableStateOf<SocketEmergency?>(null) }
+    var splitAlertDismissed by remember(rideId) { mutableStateOf(false) }
+
+    // Which transient events this screen has already acted on. The session holds each as state, so
+    // it replays on every re-entry and recomposition — without these, walking back into navigation
+    // from the lobby would re-fire the siren for a regroup called ten minutes ago.
+    var handledRegroupId by remember(rideId) { mutableStateOf<String?>(null) }
+    var handledEmergencyId by remember(rideId) { mutableStateOf<String?>(null) }
+    var handledRideUpdateKey by remember(rideId) { mutableStateOf<String?>(null) }
+
+    // Camera bookkeeping.
+    var cameraCommand by remember { mutableStateOf<MapCamera>(MapCamera.Free()) }
+    var cameraCommandId by remember { mutableLongStateOf(0L) }
+    var lastCameraCoord by remember { mutableStateOf<LatLng?>(null) }
+    var lastCameraHeading by remember { mutableFloatStateOf(0f) }
+    // Low-passed speed driving the camera zoom. Raw GPS speed swings several km/h between fixes;
+    // fed straight into a continuous zoom curve it makes the map breathe. The SPEED readout still
+    // shows the raw value.
+    var cameraSpeedKmh by remember { mutableFloatStateOf(0f) }
+
+    // Measured chrome, so the map and the edge indicators know what is covering them.
+    var topChromeHeightPx by remember { mutableStateOf(0) }
+    var bottomBarHeightPx by remember { mutableStateOf(0) }
+    var panelWidthPx by remember { mutableStateOf(0) }
+    var edgeIndicators by remember { mutableStateOf<List<com.danglingmind.convotrack.ui.map.EdgeIndicator>>(emptyList()) }
+
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    fun issueCamera(build: (Long) -> MapCamera) {
+        cameraCommandId += 1
+        cameraCommand = build(cameraCommandId)
+    }
+
+    // Zoom for the guidance camera, pulled back slightly when a maneuver is approaching so the
+    // upcoming road is revealed before the rider reaches it.
+    fun navZoom(): Float {
+        val base = NavCamera.zoomForSpeed(cameraSpeedKmh.toDouble())
+        // Scales with speed so fast riders see the maneuver framed sooner: ~7s of travel, floor 140 m.
+        val approachMeters = maxOf(140.0, cameraSpeedKmh / 3.6 * 7)
+        // Half a level; a full level reads as the map lurching.
+        return if (vm.hasUpcomingTurn && distToTurn <= approachMeters) base - 0.5f else base
+    }
+
+    fun resumeNavigation() {
+        isFreeLooking = false
+        lastInteractionAt = 0L
+        val coord = userLocation ?: return
+        issueCamera { id ->
+            MapCamera.Navigate(id, coord, navZoom(), userHeading.toFloat(), NavCamera.TILT, true, MapFraming.ROAD_AHEAD)
+        }
+    }
+
+    // --- Setup ---------------------------------------------------------------------------------
+
+    LaunchedEffect(rideId, myId) { sessionVm.load(myId) }
+
+    // Hand the ride to the navigation VM once, when it lands.
+    var didSetup by remember(rideId) { mutableStateOf(false) }
+    LaunchedEffect(ride, myId) {
+        val r = ride ?: return@LaunchedEffect
+        if (didSetup) return@LaunchedEffect
+        didSetup = true
+        vm.setup(rideId, r, myId, session)
+    }
+
+    LaunchedEffect(participants) { vm.onRosterChanged(participants) }
+    LaunchedEffect(liveState) { liveState?.let { vm.handleStateUpdate(it) } }
+    LaunchedEffect(rideCompleted) { if (rideCompleted) onEndRide() }
+    LaunchedEffect(endError) { showEndError = endError != null }
+
+    // Location permission → start broadcasting my position (foreground service) + compass.
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
@@ -153,482 +224,472 @@ fun RideNavigationScreen(
         }
     }
     LaunchedEffect(rideId) {
-        val fineGranted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
+        val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
-        if (fineGranted) {
+        if (granted) {
             locationController.start(ctx, rideId)
         } else {
             permLauncher.launch(
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS),
             )
         }
-    }
-    DisposableEffect(Unit) {
-        onDispose { locationController.stop(ctx) }
+        locationController.startCompass(ctx, this)
     }
 
-    // Load the ride (route + roster + steps), then go live over the socket.
-    LaunchedEffect(rideId) {
-        ride = runCatching { apiCall { api.getRide(rideId) } }.getOrNull()
-        ride?.let {
-            // Draw the leader-selected polyline (shared by all riders) but keep per-leg steps.
-            val rws = rideRouteWithSteps(it)
-            routeCoords = rws.coords
-            navSteps = rws.steps
-            currentStep = 0
+    // Keep the screen awake and allow landscape while navigating; both are restored on the way out.
+    DisposableEffect(Unit) {
+        val activity = ctx as? android.app.Activity
+        activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val previousOrientation = activity?.requestedOrientation
+        activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
+        onDispose {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            previousOrientation?.let { activity.requestedOrientation = it }
+            locationController.stopCompass()
+            locationController.stop(ctx)
         }
-        socket.connect()
-        socket.joinRoom(rideId)
-        // Presence heartbeat (in addition to location broadcasts) so a stationary rider still
-        // reads as online during navigation.
-        launch {
-            while (true) {
-                socket.emitHeartbeat(rideId)
-                kotlinx.coroutines.delay(8_000)
+    }
+
+    // Every accepted fix drives the whole navigation model.
+    LaunchedEffect(myLoc) { myLoc?.let { vm.onLocationUpdate(it, compassHeading) } }
+
+    // --- Transient events ----------------------------------------------------------------------
+
+    fun startRegroup(ev: com.danglingmind.convotrack.data.net.RegroupEvent, isMine: Boolean) {
+        activeRegroup = ev
+        hasMarkedArrived = false
+        // Briefly frame the meet point, then hand the camera back to guidance.
+        isFreeLooking = true
+        lastInteractionAt = System.currentTimeMillis()
+        issueCamera { id -> MapCamera.Navigate(id, LatLng(ev.lat, ev.lng), 15f, 0f, 0f, true, MapFraming.CENTERED) }
+        // Alert riders who didn't broadcast it — toast + the two-tone siren, clearly distinct from
+        // the emergency wail. The initiator already knows, so stays silent.
+        if (!isMine) {
+            showRegroupToast = true
+            SirenPlayer.play(SirenPlayer.Sound.REGROUP)
+        }
+    }
+
+    LaunchedEffect(sessionRegroup) {
+        val ev = sessionRegroup ?: return@LaunchedEffect
+        if (handledRegroupId == ev.regroupId) return@LaunchedEffect
+        handledRegroupId = ev.regroupId
+        startRegroup(ev, ev.createdBy == myId)
+    }
+    LaunchedEffect(sessionRegroupResolvedId) {
+        val id = sessionRegroupResolvedId ?: return@LaunchedEffect
+        if (activeRegroup?.regroupId != id) return@LaunchedEffect
+        activeRegroup = null
+        hasMarkedArrived = false
+        showRegroupResolved = true
+        resumeNavigation()   // drop the regroup framing if it resolved within the focus window
+    }
+    // Hand the camera back to guidance a few seconds after a regroup is framed.
+    LaunchedEffect(activeRegroup?.regroupId) {
+        if (activeRegroup == null || !isNavigationActive) return@LaunchedEffect
+        delay(5_000)
+        resumeNavigation()
+    }
+    LaunchedEffect(showRegroupToast) { if (showRegroupToast) { delay(4_000); showRegroupToast = false } }
+    LaunchedEffect(showRegroupResolved) { if (showRegroupResolved) { delay(2_500); showRegroupResolved = false } }
+
+    LaunchedEffect(sessionEmergency) {
+        val ev = sessionEmergency ?: return@LaunchedEffect
+        if (handledEmergencyId == ev.emergencyId) return@LaunchedEffect
+        handledEmergencyId = ev.emergencyId
+        activeEmergency = ev
+    }
+    LaunchedEffect(sessionEmergencyResolvedId) {
+        val id = sessionEmergencyResolvedId ?: return@LaunchedEffect
+        if (activeEmergency?.emergencyId == id) activeEmergency = null
+    }
+    // An unresolved emergency keeps nagging the whole group: siren every 10s until the raiser or
+    // the leader dismisses it (clearing activeEmergency cancels this effect).
+    LaunchedEffect(activeEmergency?.emergencyId) {
+        if (activeEmergency == null) return@LaunchedEffect
+        while (true) {
+            SirenPlayer.play(SirenPlayer.Sound.EMERGENCY)
+            delay(10_000)
+        }
+    }
+
+    // Also adopt any regroup / emergency already open when we joined, from the state snapshot.
+    LaunchedEffect(liveState) {
+        val update = liveState ?: return@LaunchedEffect
+        if (activeRegroup == null) {
+            update.openRegroup?.let {
+                if (handledRegroupId != it.regroupId) {
+                    handledRegroupId = it.regroupId
+                    startRegroup(it, it.createdBy == myId)
+                }
             }
         }
-        launch {
-            socket.stateUpdates.collect { update ->
-                update.participants.forEach { p -> live[p.userId] = p }
-                // Only overwrite the seeded roster once the server actually has leaderboard data.
-                if (update.leaderboard.isNotEmpty()) leaderboard = update.leaderboard
+        if (activeEmergency == null) {
+            update.openEmergency?.let {
+                if (handledEmergencyId != it.emergencyId) {
+                    handledEmergencyId = it.emergencyId
+                    activeEmergency = it
+                }
             }
         }
-        launch { socket.regroupStarted.collect { activeRegroup = it; isEmergency = false } }
-        launch { socket.emergencyStarted.collect { isEmergency = true } }
-        launch { socket.regroupResolved.collect { id -> if (activeRegroup?.regroupId == id) activeRegroup = null } }
-        // Group-split alerts (engine detects the pack spreading past threshold).
-        launch { socket.splitDetected.collect { splitGapMeters = it.gapMeters } }
-        launch { socket.splitResolved.collect { splitGapMeters = null } }
-        // If the leader removes me mid-ride, leave navigation (iOS wasRemoved exit).
-        launch { socket.participantRemoved.collect { uid -> if (uid == myId) onExit() } }
+    }
+
+    // Leader edited the ride mid-flight → re-seed geometry and reroute live.
+    LaunchedEffect(sessionRideUpdated) {
+        val ev = sessionRideUpdated ?: return@LaunchedEffect
+        val key = "${ev.rideId}|${ev.distanceMeters}|${ev.waypoints.size}|${ev.routePolyline}"
+        if (handledRideUpdateKey == key) return@LaunchedEffect
+        handledRideUpdateKey = key
+        val current = ride ?: return@LaunchedEffect
+        val updated = current.copy(
+            title = ev.title,
+            destinationName = ev.destinationName,
+            destinationLat = ev.destinationLat,
+            destinationLng = ev.destinationLng,
+            distanceMeters = ev.distanceMeters,
+            routePolyline = ev.routePolyline,
+            waypoints = ev.waypoints,
+        )
+        sessionVm.setRide(updated)
+        vm.handleRideUpdated(ev, updated)
+    }
+
+    // The split gap is server state (and clears on ride:split_resolved), so "I dismissed this
+    // alert" is tracked separately. Reset when the split resolves, so the next one alerts again.
+    LaunchedEffect(splitGapMeters) { if (splitGapMeters == null) splitAlertDismissed = false }
+
+    // Removed by the leader, or the ride deleted — either way there is nothing left to navigate.
+    LaunchedEffect(wasRemoved, wasDeleted) { if (wasRemoved || wasDeleted) onExit() }
+
+    // --- Camera ------------------------------------------------------------------------------
+
+    // Preview: frame the whole route inside the band the chrome actually leaves visible. Keyed on
+    // the measured chrome too — those read 0 until the first layout pass, so a route that resolved
+    // before then was framed with no insets at all.
+    LaunchedEffect(routeVersion, topChromeHeightPx, bottomBarHeightPx, isNavigationActive) {
+        if (isNavigationActive) return@LaunchedEffect
+        val coords = routeCoords.ifEmpty { activeRoute }
+        if (coords.isEmpty()) {
+            destination?.let { d -> issueCamera { id -> MapCamera.Navigate(id, d, 11f, 0f, 0f, true, MapFraming.CENTERED) } }
+            return@LaunchedEffect
+        }
+        val topDp = with(density) { topChromeHeightPx.toDp().value } + NavCamera.STOP_PIN_TOP_EXTENT_DP + 8
+        val bottomDp = maxOf(with(density) { bottomBarHeightPx.toDp().value }, 200f) + 8
+        issueCamera { id -> MapCamera.Fit(id, coords, topDp = topDp, leftDp = 44f, bottomDp = bottomDp, rightDp = 44f) }
+    }
+
+    // Guidance: follow the rider, but only move when they've actually moved or turned enough.
+    LaunchedEffect(locationTick) {
+        if (!isNavigationActive) return@LaunchedEffect
+        val coord = userLocation ?: return@LaunchedEffect
+        val wasFirst = lastCameraCoord == null
+
+        // Track speed on every tick — including the ones that don't move the camera — so the zoom
+        // is already correct whenever a camera command does go out.
+        cameraSpeedKmh = if (wasFirst) {
+            mySpeedKmh.toFloat()
+        } else {
+            cameraSpeedKmh + 0.25f * (mySpeedKmh.toFloat() - cameraSpeedKmh)
+        }
+
+        // `mySpeedKmh` is already zeroed below the stationary band, so "moving" is simply non-zero.
+        val isMoving = mySpeedKmh > 0
+        val idleMs = System.currentTimeMillis() - lastInteractionAt
+        val shouldFollow = wasFirst || (isMoving && idleMs >= 3_000)
+        if (isFreeLooking && shouldFollow) isFreeLooking = false
+        if (!shouldFollow) return@LaunchedEffect
+
+        // Avoids re-animating on every GPS tick from jittery stationary fixes. The first fix always
+        // snaps into place.
+        if (!wasFirst) {
+            val last = lastCameraCoord
+            if (last != null) {
+                val moved = metersBetween(last, coord)
+                val turned = headingDelta(userHeading, lastCameraHeading.toDouble())
+                if (moved < 5 && turned < 3) return@LaunchedEffect
+            }
+        }
+        lastCameraCoord = coord
+        lastCameraHeading = userHeading.toFloat()
+        issueCamera { id ->
+            MapCamera.Navigate(id, coord, navZoom(), userHeading.toFloat(), NavCamera.TILT, !wasFirst, MapFraming.ROAD_AHEAD)
+        }
     }
 
     BackHandler { onExit() }
 
-    val namesById = remember(ride) { ride?.participants?.associate { it.userId to it.name } ?: emptyMap() }
-    // My own speed comes from GPS directly (m/s -> km/h); fall back to the socket echo.
-    val mySpeed = myLoc?.takeIf { it.hasSpeed() }?.speed?.toDouble()?.times(3.6)
-        ?: myId?.let { live[it]?.speed?.times(3.6) }
-    val riderCount = maxOf(live.size, ride?.participants?.size ?: 0)
+    // --- Derived display ------------------------------------------------------------------------
 
-    // Live leaderboard rows: real socket ranking when present, else the seeded roster order.
-    val lbRows: List<LbRow> = remember(leaderboard, ride, myId) {
-        if (leaderboard.isNotEmpty()) {
-            leaderboard.sortedBy { it.rank }.map { LbRow(it.rank, it.userId, it.name, it.userId == myId) }
-        } else {
-            ride?.participants?.mapIndexed { i, p -> LbRow(i + 1, p.userId, p.name, p.userId == myId) } ?: emptyList()
+    val destinationName = ride?.destinationName ?: "Destination"
+    val liveCount = vm.liveRiderCount(onlineIds)
+
+    val navMarkers: List<MapMarker> = remember(riders, middleWaypoints, destination, activeRegroup, activeEmergency, onlineIds, selectedRiderId, userLocation) {
+        buildList {
+            riders.filterNot { it.isMe }.forEach { rider ->
+                val distText = userLocation?.let { me -> formatRiderDistance(metersBetween(me, rider.coordinate)) }
+                add(
+                    MapMarker(
+                        id = rider.id,
+                        position = rider.coordinate,
+                        kind = MapMarkerKind.RIDER,
+                        label = rider.name,
+                        isOffline = !onlineIds.contains(rider.id),
+                        isSelected = selectedRiderId == rider.id,
+                        avatarUrl = rider.avatarUrl,
+                        distanceText = distText,
+                    ),
+                )
+            }
+            middleWaypoints.forEach { wp ->
+                add(MapMarker("wp_${wp.order}", LatLng(wp.lat, wp.lng), MapMarkerKind.WAYPOINT, wp.name))
+            }
+            destination?.let { add(MapMarker("dest", it, MapMarkerKind.DESTINATION, destinationName)) }
+            activeRegroup?.let {
+                add(MapMarker("regroup", LatLng(it.lat, it.lng), MapMarkerKind.REGROUP, regroupType = it.type))
+            }
+            activeEmergency?.let {
+                add(MapMarker("emergency", LatLng(it.lat, it.lng), MapMarkerKind.EMERGENCY))
+            }
         }
     }
 
-    Box(Modifier.fillMaxSize().background(CT.surfaceDim)) {
-        val myLatLng = myLoc?.let { LatLng(it.latitude, it.longitude) }
-        // Speed-based zoom, matching iOS navZoom.
-        val navZoom = when { (mySpeed ?: 0.0) < 20 -> 17.5f; (mySpeed ?: 0.0) < 60 -> 16.5f; else -> 16.0f }
-        // Bright route starts at the rider; the full planned route stays dim underneath.
-        val activeRoute = if (myLatLng != null && routeCoords.size >= 2) trimRouteToUser(routeCoords, myLatLng) else routeCoords
+    // Off-screen riders joined with their display metadata, then clustered by screen proximity.
+    val edgeClusters = remember(edgeIndicators, riders, onlineIds, density) {
+        val byId = riders.associateBy { it.id }
+        val models = edgeIndicators.mapNotNull { ind ->
+            val rider = byId[ind.id] ?: return@mapNotNull null
+            EdgeChipModel(
+                id = ind.id,
+                name = rider.name,
+                avatar = null,
+                isOffline = !onlineIds.contains(ind.id),
+                edgeX = ind.edgeX,
+                edgeY = ind.edgeY,
+                distanceMeters = ind.distanceMeters,
+            )
+        }
+        clusterIndicators(models, radiusPx = density.density * 60f)
+    }
 
-        // Live navigation map: 3D follow camera, heading puck, trimmed route, live riders.
-        ConvoTrackMap(
-            modifier = Modifier.fillMaxSize(),
+    fun focusRider(id: String) {
+        val rider = riders.firstOrNull { it.id == id } ?: return
+        isFreeLooking = true
+        lastInteractionAt = System.currentTimeMillis()
+        selectedRiderId = id
+        issueCamera { cid -> MapCamera.Navigate(cid, rider.coordinate, 16f, 0f, 0f, true, MapFraming.CENTERED) }
+    }
+
+    // --- Layout --------------------------------------------------------------------------------
+
+    Box(Modifier.fillMaxSize().background(CT.surfaceDim)) {
+        com.danglingmind.convotrack.ui.map.ConvoTrackMap(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    end = if (isLandscape) with(density) { panelWidthPx.toDp() } else 0.dp,
+                    bottom = if (isLandscape) 0.dp else with(density) { bottomBarHeightPx.toDp() },
+                ),
             routeCoords = activeRoute,
             fullRouteCoords = routeCoords,
-            markers = buildList {
-                ride?.let { addAll(rideMarkers(it)) }
-                live.values.filter { it.userId != myId }.forEach { p ->
-                    val lat = p.lat; val lng = p.lng
-                    if (lat != null && lng != null) {
-                        add(MapMarker("rider_${p.userId}", LatLng(lat, lng), MapMarkerKind.RIDER, namesById[p.userId]))
-                    }
-                }
-                activeRegroup?.let { add(MapMarker("regroup", LatLng(it.lat, it.lng), MapMarkerKind.REGROUP, "Regroup")) }
-            },
-            user = myLatLng?.let { UserPuck(it, heading) },
-            camera = when {
-                myLatLng == null -> MapCamera.Fit
-                isFreeLooking -> MapCamera.Free
-                else -> MapCamera.Nav(myLatLng, heading, navZoom)
-            },
+            stopCoords = ride?.let { rideStopCoords(it) } ?: emptyList(),
+            markers = navMarkers,
+            user = userLocation?.let { UserPuck(it, userHeading.toFloat()) },
+            camera = cameraCommand,
             interactive = true,
-            onUserPan = { isFreeLooking = true },
+            // The active route is trimmed to start under the chevron every fix, so its head is the
+            // rider — not an endpoint that wants a cap of its own.
+            isNavigating = isNavigationActive,
+            onUserPan = {
+                lastInteractionAt = System.currentTimeMillis()
+                if (!isFreeLooking) isFreeLooking = true
+            },
+            onEdgeIndicators = { edgeIndicators = it },
+            // Landscape moves the chrome off the map entirely, so there is nothing to clamp under.
+            topOverlayDp = if (isNavigationActive && !isLandscape) with(density) { topChromeHeightPx.toDp() } else 0.dp,
         )
 
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            // Top bar: back • destination • tiny live indicator
-            Row(
-                Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Box(
-                    Modifier.size(44.dp).clip(CircleShape).background(CT.surfaceContainerHigh.copy(alpha = 0.9f))
-                        .border(1.dp, CT.outlineVariant.copy(alpha = 0.3f), CircleShape).clickable(onClick = onExit),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Leave navigation (ride keeps running)",
-                        tint = CT.onSurface,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("TO", style = CTType.labelCaps.copy(fontSize = 9.sp), color = CT.onSurfaceVariant, letterSpacing = 1.5.sp)
-                    Text(
-                        ride?.destinationName ?: "Loading…",
-                        style = CTType.bodyLg,
-                        color = CT.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                LiveIndicator(connected = socket.connected.value)
-            }
-
-            // Turn-by-turn maneuver pill (client-side directions).
-            if (navSteps.isNotEmpty()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                    TurnByTurnPill(navSteps.getOrNull(currentStep)?.instruction.orEmpty(), distToTurn)
-                    Spacer(Modifier.weight(1f))
-                }
-            }
-
-            Spacer(Modifier.size(10.dp))
-
-            // Live leaderboard strip.
-            if (lbRows.isNotEmpty()) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(lbRows, key = { it.userId }) { LeaderboardCard(it) }
-                }
-            }
-
-            // Regroup / emergency banner
-            if (activeRegroup != null || isEmergency) {
-                val accent = if (isEmergency) CT.errorColor else CT.primaryFixed
-                Row(
-                    Modifier.padding(16.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(if (isEmergency) CT.errorContainer.copy(alpha = 0.2f) else CT.primaryFixed.copy(alpha = 0.12f))
-                        .border(1.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(12.dp)).padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Icon(if (isEmergency) Icons.Filled.Warning else Icons.Filled.Groups, null, tint = accent, modifier = Modifier.size(20.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(if (isEmergency) "EMERGENCY" else "REGROUP ACTIVE", style = CTType.labelCaps, color = accent, letterSpacing = 1.sp)
-                        Text(activeRegroup?.type ?: "Group is regrouping", style = CTType.bodyMd, color = CT.onSurface)
-                    }
-                    if (activeRegroup != null) {
-                        Text(
-                            "ARRIVED",
-                            style = CTType.labelCaps,
-                            color = CT.onPrimaryFixed,
-                            letterSpacing = 1.sp,
-                            modifier = Modifier.clip(CircleShape).background(CT.primaryFixed)
-                                .clickable {
-                                    activeRegroup?.let { socket.emitRegroupArrived(rideId, it.regroupId) }
-                                    activeRegroup = null
-                                }
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                        )
-                    }
-                }
-            }
-
-            // Group-split alert — the pack has spread out. Offer a quick Regroup or dismiss.
-            val gap = splitGapMeters
-            if (gap != null && activeRegroup == null && !isEmergency) {
-                Row(
-                    Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(CT.errorContainer.copy(alpha = 0.2f))
-                        .border(1.dp, CT.errorColor.copy(alpha = 0.5f), RoundedCornerShape(12.dp)).padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Icon(Icons.Filled.Warning, null, tint = CT.errorColor, modifier = Modifier.size(20.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("GROUP SPLIT", style = CTType.labelCaps, color = CT.errorColor, letterSpacing = 1.sp)
-                        Text(
-                            "Riders are ${String.format(java.util.Locale.US, "%.0f", gap)} m apart",
-                            style = CTType.bodyMd,
-                            color = CT.onSurface,
-                        )
-                    }
-                    Text(
-                        "REGROUP",
-                        style = CTType.labelCaps,
-                        color = CT.onPrimaryFixed,
-                        letterSpacing = 1.sp,
-                        modifier = Modifier.clip(CircleShape).background(CT.primaryFixed)
-                            .clickable { splitGapMeters = null; showRegroup = true }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
-                    Text(
-                        "DISMISS",
-                        style = CTType.labelCaps,
-                        color = CT.onSurfaceVariant,
-                        letterSpacing = 1.sp,
-                        modifier = Modifier.clickable { splitGapMeters = null }.padding(horizontal = 8.dp, vertical = 6.dp),
-                    )
-                }
-            }
+        if (isNavigationActive) {
+            OffscreenIndicatorsOverlay(clusters = edgeClusters, onTapRider = ::focusRider)
         }
 
-        // Bottom overlay: re-center pill, stat pills (bottom-right), controls.
-        Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            // Re-center pill appears once the rider pans away from the follow camera.
-            if (isFreeLooking) {
-                Row(
-                    Modifier
-                        .clip(CircleShape)
-                        .background(CT.primaryFixed)
-                        .clickable { isFreeLooking = false }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(Icons.Filled.MyLocation, null, tint = CT.onPrimaryFixed, modifier = Modifier.size(16.dp))
-                    Text("RE-CENTER", style = CTType.labelCaps, color = CT.onPrimaryFixed, letterSpacing = 1.sp)
-                }
-            }
-
-            // Stat pills — uniform squares, stacked vertically, right-aligned above End Ride.
-            Column(
-                Modifier.align(Alignment.End),
-                verticalArrangement = Arrangement.spacedBy(9.dp),
-                horizontalAlignment = Alignment.End,
-            ) {
-                NavStatPill(value = mySpeed?.let { String.format(java.util.Locale.US, "%.0f", it) } ?: "--", unit = "KM/H", accent = CT.primaryFixed)
-                NavStatPill(value = "$riderCount", inlineLabel = "RIDERS")
-            }
-
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Spacer(Modifier.weight(1f))
-                ControlButton(
-                    icon = Icons.Filled.Groups,
-                    description = "Regroup",
-                    tint = CT.onSurface,
-                    background = CT.surfaceContainerHigh.copy(alpha = 0.9f),
-                    border = CT.outlineVariant.copy(alpha = 0.3f),
-                    onClick = { showRegroup = true },
-                )
-                ControlButton(
-                    icon = Icons.Filled.Stop,
-                    description = "End ride",
-                    tint = CT.errorColor,
-                    background = CT.errorContainer.copy(alpha = 0.12f),
-                    border = CT.errorColor.copy(alpha = 0.35f),
-                    onClick = {
-                        scope.launch {
-                            // Leader ends the ride for everyone (backend); a member just leaves.
-                            if (myId != null && ride?.leaderId == myId) {
-                                runCatching { apiCall { api.endRide(rideId) } }
-                                onEndRide()
-                            } else {
-                                onExit()
-                            }
-                        }
-                    },
+        if (isLandscape) {
+            LandscapeHud(
+                isNavigationActive = isNavigationActive,
+                instruction = instruction,
+                maneuver = maneuver,
+                distToTurn = distToTurn,
+                leaderboardRows = leaderboardRows,
+                onlineIds = onlineIds,
+                selectedRiderId = selectedRiderId,
+                onSelectRider = ::focusRider,
+                liveCount = liveCount,
+                connectionState = connectionState,
+                isOffRoute = isOffRoute,
+                activeEmergency = activeEmergency,
+                emergencyReporter = activeEmergency?.let { vm.emergencyReporterName(it) }.orEmpty(),
+                canDismissEmergency = activeEmergency?.let { vm.canDismissEmergency(it) } == true,
+                onDismissEmergency = { activeEmergency?.let { session.dismissEmergency(it.emergencyId) } },
+                splitGapMeters = splitGapMeters?.takeIf { !splitAlertDismissed && activeRegroup == null && activeEmergency == null },
+                onDismissSplit = { splitAlertDismissed = true },
+                showRegroupToast = showRegroupToast,
+                showRegroupResolved = showRegroupResolved,
+                activeRegroupType = activeRegroup?.type,
+                hasMarkedArrived = hasMarkedArrived,
+                onMarkArrived = {
+                    activeRegroup?.let { session.markArrivedAtRegroup(it.regroupId) }
+                    hasMarkedArrived = true
+                },
+                speedText = if (hasLocationFix) String.format(java.util.Locale.US, "%.0f", mySpeedKmh) else "--",
+                etaText = etaText,
+                distText = if (myDistanceKm > 0) String.format(java.util.Locale.US, "%.1f", myDistanceKm) else "--",
+                destinationName = destinationName,
+                myDistanceKm = myDistanceKm,
+                isEnding = isEnding,
+                onRegroup = { showRegroup = true },
+                onEndRide = { if (vm.amILeader) showEndConfirm = true else onExit() },
+                onStartNavigation = {
+                    isNavigationActive = true
+                    resumeNavigation()
+                },
+                onBack = onExit,
+                onPanelWidth = { panelWidthPx = it },
+            )
+            // RESUME floats over the MAP, where a rider looks for it after panning.
+            if (isNavigationActive && isFreeLooking) {
+                ResumeNavigationPill(
+                    onClick = ::resumeNavigation,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(end = with(density) { panelWidthPx.toDp() }, bottom = 18.dp),
                 )
             }
+        } else {
+            PortraitHud(
+                isNavigationActive = isNavigationActive,
+                isFreeLooking = isFreeLooking,
+                onResume = ::resumeNavigation,
+                instruction = instruction,
+                maneuver = maneuver,
+                distToTurn = distToTurn,
+                leaderboardRows = leaderboardRows,
+                onlineIds = onlineIds,
+                selectedRiderId = selectedRiderId,
+                onSelectRider = ::focusRider,
+                liveCount = liveCount,
+                connectionState = connectionState,
+                isOffRoute = isOffRoute,
+                activeEmergency = activeEmergency,
+                emergencyReporter = activeEmergency?.let { vm.emergencyReporterName(it) }.orEmpty(),
+                canDismissEmergency = activeEmergency?.let { vm.canDismissEmergency(it) } == true,
+                onDismissEmergency = { activeEmergency?.let { session.dismissEmergency(it.emergencyId) } },
+                splitGapMeters = splitGapMeters?.takeIf { !splitAlertDismissed && activeRegroup == null && activeEmergency == null },
+                onDismissSplit = { splitAlertDismissed = true },
+                showRegroupToast = showRegroupToast,
+                showRegroupResolved = showRegroupResolved,
+                activeRegroupType = activeRegroup?.type,
+                hasMarkedArrived = hasMarkedArrived,
+                onMarkArrived = {
+                    activeRegroup?.let { session.markArrivedAtRegroup(it.regroupId) }
+                    hasMarkedArrived = true
+                },
+                speedText = if (hasLocationFix) String.format(java.util.Locale.US, "%.0f", mySpeedKmh) else "--",
+                etaText = etaText,
+                distText = if (myDistanceKm > 0) String.format(java.util.Locale.US, "%.1f", myDistanceKm) else "--",
+                destinationName = destinationName,
+                myDistanceKm = myDistanceKm,
+                isEnding = isEnding,
+                onRegroup = { showRegroup = true },
+                onEndRide = { if (vm.amILeader) showEndConfirm = true else onExit() },
+                onStartNavigation = {
+                    isNavigationActive = true
+                    resumeNavigation()
+                },
+                onBack = onExit,
+                onTopChromeHeight = { topChromeHeightPx = it },
+                onBottomBarHeight = { bottomBarHeightPx = it },
+            )
         }
     }
 
     if (showRegroup) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
-            onDismissRequest = { showRegroup = false },
+            onDismissRequest = { showRegroup = false; isBroadcasting = false },
             sheetState = sheetState,
             containerColor = CT.surfaceDim,
         ) {
-            RegroupSheet(onBroadcast = { reason ->
-                showRegroup = false
-                // Broadcast at my current position. Emergency emits ride:emergency;
-                // the others emit ride:regroup (per CLAUDE.md architectural decision).
-                val lat = myLoc?.latitude ?: 0.0
-                val lng = myLoc?.longitude ?: 0.0
-                if (reason.isEmergency) {
-                    socket.emitEmergency(rideId, lat, lng, "Emergency")
-                } else {
-                    val type = reason.name // FUEL / FOOD / SCENIC
-                    scope.launch { socket.emitRegroup(rideId, type, lat, lng) }
-                }
-            })
-        }
-    }
-}
-
-@Composable
-private fun ControlButton(
-    icon: ImageVector,
-    description: String,
-    tint: Color,
-    background: Color,
-    border: Color,
-    onClick: () -> Unit,
-) {
-    Box(
-        Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(background)
-            .border(1.dp, border, RoundedCornerShape(12.dp)).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(20.dp))
-    }
-}
-
-/** Uniform 72dp square stat pill. Pass [unit] for a stacked value/unit (SPEED) or [inlineLabel]
- *  for value + label on one line (RIDERS). All pills share the same outer dimensions. */
-@Composable
-private fun NavStatPill(
-    value: String,
-    unit: String? = null,
-    inlineLabel: String? = null,
-    accent: Color? = null,
-) {
-    Box(
-        Modifier.size(72.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(CT.surfaceContainerHigh.copy(alpha = 0.9f))
-            .border(1.dp, CT.outlineVariant.copy(alpha = 0.25f), RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (inlineLabel != null) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(value, style = CTType.dataMono.copy(fontWeight = FontWeight.Bold, fontSize = 20.sp), color = accent ?: CT.onSurface)
-                Text(inlineLabel, style = CTType.labelCaps.copy(fontSize = 9.sp), color = CT.onSurfaceVariant, letterSpacing = 0.5.sp)
-            }
-        } else {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(value, style = CTType.dataMono.copy(fontWeight = FontWeight.Bold, fontSize = 22.sp), color = accent ?: CT.onSurface)
-                if (unit != null) {
-                    Text(unit, style = CTType.labelCaps.copy(fontSize = 8.sp), color = CT.onSurfaceVariant, letterSpacing = 1.sp)
-                }
-            }
-        }
-    }
-}
-
-/** Very small top-right "LIVE" indicator (kept out of the stats group). */
-@Composable
-private fun LiveIndicator(connected: Boolean) {
-    Row(
-        Modifier.clip(CircleShape).background(CT.surfaceContainerHigh.copy(alpha = 0.9f))
-            .border(1.dp, CT.outlineVariant.copy(alpha = 0.25f), CircleShape)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Box(Modifier.size(6.dp).clip(CircleShape).background(if (connected) CT.tertiaryFixed else CT.onSurfaceVariant))
-        Text(
-            if (connected) "LIVE" else "…",
-            style = CTType.labelCaps.copy(fontSize = 8.sp),
-            color = if (connected) CT.tertiaryFixed else CT.onSurfaceVariant,
-            letterSpacing = 1.sp,
-        )
-    }
-}
-
-/** Turn-by-turn maneuver pill: maneuver icon + distance-to-turn + instruction. */
-@Composable
-private fun TurnByTurnPill(instruction: String, distanceMeters: Double) {
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(CT.surfaceContainerHigh.copy(alpha = 0.92f))
-            .border(1.dp, CT.primaryFixed.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(CT.primaryFixed),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(maneuverIcon(instruction), null, tint = CT.onPrimaryFixed, modifier = Modifier.size(20.dp))
-        }
-        Column(Modifier.widthIn(max = 220.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            val distText = when {
-                distanceMeters <= 0 -> ""
-                distanceMeters >= 1000 -> String.format(java.util.Locale.US, "%.1f km", distanceMeters / 1000)
-                else -> String.format(java.util.Locale.US, "%.0f m", distanceMeters)
-            }
-            if (distText.isNotEmpty()) {
-                Text(distText, style = CTType.labelCaps.copy(fontSize = 10.sp), color = CT.primaryFixed)
-            }
-            Text(
-                instruction.ifEmpty { "Follow route" },
-                style = CTType.bodyMd.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
-                color = CT.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            RegroupSheet(
+                isBroadcasting = isBroadcasting,
+                onCancel = { showRegroup = false },
+                onBroadcast = { reason, aheadMeters ->
+                    if (isBroadcasting) return@RegroupSheet
+                    isBroadcasting = true
+                    // The meet point is always derived from the rider's own position plus the
+                    // chosen distance ahead ON THE ROUTE.
+                    val target = if (aheadMeters > 0) vm.coordinateAhead(aheadMeters) else null
+                    val point = target ?: userLocation ?: myLoc?.let { LatLng(it.latitude, it.longitude) }
+                    if (point != null) {
+                        if (reason.isEmergency) {
+                            session.broadcastEmergency(point.latitude, point.longitude)
+                        } else {
+                            scope.launch { session.broadcastRegroup(reason.name, point.latitude, point.longitude) }
+                        }
+                    }
+                    showRegroup = false
+                    isBroadcasting = false
+                },
             )
         }
     }
-}
 
-private fun maneuverIcon(instruction: String): ImageVector {
-    val l = instruction.lowercase()
-    return when {
-        l.contains("arrive") || l.contains("destination") -> Icons.Filled.Flag
-        l.contains("u-turn") || l.contains("uturn") -> Icons.Filled.UTurnLeft
-        l.contains("left") -> Icons.Filled.TurnLeft
-        l.contains("right") -> Icons.Filled.TurnRight
-        l.contains("straight") || l.contains("continue") || l.contains("head") -> Icons.Filled.Straight
-        else -> Icons.Filled.Navigation
-    }
-}
-
-/** One horizontal leaderboard card: rank • avatar initial • first name (+ YOU badge). */
-@Composable
-private fun LeaderboardCard(row: LbRow) {
-    val highlight = row.rank == 1 || row.isMe
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (highlight) CT.primaryFixed.copy(alpha = 0.12f) else CT.surfaceContainerHigh.copy(alpha = 0.9f))
-            .border(1.dp, if (highlight) CT.primaryFixed else CT.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        Text(
-            "${row.rank}",
-            style = CTType.dataMono.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
-            color = if (highlight) CT.primaryFixed else CT.onSurfaceVariant,
-        )
-        Box(
-            Modifier.size(26.dp).clip(CircleShape).background(CT.surfaceContainerHighest)
-                .border(if (highlight) 2.dp else 1.dp, if (highlight) CT.primaryFixed else CT.outlineVariant.copy(alpha = 0.4f), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                row.name.take(1).uppercase(),
-                style = CTType.bodyMd.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                color = if (highlight) CT.primaryFixed else CT.onSurface,
-            )
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                row.name.substringBefore(" ").ifEmpty { "Rider" },
-                style = CTType.bodyMd.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                color = CT.onSurface,
-                maxLines = 1,
-                softWrap = false,
-            )
-            if (row.isMe) {
+    // Two outcomes, not one. Exit is listed first and is not destructive: it is the common case,
+    // and since the navigation screen carries no back button while guidance is running, it is the
+    // ONLY way for a leader to step off this screen without ending everyone's ride.
+    if (showEndConfirm) {
+        AlertDialog(
+            onDismissRequest = { showEndConfirm = false },
+            containerColor = CT.surfaceContainer,
+            title = { Text("Leave navigation or end the ride?", style = CTType.headlineMd, color = CT.onSurface) },
+            text = {
                 Text(
-                    "YOU",
-                    style = CTType.labelCaps.copy(fontSize = 7.sp),
-                    color = CT.onPrimaryFixed,
-                    letterSpacing = 0.5.sp,
-                    modifier = Modifier.clip(CircleShape).background(CT.primaryFixed).padding(horizontal = 4.dp, vertical = 1.dp),
+                    "Exit closes navigation on your phone — the ride keeps running and you can " +
+                        "resume from the lobby. End Ride stops location sharing for every rider and " +
+                        "generates the summary; that can't be undone.",
+                    style = CTType.bodyMd,
+                    color = CT.onSurfaceVariant,
                 )
-            }
-        }
+            },
+            confirmButton = {
+                TextButton(onClick = { showEndConfirm = false; onExit() }) {
+                    Text("Exit Navigation", color = CT.primaryFixed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showEndConfirm = false
+                    vm.endRide(onEndRide)
+                }) { Text("End Ride", color = CT.errorColor) }
+            },
+        )
+    }
+
+    if (showEndError) {
+        AlertDialog(
+            onDismissRequest = { showEndError = false; vm.clearEndError() },
+            containerColor = CT.surfaceContainer,
+            title = { Text("Couldn't End Ride", style = CTType.headlineMd, color = CT.onSurface) },
+            text = { Text(endError ?: "An error occurred.", style = CTType.bodyMd, color = CT.onSurfaceVariant) },
+            confirmButton = {
+                TextButton(onClick = { showEndError = false; vm.clearEndError() }) {
+                    Text("OK", color = CT.primaryFixed)
+                }
+            },
+        )
     }
 }
+
+/** Compact distance label for rider markers. Quantized (10 m under 1 km, 0.1 km above) so the
+ *  marker only re-bakes when the shown value actually changes. */
+private fun formatRiderDistance(meters: Double): String =
+    if (meters < 1000) "${(Math.round(meters / 10) * 10)} m"
+    else String.format(java.util.Locale.US, "%.1f km", meters / 1000)

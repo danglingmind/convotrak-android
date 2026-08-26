@@ -45,9 +45,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
-import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.HistoryRide
 import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.history.LeaderBadge
 import com.danglingmind.convotrack.ui.map.ConvoTrackMap
@@ -81,10 +81,8 @@ fun HomeScreen(
         state = UiState.Loading
         state = try {
             UiState.Success(apiCall { api.getMyRides().rides })
-        } catch (e: ApiException) {
-            UiState.Error(e.message ?: "Couldn't load rides")
         } catch (e: Exception) {
-            UiState.Error("Couldn't load rides")
+            UiState.Error(e.riderMessage)
         }
     }
 

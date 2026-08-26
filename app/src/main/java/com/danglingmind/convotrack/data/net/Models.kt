@@ -143,6 +143,9 @@ data class RideStateUpdate(
     val participants: List<LiveParticipant> = emptyList(),
     val leaderboard: List<LiveLeaderboardEntry> = emptyList(),
     val openRegroup: RegroupEvent? = null,
+    // An emergency stays open (pin + repeating siren) until the raiser or leader dismisses it;
+    // carried in the snapshot so late joiners / re-entrants pick it up.
+    val openEmergency: com.danglingmind.convotrack.data.socket.SocketEmergency? = null,
 )
 
 @Serializable

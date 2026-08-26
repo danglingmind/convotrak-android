@@ -31,7 +31,8 @@
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="portrait"
-            android:theme="@style/Theme.ConvoTrack">
+            android:theme="@style/Theme.ConvoTrack"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -45,16 +46,17 @@
                 <data android:scheme="convotrack" android:host="join" />
             </intent-filter>
 
-            <!-- HTTPS App Link: https://convoy-backend-hx3c.onrender.com/convotrack/join/CODE
-                 autoVerify checks /.well-known/assetlinks.json so the link opens the
-                 app directly (no chooser). Host must match ApiClient.JOIN_LINK_HOST. -->
+            <!-- HTTPS App Link: https://convotrack.in/join/CODE
+                 autoVerify checks https://convotrack.in/.well-known/assetlinks.json so
+                 the link opens the app directly (no chooser). Host must match
+                 ApiClient.JOIN_LINK_HOST. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https"
-                    android:host="convoy-backend-hx3c.onrender.com"
-                    android:pathPrefix="/convotrack/join" />
+                    android:host="convotrack.in"
+                    android:pathPrefix="/join" />
             </intent-filter>
         </activity>
 

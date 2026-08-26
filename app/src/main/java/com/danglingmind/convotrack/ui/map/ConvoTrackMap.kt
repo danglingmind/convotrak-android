@@ -1,56 +1,57 @@
 package com.danglingmind.convotrack.ui.map
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Path
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
 import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTType
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.MapsInitializer
 import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.Dash
+import com.google.android.gms.maps.model.Gap
 import com.google.android.gms.maps.model.JointType
+import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.gms.maps.model.RoundCap
 import com.google.maps.android.compose.CameraMoveStartedReason
+import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapType
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
-import com.google.maps.android.compose.rememberMarkerState
+import kotlin.math.cos
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
-enum class MapMarkerKind { DESTINATION, WAYPOINT, START, RIDER, REGROUP }
+enum class MapMarkerKind { DESTINATION, WAYPOINT, START, RIDER, REGROUP, EMERGENCY }
 
 data class MapMarker(
     val id: String,
@@ -58,36 +59,165 @@ data class MapMarker(
     val kind: MapMarkerKind,
     val label: String? = null,
     val isMe: Boolean = false,
+    /** A rider whose heartbeats have lapsed: kept on the map at their last-known spot but dimmed,
+     *  mirroring the greyed leaderboard row so map and list agree on who's present. */
+    val isOffline: Boolean = false,
+    val isSelected: Boolean = false,
+    val avatarUrl: String? = null,
+    /** Shown under a rider marker — how far they are from ME. */
+    val distanceText: String? = null,
+    /** For REGROUP: FUEL / FOOD / SCENIC / STOP, which picks the glyph and accent. */
+    val regroupType: String? = null,
 )
 
-/** The rider's own position + travel heading, drawn as a rotating arrow puck. */
+/** The rider's own position + travel heading, drawn as the navigation chevron. */
 data class UserPuck(val position: LatLng, val bearing: Float = 0f)
 
-/** Camera behaviour: fit everything, 3D-follow the target (navigation), or leave it alone. */
-sealed interface MapCamera {
-    data object Fit : MapCamera
-    data class Nav(val target: LatLng, val bearing: Float, val zoom: Float) : MapCamera
-    /** Free-look: the user panned; don't move the camera until told to recenter. */
-    data object Free : MapCamera
+/**
+ * Where the camera target sits in the viewport.
+ *
+ * This used to be inferred from `tilt > 0`, which silently coupled two unrelated things: flatten
+ * the camera to 2D and the marker jumps back to dead centre, losing the road ahead. It is stated
+ * by the caller instead, so guidance keeps its low marker at any tilt.
+ */
+enum class MapFraming {
+    /** Guidance — target sits low, most of the viewport showing the road ahead. */
+    ROAD_AHEAD,
+
+    /** Looking at a place — target centred. */
+    CENTERED,
 }
 
-private const val NAV_TILT = 45f
+/** Camera behaviour. [id] makes a repeat of the same instruction a distinct command. */
+sealed interface MapCamera {
+    val id: Long
+
+    /** Fit these coordinates inside the given edge insets (in dp). */
+    data class Fit(
+        override val id: Long,
+        val coords: List<LatLng>,
+        val topDp: Float = 48f,
+        val leftDp: Float = 48f,
+        val bottomDp: Float = 48f,
+        val rightDp: Float = 48f,
+        val animated: Boolean = true,
+    ) : MapCamera
+
+    data class Navigate(
+        override val id: Long,
+        val target: LatLng,
+        val zoom: Float,
+        val bearing: Float,
+        val tilt: Float,
+        val animated: Boolean = true,
+        val framing: MapFraming = MapFraming.ROAD_AHEAD,
+    ) : MapCamera
+
+    /** Free-look: the user panned; don't move the camera until told to recenter. */
+    data class Free(override val id: Long = 0) : MapCamera
+
+    /**
+     * Frame everything on screen — route, markers and the user — and re-frame whenever those
+     * change. The default for every non-navigation map (lobby preview, home card, route pickers),
+     * which have nothing to drive an explicit camera with.
+     */
+    data object AutoFit : MapCamera {
+        override val id: Long get() = 0
+    }
+}
+
+object NavCamera {
+    /**
+     * Camera pitch for guidance.
+     *
+     * The pitch was never the problem with the old "3D" look: what read as 3D was the SDK's
+     * extruded building layer, which is now off. Tilt over a FLAT map is what Google Maps itself
+     * uses — perspective on the road ahead, with no blocks stacked over the route.
+     */
+    const val TILT = 52f
+
+    /**
+     * Speed → zoom curve for the guidance camera, matched against Google Maps' navigation view:
+     * ~18.4 stopped or crawling through a junction, easing out to ~16.4 at highway speed, so the
+     * look-ahead stays roughly constant in *seconds of travel* rather than in metres.
+     *
+     * Interpolated rather than bucketed: the three-bucket table this replaces sat about a full zoom
+     * level wider at city speed (twice the ground area Google shows) and made the map visibly jump
+     * a whole level as you crossed 20 or 60 km/h. Quantized to 0.25 so noisy GPS speed can't make
+     * it breathe.
+     *
+     * SCOPE — this is the zoom and nothing else. Pitch ([TILT]) and where the marker sits in the
+     * viewport ([ROAD_AHEAD_FRACTION]) are deliberately left alone: changing those alongside the
+     * zoom compounds, and a tighter zoom on a shallower pitch with the puck lower pushes the convoy
+     * markers, the destination pin and the road ahead off-screen. Tune this table on its own.
+     */
+    private val zoomAnchors = listOf(
+        0.0 to 18.4f, 20.0 to 18.1f, 40.0 to 17.6f,
+        60.0 to 17.2f, 80.0 to 16.9f, 100.0 to 16.6f, 120.0 to 16.4f,
+    )
+
+    fun zoomForSpeed(kmh: Double): Float {
+        val s = kmh.coerceAtLeast(0.0)
+        var zoom = zoomAnchors.last().second
+        val i = zoomAnchors.indexOfFirst { s <= it.first }
+        if (i == 0) {
+            zoom = zoomAnchors[0].second
+        } else if (i > 0) {
+            val lo = zoomAnchors[i - 1]
+            val hi = zoomAnchors[i]
+            val t = ((s - lo.first) / (hi.first - lo.first)).toFloat()
+            zoom = lo.second + (hi.second - lo.second) * t
+        }
+        return Math.round(zoom * 4) / 4f
+    }
+
+    /** How far down the viewport the guidance target sits, as a fraction of map height. */
+    const val ROAD_AHEAD_FRACTION = 0.35f
+
+    /**
+     * Height of the tallest stop-pin art drawn ABOVE its coordinate, in dp.
+     *
+     * A camera fit must add this to its top inset: fitting frames the coordinates and knows nothing
+     * about the marker towering over them, so a route whose northernmost point is a stop would
+     * otherwise have that pin clipped off-screen.
+     */
+    const val STOP_PIN_TOP_EXTENT_DP = 92f
+}
+
+// Route thickness. `ROUTE_CHUNKINESS` is the single dial; the casing (the 3D sidewall under the
+// bright face) derives from it so the extrude looks consistent at any width.
+private const val ROUTE_CHUNKINESS = 16f
+private const val CASING_RATIO = 13f / 8f
 
 /**
- * Reusable dark Google map — the Android analogue of iOS GoogleMapView. Draws a dim planned
- * route + a bright active route, typed & labelled markers, the user heading puck, and either
- * fits bounds or follows the user with a tilted 3D camera (navigation).
+ * Reusable dark Google map — the Android analogue of iOS `GoogleMapView`.
+ *
+ * Draws a dim planned route beneath a bright active route (with a casing for depth), typed and
+ * labelled markers baked to bitmaps, the user's heading chevron, and either fits bounds or follows
+ * the rider with a tilted guidance camera.
  */
 @Composable
 fun ConvoTrackMap(
     modifier: Modifier = Modifier,
     routeCoords: List<LatLng> = emptyList(),
     fullRouteCoords: List<LatLng> = emptyList(),
+    /** Ordered stop coordinates (start → waypoints → destination). Used to draw curved dotted
+     *  connectors from each end stop to the polyline's own endpoint. */
+    stopCoords: List<LatLng> = emptyList(),
     markers: List<MapMarker> = emptyList(),
     user: UserPuck? = null,
-    camera: MapCamera = MapCamera.Fit,
+    camera: MapCamera = MapCamera.AutoFit,
     interactive: Boolean = true,
+    /** True while turn-by-turn guidance is running, i.e. [routeCoords] is re-cut every fix to start
+     *  under the rider. The head of the active route is then the rider's own chevron, not a route
+     *  endpoint, so it gets no end cap of its own. */
+    isNavigating: Boolean = false,
     onUserPan: () -> Unit = {},
+    /** Screen geometry for riders currently off-screen, recomputed as the camera moves. */
+    onEdgeIndicators: ((List<EdgeIndicator>) -> Unit)? = null,
+    /** Where the app's top chrome ends, in dp. Edge indicators clamp below it instead of sliding
+     *  up behind the turn banner and leaderboard. */
+    topOverlayDp: Dp = 0.dp,
     // All alternative routes (index == position). The one at [selectedRouteIndex] is drawn bright
     // via [routeCoords]; the rest render dim + tappable so the leader can pick one.
     alternativeRoutes: List<List<LatLng>> = emptyList(),
@@ -95,38 +225,112 @@ fun ConvoTrackMap(
     onSelectRoute: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val scale = density.density
     val darkStyle = remember { MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style_dark) }
     val cameraPositionState = rememberCameraPositionState()
+
     // BitmapDescriptorFactory needs the Maps SDK initialised before use (idempotent).
-    val userArrow = remember {
+    val userChevron = remember(scale) {
         MapsInitializer.initialize(context)
-        userArrowDescriptor()
+        BitmapDescriptorFactory.fromBitmap(MapMarkerBitmaps.userChevron(scale))
     }
 
-    // In nav mode push the map centre down so the puck sits in the lower third and more of the
-    // road ahead is visible (mirrors iOS padding.top = height*0.3).
-    val contentPadding = if (camera is MapCamera.Nav) PaddingValues(top = 260.dp) else PaddingValues(0.dp)
+    // Avatar photos for rider markers. Baking a marker icon is synchronous, so each avatar is
+    // fetched once, cached by URL, and the affected marker re-baked when it lands.
+    val avatars = remember { mutableStateMapOf<String, Bitmap>() }
+    val avatarsRequested = remember { mutableSetOf<String>() }
+    LaunchedEffect(markers) {
+        markers.mapNotNull { it.avatarUrl }.distinct().forEach { url ->
+            if (url in avatarsRequested) return@forEach
+            avatarsRequested += url
+            fetchBitmap(url)?.let { avatars[url] = it }
+        }
+    }
 
-    LaunchedEffect(camera) {
-        when (camera) {
-            is MapCamera.Nav -> {
-                val pos = CameraPosition.Builder()
-                    .target(camera.target).zoom(camera.zoom).tilt(NAV_TILT).bearing(camera.bearing).build()
-                cameraPositionState.animate(CameraUpdateFactory.newCameraPosition(pos), 700)
-            }
-            MapCamera.Free -> Unit // user is panning; leave the camera where they left it
-            MapCamera.Fit -> {
-                val points = routeCoords + fullRouteCoords + markers.map { it.position } + listOfNotNull(user?.position)
-                when {
-                    points.isEmpty() -> Unit
-                    points.size == 1 -> cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 13f)
-                    else -> {
-                        val bounds = LatLngBounds.builder().apply { points.forEach { include(it) } }.build()
-                        runCatching { cameraPositionState.move(CameraUpdateFactory.newLatLngBounds(bounds, 140)) }
-                            .onFailure { cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 11f) }
+    // In nav mode push the map centre down so the chevron sits low and more of the road ahead is
+    // visible. Expressed as a fraction of the map's height, not a constant, so it holds on any
+    // screen and in landscape.
+    var mapHeightPx by remember { mutableStateOf(0) }
+    var mapWidthPx by remember { mutableStateOf(0) }
+    val contentPadding = when {
+        camera is MapCamera.Navigate && camera.framing == MapFraming.ROAD_AHEAD ->
+            PaddingValues(top = with(density) { (mapHeightPx * NavCamera.ROAD_AHEAD_FRACTION).toDp() })
+
+        // A bounds fit takes ONE padding value, so asymmetric insets have to be expressed as map
+        // content padding instead — the SDK subtracts it from the viewport before framing, which
+        // is exactly what "fit the route into the band the chrome leaves visible" means. Collapsing
+        // the four insets into their maximum (the only alternative) would zoom the preview out by
+        // the largest one on all four sides.
+        camera is MapCamera.Fit -> PaddingValues(
+            start = camera.leftDp.dp,
+            top = camera.topDp.dp,
+            end = camera.rightDp.dp,
+            bottom = camera.bottomDp.dp,
+        )
+
+        else -> PaddingValues(0.dp)
+    }
+
+    // AutoFit re-frames on content change, so it is keyed on the content rather than a command id.
+    if (camera is MapCamera.AutoFit) {
+        LaunchedEffect(routeCoords, fullRouteCoords, markers, user) {
+            val points = routeCoords + fullRouteCoords + markers.map { it.position } + listOfNotNull(user?.position)
+            when {
+                points.isEmpty() -> Unit
+                points.size == 1 ->
+                    cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 13f)
+                else -> {
+                    val bounds = LatLngBounds.builder().apply { points.forEach { include(it) } }.build()
+                    runCatching {
+                        cameraPositionState.move(CameraUpdateFactory.newLatLngBounds(bounds, 140))
+                    }.onFailure {
+                        cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 11f)
                     }
                 }
             }
+        }
+    }
+
+    // Explicit camera commands are keyed on the command's id, so re-issuing the same target
+    // still moves the camera.
+    LaunchedEffect(camera.id) {
+        when (camera) {
+            is MapCamera.Navigate -> {
+                val pos = CameraPosition.Builder()
+                    .target(camera.target).zoom(camera.zoom).tilt(camera.tilt).bearing(camera.bearing)
+                    .build()
+                val update = CameraUpdateFactory.newCameraPosition(pos)
+                if (camera.animated) {
+                    runCatching { cameraPositionState.animate(update, 700) }
+                } else {
+                    cameraPositionState.move(update)
+                }
+            }
+            is MapCamera.Fit -> {
+                val points = camera.coords
+                when {
+                    points.isEmpty() -> Unit
+                    points.size == 1 ->
+                        cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 13f)
+                    else -> {
+                        val bounds = LatLngBounds.builder().apply { points.forEach { include(it) } }.build()
+                        // The insets are already applied as content padding above; this is just a
+                        // small breathing margin inside the resulting band.
+                        val pad = with(density) { 8.dp.roundToPx() }
+                        runCatching {
+                            val update = CameraUpdateFactory.newLatLngBounds(bounds, pad)
+                            if (camera.animated) cameraPositionState.animate(update, 700)
+                            else cameraPositionState.move(update)
+                        }.onFailure {
+                            cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 11f)
+                        }
+                    }
+                }
+            }
+            // Handled above (content-keyed) / nothing to do.
+            is MapCamera.AutoFit -> Unit
+            is MapCamera.Free -> Unit // user is panning; leave the camera where they left it
         }
     }
 
@@ -136,11 +340,60 @@ fun ConvoTrackMap(
             .collect { if (it == CameraMoveStartedReason.GESTURE) onUserPan() }
     }
 
+    // Off-screen rider geometry, recomputed as the camera moves and when riders move.
+    //
+    // Throttled to 10 Hz, and only emitted on change, because this sits in a self-sustaining loop:
+    // the camera position changes once per frame of every camera animation → compute → emit →
+    // the navigation screen re-renders (rebuilding markers, re-baking icons) → new marker
+    // identities → compute again. Left unbounded the loop runs as fast as the main thread allows,
+    // and anything else wanting the main thread at the same time is competing with it.
+    //
+    // `conflate()` makes it coalescing rather than dropping: the chips still settle on the final
+    // geometry instead of freezing at whatever the last un-throttled frame happened to be.
+    if (onEdgeIndicators != null) {
+        val topInsetPx = with(density) { topOverlayDp.toPx() }
+        var lastEmitted by remember { mutableStateOf<List<EdgeIndicator>>(emptyList()) }
+        LaunchedEffect(Unit) {
+            snapshotFlow {
+                EdgeInputs(cameraPositionState.position, markers, user, mapWidthPx, mapHeightPx)
+            }
+                .conflate()
+                .collect { inputs ->
+                    val next = computeEdgeIndicators(
+                        cameraPositionState = cameraPositionState,
+                        markers = inputs.markers,
+                        user = inputs.user,
+                        widthPx = inputs.widthPx,
+                        heightPx = inputs.heightPx,
+                        topInsetPx = topInsetPx,
+                        scale = scale,
+                    )
+                    if (next != lastEmitted) {
+                        lastEmitted = next
+                        onEdgeIndicators(next)
+                    }
+                    delay(100)   // 10 Hz cap, matching the camera tick
+                }
+        }
+    }
+
     GoogleMap(
-        modifier = modifier,
+        modifier = modifier.onSizeChanged {
+            mapWidthPx = it.width
+            mapHeightPx = it.height
+        },
         cameraPositionState = cameraPositionState,
         contentPadding = contentPadding,
-        properties = MapProperties(mapType = MapType.NORMAL, mapStyleOptions = darkStyle),
+        properties = MapProperties(
+            mapType = MapType.NORMAL,
+            mapStyleOptions = darkStyle,
+            isTrafficEnabled = true,
+            // Defaults to true, which is what drew the extruded blocks over the route. Google's own
+            // navigation view renders a flat map, so the road geometry stays the loudest thing on
+            // screen.
+            isBuildingEnabled = false,
+            isIndoorEnabled = false,
+        ),
         uiSettings = MapUiSettings(
             zoomControlsEnabled = false,
             compassEnabled = false,
@@ -151,15 +404,15 @@ fun ConvoTrackMap(
             zoomGesturesEnabled = interactive,
         ),
     ) {
-        // Dim, tappable alternatives sit below the bright selected route (iOS applyAlternatives).
-        // Only shown when there's more than one option to choose between.
+        // Dim, tappable alternatives sit below the bright selected route. Only shown when there's
+        // more than one option to choose between.
         if (alternativeRoutes.size > 1) {
             alternativeRoutes.forEachIndexed { index, coords ->
                 if (index != selectedRouteIndex && coords.size >= 2) {
                     Polyline(
                         points = coords,
                         color = androidx.compose.ui.graphics.Color(0xFFC7C7C7).copy(alpha = 0.42f),
-                        width = 10f,
+                        width = 8f,
                         zIndex = 0f,
                         clickable = onSelectRoute != null,
                         tag = index,
@@ -172,13 +425,12 @@ fun ConvoTrackMap(
             }
         }
 
-        // Dim planned route underneath, bright active route on top. Rounded end caps + joints
-        // give each line a soft "dot" terminus everywhere the map is used.
+        // Dim planned route underneath — the leader's plan, which a reroute never touches.
         if (fullRouteCoords.size >= 2) {
             Polyline(
                 points = fullRouteCoords,
                 color = CT.primaryFixed.copy(alpha = 0.28f),
-                width = 9f,
+                width = 6f,
                 zIndex = 1f,
                 startCap = RoundCap(),
                 endCap = RoundCap(),
@@ -186,28 +438,68 @@ fun ConvoTrackMap(
             )
         }
         if (routeCoords.size >= 2) {
+            // Dark-lime casing, then the bright face on top: a cheap extrude that keeps the route
+            // reading as a raised ribbon rather than a flat stripe on dark tiles.
+            Polyline(
+                points = routeCoords,
+                color = androidx.compose.ui.graphics.Color(0xFF5A6C00),
+                width = ROUTE_CHUNKINESS * CASING_RATIO,
+                zIndex = 2f,
+                startCap = RoundCap(),
+                endCap = RoundCap(),
+                jointType = JointType.ROUND,
+            )
             Polyline(
                 points = routeCoords,
                 color = CT.primaryFixed,
-                width = 14f,
-                zIndex = 2f,
+                width = ROUTE_CHUNKINESS,
+                zIndex = 3f,
                 startCap = RoundCap(),
                 endCap = RoundCap(),
                 jointType = JointType.ROUND,
             )
         }
 
-        markers.forEach { marker -> LabeledMarker(marker) }
+        // Curved dotted connectors: each end stop to its nearest polyline endpoint. Stops are
+        // placed on a building, the route starts on the road — the connector makes that gap read
+        // as intentional rather than as a broken line.
+        val connectorBase = fullRouteCoords.ifEmpty { routeCoords }
+        if (connectorBase.size >= 2) {
+            stopCoords.firstOrNull()?.let { CurvedConnector(it, connectorBase.first()) }
+            stopCoords.lastOrNull()?.let { CurvedConnector(it, connectorBase.last()) }
+        }
+
+        // End caps. The HEAD cap is suppressed while navigating: the route now starts underneath
+        // the chevron, so a cap there would only double-draw it — and previously it put a second
+        // lime dot on the map a few metres off the chevron, tracking the polyline rather than the
+        // rider, which read as the route's start point sliding along at a different pace.
+        val endCapSmall = remember(scale) {
+            BitmapDescriptorFactory.fromBitmap(MapMarkerBitmaps.endCap(scale, 14f, 0.45f))
+        }
+        val endCapBright = remember(scale) {
+            BitmapDescriptorFactory.fromBitmap(MapMarkerBitmaps.endCap(scale, 16f, 1f))
+        }
+        fullRouteCoords.firstOrNull()?.let { EndCap("plan_head", it, endCapSmall) }
+        fullRouteCoords.lastOrNull()?.let { EndCap("plan_tail", it, endCapSmall) }
+        if (!isNavigating) routeCoords.firstOrNull()?.let { EndCap("route_head", it, endCapBright) }
+        routeCoords.lastOrNull()?.let { EndCap("route_tail", it, endCapBright) }
+
+        markers.forEach { marker ->
+            BakedMarker(marker, scale, avatars[marker.avatarUrl])
+        }
 
         if (user != null) {
-            val state = rememberMarkerState(position = user.position)
+            val state = remember { MarkerState(position = user.position) }
             LaunchedEffect(user.position) { state.position = user.position }
             Marker(
                 state = state,
-                icon = userArrow,
+                icon = userChevron,
                 rotation = user.bearing,
+                // Flat = lies on the road plane and turns with the map, so `rotation` is measured
+                // clockwise from NORTH rather than from screen-up. The map owns the conversion into
+                // screen space, so the chevron stays true whatever the camera bearing is doing.
                 flat = true,
-                anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f),
+                anchor = Offset(0.5f, 0.5f),
                 zIndex = 10f,
             )
         }
@@ -215,93 +507,239 @@ fun ConvoTrackMap(
 }
 
 @Composable
-private fun LabeledMarker(marker: MapMarker) {
-    val state = rememberMarkerState(position = marker.position)
-    LaunchedEffect(marker.position) { state.position = marker.position }
-    MarkerComposable(
-        marker.id, marker.label.orEmpty(), marker.isMe,
-        state = state,
-        anchor = androidx.compose.ui.geometry.Offset(0.5f, 1f),
-    ) {
-        PinContent(marker)
-    }
+private fun EndCap(id: String, position: LatLng, icon: BitmapDescriptor) {
+    val state = remember(id) { MarkerState(position = position) }
+    LaunchedEffect(position) { state.position = position }
+    Marker(state = state, icon = icon, anchor = Offset(0.5f, 0.5f), zIndex = 1.5f, flat = true)
+}
+
+/**
+ * Marker draw order (markers always render above polylines, so these only order markers among
+ * themselves): emergency → regroup → destination → waypoint → start → riders.
+ *
+ * Stops outrank riders deliberately: they're the fixed landmarks the route is built from, and a
+ * rider avatar drifting over the destination flag hides the one marker that can't be inferred from
+ * anything else on screen.
+ */
+private fun zIndexFor(kind: MapMarkerKind): Float = when (kind) {
+    MapMarkerKind.EMERGENCY -> 9f
+    MapMarkerKind.REGROUP -> 8f
+    MapMarkerKind.DESTINATION -> 7f
+    MapMarkerKind.WAYPOINT -> 6.5f
+    MapMarkerKind.START -> 6f
+    MapMarkerKind.RIDER -> 4f
 }
 
 @Composable
-private fun PinContent(marker: MapMarker) {
-    val accent = when (marker.kind) {
-        MapMarkerKind.DESTINATION -> CT.primaryFixed
-        MapMarkerKind.START -> CT.tertiaryFixed
-        MapMarkerKind.WAYPOINT -> CT.primaryFixed
-        MapMarkerKind.RIDER -> if (marker.isMe) CT.primaryFixed else CT.onSurface
-        MapMarkerKind.REGROUP -> CT.errorColor
+private fun BakedMarker(marker: MapMarker, scale: Float, avatar: Bitmap?) {
+    // Re-bake only when the marker's APPEARANCE changes, never on position. Riders move every
+    // second; their artwork does not.
+    val styleKey = remember(marker.kind, marker.label, marker.isMe, marker.isSelected, marker.isOffline, marker.distanceText, marker.regroupType, avatar) {
+        listOf(marker.kind, marker.label, marker.isMe, marker.isSelected, marker.isOffline, marker.distanceText, marker.regroupType, avatar?.hashCode())
     }
-    Box(
-        Modifier
-            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
-            .clip(RoundedCornerShape(8.dp)),
-    ) {
-        androidx.compose.foundation.layout.Row(
-            Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
-        ) {
-            when (marker.kind) {
-                MapMarkerKind.DESTINATION ->
-                    androidx.compose.material3.Icon(Icons.Filled.Flag, null, tint = accent, modifier = Modifier.size(13.dp))
-                MapMarkerKind.RIDER ->
-                    Box(Modifier.size(13.dp).clip(RoundedCornerShape(50)).background(accent))
-                else ->
-                    androidx.compose.material3.Icon(Icons.Filled.Place, null, tint = accent, modifier = Modifier.size(13.dp))
-            }
-            Text(
-                (marker.label ?: labelFor(marker.kind)).uppercase(),
-                style = CTType.labelCaps.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
-                color = androidx.compose.ui.graphics.Color.White,
-                letterSpacing = 0.5.sp,
+    val baked = remember(styleKey, scale) { bakeMarker(marker, scale, avatar) }
+
+    val state = remember(marker.id) { MarkerState(position = marker.position) }
+    LaunchedEffect(marker.position) { state.position = marker.position }
+    Marker(
+        state = state,
+        icon = baked.first,
+        anchor = baked.second,
+        zIndex = zIndexFor(marker.kind),
+    )
+}
+
+private fun bakeMarker(marker: MapMarker, scale: Float, avatar: Bitmap?): Pair<BitmapDescriptor, Offset> =
+    when (marker.kind) {
+        MapMarkerKind.RIDER -> {
+            val bmp = MapMarkerBitmaps.riderMarker(
+                scale = scale,
+                name = marker.label.orEmpty().ifEmpty { "Rider" },
+                avatar = avatar,
+                isMe = marker.isMe,
+                isSelected = marker.isSelected,
+                isOffline = marker.isOffline,
+                distanceText = marker.distanceText,
             )
+            // Anchored at the CIRCLE's centre — the name band sits above it, the distance below.
+            BitmapDescriptorFactory.fromBitmap(bmp) to
+                Offset(0.5f, MapMarkerBitmaps.riderAnchorY(marker.isSelected, marker.distanceText != null))
+        }
+        MapMarkerKind.DESTINATION -> stopPin(scale, "⚑", CT.primaryFixed.toArgb(), 44f, marker.label)
+        MapMarkerKind.WAYPOINT -> stopPin(scale, "•", CT.tertiaryFixed.toArgb(), 32f, marker.label, filled = false)
+        MapMarkerKind.START -> stopPin(scale, "▲", CT.primaryFixed.toArgb(), 36f, marker.label, filled = false)
+        MapMarkerKind.REGROUP -> {
+            val type = marker.regroupType.orEmpty()
+            stopPin(scale, regroupGlyph(type), regroupAccent(type), 40f, regroupLabel(type), filled = false)
+        }
+        MapMarkerKind.EMERGENCY ->
+            stopPin(scale, "!", CT.errorColor.toArgb(), 40f, "EMERGENCY")
+    }
+
+private fun stopPin(
+    scale: Float,
+    glyph: String,
+    accent: Int,
+    circleDp: Float,
+    label: String?,
+    filled: Boolean = true,
+): Pair<BitmapDescriptor, Offset> {
+    val bmp = MapMarkerBitmaps.stopPin(scale, glyph, accent, circleDp, label, filled = filled)
+    // Bottom-anchored at the pointer tip: the art above the coordinate is what the camera fit has
+    // to reserve for (see NavCamera.STOP_PIN_TOP_EXTENT_DP).
+    val tipY = (circleDp * scale + 6f * scale) / bmp.height
+    return BitmapDescriptorFactory.fromBitmap(bmp) to Offset(0.5f, tipY)
+}
+
+private fun regroupGlyph(type: String) = when (type) {
+    "FUEL" -> "⛽"
+    "FOOD" -> "🍴"
+    "SCENIC" -> "◉"
+    else -> "✋"
+}
+
+private fun regroupAccent(type: String) = when (type) {
+    "FUEL" -> 0xFFFFA100.toInt()   // amber
+    "FOOD" -> 0xFFFF6E00.toInt()   // orange
+    "SCENIC" -> 0xFF029CE6.toInt() // sky blue
+    else -> 0xFF7A1CA3.toInt()     // purple
+}
+
+private fun regroupLabel(type: String) = when (type) {
+    "FUEL" -> "FUEL STOP"
+    "FOOD" -> "FOOD STOP"
+    "SCENIC" -> "SCENIC STOP"
+    else -> "STOP"
+}
+
+/**
+ * A dotted quadratic bezier from [a] to [b], bowed 30% of the span perpendicular to it, so the
+ * short hop between a stop's true location and the road the route starts on reads as a deliberate
+ * connector rather than a kink in the route.
+ */
+@Composable
+private fun CurvedConnector(a: LatLng, b: LatLng) {
+    val points = remember(a, b) {
+        // Flat-earth projection (degrees → approximately equal-scale space).
+        val cosLat = cos(a.latitude * Math.PI / 180)
+        val ax = a.longitude * cosLat; val ay = a.latitude
+        val bx = b.longitude * cosLat; val by = b.latitude
+        val dx = bx - ax; val dy = by - ay
+        val len = Math.sqrt(dx * dx + dy * dy)
+        if (len <= 0.0) {
+            emptyList()
+        } else {
+            // Perpendicular unit vector (rotated 90° for a consistent arc direction).
+            val px = dy / len; val py = -dx / len
+            val offset = len * 0.30
+            val cpx = (ax + bx) / 2 + px * offset
+            val cpy = (ay + by) / 2 + py * offset
+            (0..24).map { i ->
+                val t = i / 24.0
+                val t1 = 1.0 - t
+                val qx = t1 * t1 * ax + 2 * t1 * t * cpx + t * t * bx
+                val qy = t1 * t1 * ay + 2 * t1 * t * cpy + t * t * by
+                LatLng(qy, qx / cosLat)
+            }
         }
     }
+    if (points.size < 2) return
+    Polyline(
+        points = points,
+        color = CT.primaryFixed.copy(alpha = 0.75f),
+        width = 4f,
+        zIndex = 1.2f,
+        pattern = listOf(Dash(10f), Gap(10f)),
+    )
 }
 
-private fun labelFor(kind: MapMarkerKind): String = when (kind) {
-    MapMarkerKind.DESTINATION -> "Destination"
-    MapMarkerKind.START -> "Start"
-    MapMarkerKind.WAYPOINT -> "Stop"
-    MapMarkerKind.RIDER -> "Rider"
-    MapMarkerKind.REGROUP -> "Regroup"
-}
+/**
+ * Projects each off-screen rider to a clamped point on the screen border, along their true bearing
+ * from the user.
+ *
+ * Uses the map's own `Projection` so it stays correct under the guidance camera's tilt, heading and
+ * content padding. Emits nothing when there is no user position or the map has no size yet.
+ */
+private fun computeEdgeIndicators(
+    cameraPositionState: CameraPositionState,
+    markers: List<MapMarker>,
+    user: UserPuck?,
+    widthPx: Int,
+    heightPx: Int,
+    topInsetPx: Float,
+    scale: Float,
+): List<EdgeIndicator> {
+    if (widthPx <= 0 || heightPx <= 0) return emptyList()
+    val projection = cameraPositionState.projection ?: return emptyList()
+    val userPos = user?.position ?: return emptyList()
+    // A bad "me" fix would make every rider's distance wrong at once, so bail rather than publish a
+    // screenful of nonsense.
+    if (isUnsetCoordinate(userPos.latitude, userPos.longitude)) return emptyList()
 
-/** Lime heading arrow puck (drawn pointing up; the Marker's rotation applies the heading). */
-private fun userArrowDescriptor(): BitmapDescriptor {
-    val size = 96
-    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val c = Canvas(bmp)
-    val cx = size / 2f
-    val cy = size / 2f
-    val lime = CT.primaryFixed.toArgb()
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val bearing = cameraPositionState.position.bearing
 
-    // Outer glow
-    paint.color = CT.primaryFixed.copy(alpha = 0.22f).toArgb()
-    c.drawCircle(cx, cy, size / 2f, paint)
-    // Inner disc
-    paint.color = lime
-    c.drawCircle(cx, cy, 24f, paint)
-    // White ring
-    paint.style = Paint.Style.STROKE
-    paint.strokeWidth = 6f
-    paint.color = android.graphics.Color.WHITE
-    c.drawCircle(cx, cy, 21f, paint)
-    // Dark arrow pointing up
-    paint.style = Paint.Style.FILL
-    paint.color = CT.onPrimaryFixed.toArgb()
-    val arrow = Path().apply {
-        moveTo(cx, cy - 15f)
-        lineTo(cx - 9f, cy + 9f)
-        lineTo(cx + 9f, cy + 9f)
-        close()
+    // The clamp positions the chip's CENTRE, and its avatar sits above that — the chip is ~54dp
+    // tall (34 avatar + 3 gap + 17 label), so the top inset must clear half the chip plus a margin
+    // on top of whatever chrome the caller reported.
+    val top = if (topInsetPx > 0) topInsetPx + 32 * scale else 96 * scale
+    val side = 46 * scale
+    val bottom = heightPx - 32 * scale
+    val left = side
+    val right = widthPx - side
+    if (right <= left || bottom <= top) return emptyList()
+
+    val rawOrigin = projection.toScreenLocation(userPos)
+    val originX = rawOrigin.x.toFloat().coerceIn(left, right)
+    val originY = rawOrigin.y.toFloat().coerceIn(top, bottom)
+
+    val visible = projection.visibleRegion.latLngBounds
+
+    return markers.mapNotNull { marker ->
+        if (marker.kind != MapMarkerKind.RIDER || marker.isMe) return@mapNotNull null
+        val pos = marker.position
+        if (isUnsetCoordinate(pos.latitude, pos.longitude)) return@mapNotNull null
+        if (visible.contains(pos)) return@mapNotNull null   // on-screen → no chip
+
+        // Relative heading: 0 = straight ahead (up). Screen y is down.
+        val theta = Math.toRadians(bearingTo(userPos, pos) - bearing)
+        val dx = Math.sin(theta).toFloat()
+        val dy = (-Math.cos(theta)).toFloat()
+
+        val exit = rayRectExit(originX, originY, dx, dy, left, top, right, bottom)
+            ?: return@mapNotNull null
+
+        val out = FloatArray(1)
+        android.location.Location.distanceBetween(
+            userPos.latitude, userPos.longitude, pos.latitude, pos.longitude, out,
+        )
+        EdgeIndicator(marker.id, exit.first, exit.second, out[0].toDouble())
     }
-    c.drawPath(arrow, paint)
-    return BitmapDescriptorFactory.fromBitmap(bmp)
+}
+
+private fun bearingTo(from: LatLng, to: LatLng): Double {
+    val out = FloatArray(2)
+    android.location.Location.distanceBetween(
+        from.latitude, from.longitude, to.latitude, to.longitude, out,
+    )
+    return ((out[1] + 360) % 360).toDouble()
+}
+
+/** Snapshot of everything the edge-indicator pass reads, so it can be conflated as one value. */
+private data class EdgeInputs(
+    val camera: CameraPosition,
+    val markers: List<MapMarker>,
+    val user: UserPuck?,
+    val widthPx: Int,
+    val heightPx: Int,
+)
+
+private val avatarClient by lazy { OkHttpClient() }
+
+private suspend fun fetchBitmap(url: String): Bitmap? = withContext(Dispatchers.IO) {
+    runCatching {
+        avatarClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+            if (!resp.isSuccessful) return@use null
+            resp.body?.byteStream()?.let { BitmapFactory.decodeStream(it) }
+        }
+    }.getOrNull()
 }

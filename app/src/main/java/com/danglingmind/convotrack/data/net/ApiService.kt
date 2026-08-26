@@ -22,6 +22,10 @@ interface ApiService {
     @GET("/rides/{rideId}")
     suspend fun getRide(@Path("rideId") rideId: String): Ride
 
+    /** Leader-only. Cascades to participants/waypoints server-side and broadcasts ride:deleted. */
+    @DELETE("/rides/{rideId}")
+    suspend fun deleteRide(@Path("rideId") rideId: String)
+
     @GET("/rides/join/{code}")
     suspend fun getRideByInviteCode(@Path("code") code: String): InviteCodeResponse
 
@@ -30,6 +34,15 @@ interface ApiService {
 
     @DELETE("/rides/{rideId}/participants/{userId}")
     suspend fun removeParticipant(@Path("rideId") rideId: String, @Path("userId") userId: String)
+
+    /**
+     * A rider removes themselves. Server-side this is the same operation as the leader's
+     * [removeParticipant] — same guards, same `ride:participant_left` broadcast — so the other
+     * riders' rosters, ready tally, leaderboard and map pins update through paths that already
+     * exist. Rejects the leader (`LEADER_CANNOT_LEAVE`): they delete or end the ride instead.
+     */
+    @POST("/rides/{rideId}/leave")
+    suspend fun leaveRide(@Path("rideId") rideId: String)
 
     @POST("/rides/{rideId}/start")
     suspend fun startRide(@Path("rideId") rideId: String)
@@ -40,8 +53,15 @@ interface ApiService {
     @GET("/rides/{rideId}/summary")
     suspend fun getRideSummary(@Path("rideId") rideId: String): RideSummary
 
+    /**
+     * @param status comma-separated ride statuses to include; null means every status.
+     *
+     * Filtering server-side matters because this endpoint caps at 50 rows — unfiltered, a rider
+     * with many finished rides could push their in-progress ones out of the response entirely.
+     * See [RideStatusFilter].
+     */
     @GET("/rides/me")
-    suspend fun getMyRides(): MyRidesResponse
+    suspend fun getMyRides(@Query("status") status: String? = null): MyRidesResponse
 
     @GET("/rides/nearby")
     suspend fun getNearbyRides(

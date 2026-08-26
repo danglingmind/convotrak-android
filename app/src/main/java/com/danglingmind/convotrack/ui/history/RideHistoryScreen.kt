@@ -36,9 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.HistoryRide
 import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.EmptyCard
 import com.danglingmind.convotrack.ui.common.ErrorBlock
@@ -66,10 +66,8 @@ fun RideHistoryScreen(
         state = UiState.Loading
         state = try {
             UiState.Success(apiCall { api.getMyRides().rides })
-        } catch (e: ApiException) {
-            UiState.Error(e.message ?: "Couldn't load history")
         } catch (e: Exception) {
-            UiState.Error("Couldn't load history")
+            UiState.Error(e.riderMessage)
         }
     }
 

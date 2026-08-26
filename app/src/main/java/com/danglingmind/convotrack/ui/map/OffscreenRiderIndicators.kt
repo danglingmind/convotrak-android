@@ -1,0 +1,324 @@
+package com.danglingmind.convotrack.ui.map
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.danglingmind.convotrack.ui.theme.CT
+import com.danglingmind.convotrack.ui.theme.CTType
+import kotlin.math.hypot
+import kotlin.math.roundToInt
+
+/**
+ * Off-screen rider indicators — the Android port of iOS `Map/OffscreenRiderIndicators.swift`.
+ *
+ * During navigation the camera is tight on the rider, so most of the convoy is off-viewport most
+ * of the time. Rather than zooming out (which would make the road ahead unreadable), each
+ * off-screen rider is projected onto the screen border in their true direction, with their
+ * distance underneath.
+ */
+
+/**
+ * Pure screen geometry for one off-screen rider, produced where the map's `Projection` is
+ * reachable. Rider metadata (name/avatar/offline) is joined back in the overlay.
+ */
+data class EdgeIndicator(
+    val id: String,
+    /** Clamped point on the screen border, in map-view pixels. */
+    val edgeX: Float,
+    val edgeY: Float,
+    val distanceMeters: Double,
+)
+
+/** An [EdgeIndicator] joined with the rider's display metadata. */
+data class EdgeChipModel(
+    val id: String,
+    val name: String,
+    val avatar: ImageBitmap?,
+    val isOffline: Boolean,
+    val edgeX: Float,
+    val edgeY: Float,
+    val distanceMeters: Double,
+)
+
+/** A group of chips that clamp to nearly the same screen position. */
+data class EdgeCluster(
+    val id: String,              // stable-ish: nearest member's rider id
+    val members: List<EdgeChipModel>,
+    val anchorX: Float,
+    val anchorY: Float,
+    val minDistance: Double,
+)
+
+/**
+ * Greedy grouping of edge chips whose anchor points fall within [radiusPx] of each other. Members
+ * are seeded nearest-first so the closest rider anchors each cluster.
+ */
+fun clusterIndicators(chips: List<EdgeChipModel>, radiusPx: Float): List<EdgeCluster> {
+    val sorted = chips.sortedBy { it.distanceMeters }
+    val assigned = mutableSetOf<String>()
+    val clusters = mutableListOf<EdgeCluster>()
+
+    for (seed in sorted) {
+        if (seed.id in assigned) continue
+        assigned += seed.id
+        val members = mutableListOf(seed)
+        for (other in sorted) {
+            if (other.id in assigned) continue
+            if (hypot(other.edgeX - seed.edgeX, other.edgeY - seed.edgeY) <= radiusPx) {
+                assigned += other.id
+                members += other
+            }
+        }
+        clusters += EdgeCluster(
+            id = seed.id,
+            members = members,
+            anchorX = seed.edgeX,
+            anchorY = seed.edgeY,
+            minDistance = members.minOf { it.distanceMeters },
+        )
+    }
+    return clusters
+}
+
+/**
+ * Exit point of a ray (from an interior origin, direction dx/dy) through the border of a rect.
+ * Slab method; returns null for a degenerate direction.
+ */
+fun rayRectExit(
+    originX: Float, originY: Float,
+    dx: Float, dy: Float,
+    left: Float, top: Float, right: Float, bottom: Float,
+): Pair<Float, Float>? {
+    val big = Float.MAX_VALUE
+    val tx = when {
+        dx > 0 -> (right - originX) / dx
+        dx < 0 -> (left - originX) / dx
+        else -> big
+    }
+    val ty = when {
+        dy > 0 -> (bottom - originY) / dy
+        dy < 0 -> (top - originY) / dy
+        else -> big
+    }
+    val t = minOf(tx, ty)
+    if (!t.isFinite() || t < 0) return null
+    return (originX + dx * t) to (originY + dy * t)
+}
+
+/**
+ * Only a coordinate that means "no fix" is dropped — not one that is merely far away.
+ *
+ * A distance ceiling was tried for this in iOS and was the wrong signal: it suppressed a rider on a
+ * simulated location (a phone in Bangalore vs an emulator's default is thousands of km), which
+ * silently removed every indicator on a two-device test rig. Distance cannot distinguish "wrong"
+ * from "far" — but (0,0) is never a real rider, it is the zero value of a coordinate never set.
+ */
+fun isUnsetCoordinate(lat: Double, lng: Double): Boolean =
+    lat.isNaN() || lng.isNaN() || (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001)
+
+/**
+ * Draws one chip per cluster over the navigation map.
+ *
+ * Collapsed clusters (>1 rider) show a count and the minimum distance; tapping fans them out into
+ * individual chips. Tapping a single or expanded chip flies the camera to that rider.
+ */
+@Composable
+fun OffscreenIndicatorsOverlay(
+    clusters: List<EdgeCluster>,
+    onTapRider: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expandedClusterId by remember { mutableStateOf<String?>(null) }
+
+    Box(modifier.fillMaxSize()) {
+        // Dismiss the expanded fan by tapping elsewhere.
+        if (expandedClusterId != null) {
+            Box(
+                Modifier.matchParentSize().clickable(
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                ) { expandedClusterId = null },
+            )
+        }
+
+        val density = LocalDensity.current
+        val fanStepPx = with(density) { 46.dp.toPx() }
+
+        clusters.forEach { cluster ->
+            when {
+                cluster.id == expandedClusterId && cluster.members.size > 1 -> {
+                    // Members stack toward the screen interior from the cluster anchor.
+                    BoxWithCenter(cluster.anchorX, cluster.anchorY) { centerX, centerY ->
+                        val dx = centerX - cluster.anchorX
+                        val dy = centerY - cluster.anchorY
+                        val len = maxOf(hypot(dx, dy), 0.001f)
+                        cluster.members.forEachIndexed { idx, member ->
+                            val step = idx * fanStepPx
+                            EdgeChip(
+                                model = member,
+                                modifier = Modifier
+                                    .offsetAt(cluster.anchorX + dx / len * step, cluster.anchorY + dy / len * step)
+                                    .clickable { onTapRider(member.id) },
+                            )
+                        }
+                    }
+                }
+                cluster.members.size > 1 -> ClusterChip(
+                    count = cluster.members.size,
+                    distanceMeters = cluster.minDistance,
+                    modifier = Modifier
+                        .offsetAt(cluster.anchorX, cluster.anchorY)
+                        .clickable { expandedClusterId = cluster.id },
+                )
+                else -> cluster.members.firstOrNull()?.let { only ->
+                    EdgeChip(
+                        model = only,
+                        modifier = Modifier
+                            .offsetAt(cluster.anchorX, cluster.anchorY)
+                            .clickable { onTapRider(only.id) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Positions content so its CENTRE sits at (x, y) in map-view pixels. */
+private fun Modifier.offsetAt(x: Float, y: Float): Modifier = this
+    .wrapContentSize(align = Alignment.TopStart, unbounded = true)
+    .offset {
+        // The chip's CENTRE goes to (x, y): the anchor is a point on the screen border, and a chip
+        // hung off its top-left corner would sit half a chip inboard of it.
+        IntOffset(x.roundToInt(), y.roundToInt())
+    }
+    .layoutCenteredOnOrigin()
+
+/** Shifts the composable so its centre, rather than its top-left, sits at the current offset. */
+private fun Modifier.layoutCenteredOnOrigin(): Modifier = this.then(
+    Modifier.layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        layout(placeable.width, placeable.height) {
+            placeable.place(-placeable.width / 2, -placeable.height / 2)
+        }
+    },
+)
+
+/** Supplies the overlay's centre point in pixels, for the fan-out direction. */
+@Composable
+private fun BoxWithCenter(
+    anchorX: Float,
+    anchorY: Float,
+    content: @Composable (centerX: Float, centerY: Float) -> Unit,
+) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val cx = with(density) { maxWidth.toPx() } / 2f
+        val cy = with(density) { maxHeight.toPx() } / 2f
+        content(cx, cy)
+    }
+}
+
+private fun formatEdgeDistance(meters: Double): String =
+    if (meters < 1000) "${(Math.round(meters / 10) * 10)}m"
+    else String.format(java.util.Locale.US, "%.1fkm", meters / 1000)
+
+/**
+ * Single off-screen rider: avatar ringed in the theme green, distance underneath.
+ *
+ * Deliberately card-less. These sit over a moving map, and a filled panel behind each one hides
+ * more road than the rider it points at. The ring carries the identity, the shadow keeps both
+ * legible over light and dark map tiles, and nothing else competes with the route.
+ */
+@Composable
+fun EdgeChip(model: EdgeChipModel, modifier: Modifier = Modifier) {
+    Column(
+        modifier.alpha(if (model.isOffline) 0.55f else 1f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Box(
+            Modifier.size(34.dp).clip(CircleShape).background(CT.surfaceVariant)
+                .border(2.dp, CT.tertiaryFixed, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            val avatar = model.avatar
+            if (avatar != null) {
+                Image(
+                    bitmap = avatar,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize().clip(CircleShape),
+                )
+            } else {
+                androidx.compose.material3.Text(
+                    model.name.take(1).uppercase(),
+                    style = CTType.bodyMd.copy(fontSize = 14.sp),
+                    color = CT.onSurface,
+                )
+            }
+        }
+        androidx.compose.material3.Text(
+            formatEdgeDistance(model.distanceMeters),
+            style = CTType.dataMono,
+            color = CT.onSurface,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * Collapsed cluster: rider count in a ringed circle, minimum distance underneath. Same card-less
+ * treatment as [EdgeChip], so a cluster reads as "several of those" rather than as a different
+ * kind of object.
+ */
+@Composable
+fun ClusterChip(count: Int, distanceMeters: Double, modifier: Modifier = Modifier) {
+    Column(
+        modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Box(
+            Modifier.size(34.dp).clip(CircleShape).background(CT.surfaceVariant)
+                .border(2.dp, CT.tertiaryFixed, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            androidx.compose.material3.Text(
+                "$count",
+                style = CTType.dataMono.copy(fontSize = 15.sp),
+                color = CT.onSurface,
+            )
+        }
+        androidx.compose.material3.Text(
+            formatEdgeDistance(distanceMeters),
+            style = CTType.dataMono,
+            color = CT.onSurface,
+            maxLines = 1,
+        )
+    }
+}

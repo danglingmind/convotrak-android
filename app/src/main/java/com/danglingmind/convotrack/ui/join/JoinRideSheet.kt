@@ -50,7 +50,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.InviteCodeResponse
+import com.danglingmind.convotrack.data.net.UserFacingError
 import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.data.net.isNotFoundError
+import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
@@ -87,10 +90,14 @@ fun JoinRideSheet(
             delay(250) // debounce
             try {
                 preview = apiCall { api.getRideByInviteCode(code) }
-            } catch (e: ApiException) {
-                error = friendlyLookupError(e.message)
             } catch (e: Exception) {
-                error = "Couldn't verify that code. Please try again."
+                // A 404 from this endpoint means the code, not the ride, so it is remapped —
+                // "That ride has vanished" would be nonsense for a code that was mistyped.
+                error = if (isNotFoundError(e.message)) {
+                    UserFacingError.messageForCode("INVITE_CODE_NOT_FOUND")
+                } else {
+                    e.riderMessage
+                }
             }
             lookingUp = false
         }
@@ -110,11 +117,11 @@ fun JoinRideSheet(
                 if (e.message == "ALREADY_JOINED" || e.message?.contains("already", ignoreCase = true) == true) {
                     onJoined(p.rideId)
                 } else {
-                    error = friendlyJoinError(e.message)
+                    error = e.riderMessage
                     joining = false
                 }
             } catch (e: Exception) {
-                error = "Something went wrong. Please try again."
+                error = e.riderMessage
                 joining = false
             }
         }
@@ -350,19 +357,3 @@ private fun QrScanTarget(enabled: Boolean, onClick: () -> Unit) {
 }
 
 // Maps invite-code lookup errors to friendly copy.
-private fun friendlyLookupError(code: String?): String = when {
-    code == null -> "Couldn't verify that code."
-    code.contains("NOT_FOUND") -> "No ride found with this code. Double-check and try again."
-    code.contains("RIDE_ENDED") -> "This ride has already ended."
-    else -> "Couldn't verify that code. Please try again."
-}
-
-// Maps backend join errors to friendly copy (ported from iOS RidePreviewSheet.friendlyError).
-private fun friendlyJoinError(code: String?): String = when (code) {
-    "RIDE_FULL" -> "This ride is already full."
-    "QUOTA_EXCEEDED" -> "You're already in another active ride. End it before joining a new one."
-    "ALREADY_JOINED" -> "You're already part of this ride."
-    "RIDE_NOT_ACTIVE", "RIDE_ENDED" -> "This ride is no longer accepting riders."
-    "NOT_FOUND", "RIDE_NOT_FOUND" -> "No ride found for that code."
-    else -> "Couldn't join. Check the code and try again."
-}

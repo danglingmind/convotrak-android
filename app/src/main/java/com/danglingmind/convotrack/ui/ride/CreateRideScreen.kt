@@ -51,10 +51,10 @@ import com.danglingmind.convotrack.data.maps.DirectionsService
 import com.danglingmind.convotrack.data.maps.PlaceResult
 import com.danglingmind.convotrack.data.maps.PlacesService
 import com.danglingmind.convotrack.data.maps.RouteOption
-import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.CreateRideRequest
 import com.danglingmind.convotrack.data.net.CreateWaypoint
 import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.formatKm
 import com.danglingmind.convotrack.ui.map.ConvoTrackMap
@@ -302,11 +302,8 @@ fun CreateRideScreen(
                             )
                             val resp = apiCall { api.createRide(req) }
                             onCreated(resp.rideId)
-                        } catch (e: ApiException) {
-                            error = e.message ?: "Couldn't create the ride."
-                            creating = false
                         } catch (e: Exception) {
-                            error = "Couldn't create the ride."
+                            error = e.riderMessage
                             creating = false
                         }
                     }

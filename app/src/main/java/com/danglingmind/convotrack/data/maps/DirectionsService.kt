@@ -16,8 +16,15 @@ import org.json.JSONObject
 
 data class DirectionsStep(
     val instruction: String,
+    /** Routes API `navigationInstruction.maneuver` — drives the banner arrow, so the arrow can't
+     *  disagree with the instruction text. Null when the step arrives without one. */
+    val maneuver: String?,
     val end: LatLng,
     val distanceMeters: Double,
+    /** Distance from the route's start to this step's end, measured ALONG the drawn polyline.
+     *  Stamped by [com.danglingmind.convotrack.ui.ride.stampAlongRouteDistances] once the geometry
+     *  is known — this is what makes step tracking self-correcting. */
+    val endDistanceAlongRoute: Double = 0.0,
 )
 
 data class DirectionsResult(
@@ -40,6 +47,13 @@ object DirectionsService {
     private val client = OkHttpClient()
     private val json = Json { ignoreUnknownKeys = true }
 
+    /** Only the fields we actually use, so the response stays small. `navigationInstruction`
+     *  carries both the text and the maneuver enum. */
+    private const val STEP_FIELD_MASK =
+        "routes.legs.distanceMeters,routes.legs.duration," +
+            "routes.legs.steps.distanceMeters,routes.legs.steps.endLocation," +
+            "routes.legs.steps.navigationInstruction,routes.legs.steps.polyline"
+
     /** trafficAware=true for planning; false for fast reroutes. */
     suspend fun route(
         origin: LatLng,
@@ -61,12 +75,7 @@ object DirectionsService {
             .url("https://routes.googleapis.com/directions/v2:computeRoutes")
             .addHeader("Content-Type", "application/json")
             .addHeader("X-Goog-Api-Key", BuildConfig.MAPS_API_KEY)
-            .addHeader(
-                "X-Goog-FieldMask",
-                "routes.legs.distanceMeters,routes.legs.duration," +
-                    "routes.legs.steps.distanceMeters,routes.legs.steps.endLocation," +
-                    "routes.legs.steps.navigationInstruction,routes.legs.steps.polyline",
-            )
+            .addHeader("X-Goog-FieldMask", STEP_FIELD_MASK)
             .post(bodyJson.toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -78,21 +87,78 @@ object DirectionsService {
                 ?: error("No route found")
 
             val coords = leg.steps.flatMap { decodePolyline(it.polyline.encodedPolyline) }
-            val steps = leg.steps.mapNotNull { step ->
-                val end = step.endLocation?.latLng ?: return@mapNotNull null
-                DirectionsStep(
-                    instruction = step.navigationInstruction?.instructions.orEmpty(),
-                    end = LatLng(end.latitude, end.longitude),
-                    distanceMeters = (step.distanceMeters ?: 0).toDouble(),
-                )
-            }
-            DirectionsResult(
-                coordinates = coords,
-                distanceMeters = leg.distanceMeters.toDouble(),
-                durationSeconds = parseDuration(leg.duration),
-                steps = steps,
+            legResult(leg)
+        }
+    }
+
+    /**
+     * The same alternatives [alternativeRoutes] offers the ride leader, but carrying each one's
+     * turn-by-turn steps and stitched geometry.
+     *
+     * Navigation needs this because the leader's pick is persisted as a bare polyline: replaying
+     * it later tells you the shape of the chosen road but not a single instruction for it, and a
+     * plain [route] recompute answers with whatever Google ranks first today — which is a
+     * different road entirely whenever the leader chose anything but the default. Asking for the
+     * alternative set with steps attached lets the caller find the one that matches the stored
+     * shape and take its instructions (iOS `alternativeRoutesWithSteps`).
+     *
+     * [alternativeRoutes] deliberately does NOT ask for step data: it feeds the route picker,
+     * which only ever draws whole-route polylines, and the per-step fields multiply that response
+     * several times over for nothing.
+     */
+    suspend fun alternativeRoutesWithSteps(
+        origin: LatLng,
+        destination: LatLng,
+        trafficAware: Boolean = true,
+    ): List<DirectionsResult> = withContext(Dispatchers.IO) {
+        val bodyJson = JSONObject().apply {
+            put("origin", latLngNode(origin))
+            put("destination", latLngNode(destination))
+            put("travelMode", "DRIVE")
+            put("routingPreference", if (trafficAware) "TRAFFIC_AWARE" else "TRAFFIC_UNAWARE")
+            put("polylineQuality", "HIGH_QUALITY")
+            put("computeAlternativeRoutes", true)
+            put("languageCode", "en-US")
+            put("units", "METRIC")
+        }.toString()
+
+        val request = Request.Builder()
+            .url("https://routes.googleapis.com/directions/v2:computeRoutes")
+            .addHeader("Content-Type", "application/json")
+            .addHeader("X-Goog-Api-Key", BuildConfig.MAPS_API_KEY)
+            .addHeader("X-Goog-FieldMask", STEP_FIELD_MASK)
+            .post(bodyJson.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) error("Directions HTTP ${resp.code}")
+            val parsed = json.decodeFromString(RoutesResponse.serializer(), text)
+            parsed.routes.mapNotNull { it.legs.firstOrNull() }.map { legResult(it) }
+        }
+    }
+
+    private fun legResult(leg: RoutesResponse.Leg): DirectionsResult {
+        // Stitch per-step HIGH_QUALITY polylines for lane-accurate geometry.
+        val coords = leg.steps.flatMap { decodePolyline(it.polyline.encodedPolyline) }
+        // Every step is kept, including any without instruction text: they still occupy real
+        // distance, and dropping them breaks the chain of along-route positions. The banner walks
+        // past the textless ones for display.
+        val steps = leg.steps.mapNotNull { step ->
+            val end = step.endLocation?.latLng ?: return@mapNotNull null
+            DirectionsStep(
+                instruction = step.navigationInstruction?.instructions.orEmpty(),
+                maneuver = step.navigationInstruction?.maneuver,
+                end = LatLng(end.latitude, end.longitude),
+                distanceMeters = (step.distanceMeters ?: 0).toDouble(),
             )
         }
+        return DirectionsResult(
+            coordinates = coords,
+            distanceMeters = leg.distanceMeters.toDouble(),
+            durationSeconds = parseDuration(leg.duration),
+            steps = steps,
+        )
     }
 
     /**

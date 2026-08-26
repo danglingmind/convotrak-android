@@ -24,8 +24,10 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.RemoveCircle
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,12 +46,12 @@ import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.data.maps.DirectionsService
 import com.danglingmind.convotrack.data.maps.PlaceResult
 import com.danglingmind.convotrack.data.maps.RouteOption
-import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.CreateWaypoint
 import com.danglingmind.convotrack.data.net.Ride
 import com.danglingmind.convotrack.data.net.UpdateRideRequest
 import com.danglingmind.convotrack.data.net.Waypoint
 import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.ErrorBlock
 import com.danglingmind.convotrack.ui.common.LoadingBlock
@@ -74,6 +76,9 @@ fun EditRideScreen(
     rideId: String,
     onBack: () -> Unit,
     onSaved: () -> Unit,
+    /** Called after the ride is successfully deleted, so the caller can tear down the realtime
+     *  session and leave the ride flow instead of popping back to a lobby for a dead ride. */
+    onDeleted: () -> Unit = {},
 ) {
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
@@ -91,7 +96,7 @@ fun EditRideScreen(
         ConvoTrackTopBar(title = "Edit Ride", showBack = true, onBack = onBack)
         val r = ride
         when {
-            r != null -> EditRideForm(r, onSaved)
+            r != null -> EditRideForm(r, onSaved, onDeleted)
             loadFailed -> Box(Modifier.padding(20.dp)) {
                 ErrorBlock("Couldn't load ride", onRetry = { scope.launch { load() } })
             }
@@ -104,11 +109,16 @@ private fun waypointPlace(wp: Waypoint): PlaceResult =
     PlaceResult(id = "wp_${wp.order}", name = wp.name, latLng = LatLng(wp.lat, wp.lng), address = null)
 
 @Composable
-private fun EditRideForm(ride: Ride, onSaved: () -> Unit) {
+private fun EditRideForm(ride: Ride, onSaved: () -> Unit, onDeleted: () -> Unit) {
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
 
     val sorted = remember(ride.id) { ride.waypoints.sortedBy { it.order } }
+
+    // Only the ride's creator may delete it (the server enforces the same rule). Read from the
+    // live auth identity so a still-loading session resolves the moment it lands.
+    val amLeader = ServiceLocator.auth.userState.value?.id
+        ?.takeIf { it.isNotEmpty() } == ride.leaderId
 
     var title by remember(ride.id) { mutableStateOf(ride.title) }
     var maxRiders by remember(ride.id) { mutableIntStateOf(ride.maxAllowedParticipants) }
@@ -322,15 +332,86 @@ private fun EditRideForm(ride: Ride, onSaved: () -> Unit) {
                         )
                         apiCall { api.updateRide(ride.id, req) }
                         onSaved()
-                    } catch (e: ApiException) {
-                        error = e.message ?: "Couldn't save the ride."
-                        saving = false
                     } catch (e: Exception) {
-                        error = "Couldn't save the ride."
+                        error = e.riderMessage
                         saving = false
                     }
                 }
             },
         )
+
+        // Delete is the leader's only way to cancel a ride outright. Full-width and destructive,
+        // pinned to the end of the form and behind a confirmation, because unlike LEAVE RIDE it
+        // cannot be undone — it removes the ride for every rider.
+        if (amLeader) {
+            var showDeleteConfirm by remember { mutableStateOf(false) }
+            var deleting by remember { mutableStateOf(false) }
+            var deleteError by remember { mutableStateOf<String?>(null) }
+
+            if (deleteError != null) {
+                Text(
+                    deleteError!!,
+                    style = CTType.bodyMd,
+                    color = CT.errorColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            Box(
+                Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(12.dp))
+                    .background(CT.errorColor.copy(alpha = 0.12f))
+                    .border(1.dp, CT.errorColor.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                    .clickable(enabled = !deleting && !saving) { showDeleteConfirm = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (deleting) "DELETING…" else "DELETE RIDE",
+                    style = CTType.labelCaps,
+                    color = CT.errorColor,
+                    letterSpacing = 4.sp,
+                )
+            }
+
+            if (showDeleteConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteConfirm = false },
+                    containerColor = CT.surfaceContainer,
+                    title = { Text("Delete this ride?", style = CTType.headlineMd, color = CT.onSurface) },
+                    text = {
+                        Text(
+                            "This permanently deletes the ride for everyone. This can't be undone.",
+                            style = CTType.bodyMd,
+                            color = CT.onSurfaceVariant,
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showDeleteConfirm = false
+                            deleting = true
+                            deleteError = null
+                            scope.launch {
+                                try {
+                                    apiCall { api.deleteRide(ride.id) }
+                                    // The server broadcasts ride:deleted; every other rider's
+                                    // lobby surfaces "Ride Cancelled" off the back of it.
+                                    onDeleted()
+                                } catch (e: Exception) {
+                                    deleteError = e.riderMessage
+                                    deleting = false
+                                }
+                            }
+                        }) { Text("Delete Ride", color = CT.errorColor) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteConfirm = false }) {
+                            Text("Cancel", color = CT.onSurfaceVariant)
+                        }
+                    },
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
     }
 }

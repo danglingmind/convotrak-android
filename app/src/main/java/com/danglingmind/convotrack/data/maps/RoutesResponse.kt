@@ -44,6 +44,20 @@ data class RoutesResponse(
     @Serializable
     data class LatLngNode(val latitude: Double, val longitude: Double)
 
+    /**
+     * Both fields optional: a step can arrive with the object present but a field missing, and a
+     * required field here would fail the decode for the ENTIRE route rather than that one step.
+     */
     @Serializable
-    data class NavigationInstruction(val instructions: String)
+    data class NavigationInstruction(
+        val instructions: String? = null,
+        /**
+         * `TURN_LEFT`, `ROUNDABOUT_RIGHT`, `DEPART`, … The authoritative, locale-independent
+         * signal for which arrow to draw. Deriving it from the instruction text instead misreads
+         * road names ("Turn right onto Left Cross Rd" matches "left" first) and collapses distinct
+         * maneuvers ("Keep left" vs "Turn left") — and would break outright if `languageCode` ever
+         * moved off English.
+         */
+        val maneuver: String? = null,
+    )
 }

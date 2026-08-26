@@ -32,8 +32,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,13 +50,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.ApiException
-import com.danglingmind.convotrack.data.net.Ride
 import com.danglingmind.convotrack.data.net.RideParticipant
 import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.data.net.riderMessage
+import com.danglingmind.convotrack.data.realtime.RideRealtimeSession
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.ErrorBlock
 import com.danglingmind.convotrack.ui.common.LoadingBlock
-import com.danglingmind.convotrack.ui.common.UiState
 import com.danglingmind.convotrack.ui.common.formatKm
 import com.danglingmind.convotrack.ui.common.rememberQrBitmap
 import com.danglingmind.convotrack.ui.map.ConvoTrackMap
@@ -68,47 +68,60 @@ import com.danglingmind.convotrack.ui.theme.FloatingStatPill
 import com.danglingmind.convotrack.ui.theme.LimePrimaryButton
 import kotlinx.coroutines.launch
 
+/**
+ * Ride lobby. All realtime state — roster, presence, ride status, removed/deleted — comes from the
+ * graph-scoped [RideSessionViewModel], never from the socket directly: the session owns the
+ * connection, the single heartbeat and reconnect→rejoin for the whole ride, so this screen
+ * observes and never manages a connection of its own.
+ */
 @Composable
 fun RideLobbyScreen(
     rideId: String,
+    sessionVm: RideSessionViewModel,
     onBack: () -> Unit,
     onStartRide: () -> Unit,
     onEdit: (rideId: String) -> Unit,
 ) {
     val api = remember { ServiceLocator.api }
     val auth = remember { ServiceLocator.auth }
-    val socket = remember { ServiceLocator.socket }
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
-    var state by remember { mutableStateOf<UiState<Ride>>(UiState.Loading) }
+    val myId = auth.userState.value?.id
+
+    val session = sessionVm.session
+    val ride by sessionVm.ride.collectAsState()
+    val rideLoaded by sessionVm.rideLoaded.collectAsState()
+    val riders by session.participants.collectAsState()
+    val onlineIds by session.onlineUserIds.collectAsState()
+    val liveStatus by session.rideStatus.collectAsState()
+    val connectionState by session.connectionState.collectAsState()
+    val wasRemoved by session.wasRemoved.collectAsState()
+    val wasDeleted by session.wasDeleted.collectAsState()
+    val rideUpdated by session.rideUpdated.collectAsState()
+    val connected = connectionState == RideRealtimeSession.ConnectionState.CONNECTED
+
     var starting by remember { mutableStateOf(false) }
     var startError by remember { mutableStateOf<String?>(null) }
 
-    suspend fun load() {
-        state = UiState.Loading
-        state = try {
-            UiState.Success(apiCall { api.getRide(rideId) })
-        } catch (e: ApiException) {
-            UiState.Error(e.message ?: "Couldn't load ride")
-        } catch (e: Exception) {
-            UiState.Error("Couldn't load ride")
-        }
-    }
+    // Fetches the ride and starts the shared session. Idempotent, so re-entering the lobby from
+    // navigation just re-joins the room rather than resetting the live roster.
+    LaunchedEffect(rideId, myId) { sessionVm.load(myId.orEmpty()) }
 
-    LaunchedEffect(rideId) { load() }
+    // The leader edited the ride — pull the authoritative copy so the title, route and stops
+    // update live for everyone.
+    LaunchedEffect(rideUpdated) { if (rideUpdated != null) sessionVm.refreshRide() }
 
     Column(Modifier.fillMaxSize().background(CT.surfaceDim).statusBarsPadding()) {
-        val leaderInLobby = (state as? UiState.Success)?.data?.let { r ->
-            val myId = auth.userState.value?.id
-            myId != null && r.leaderId == myId && r.status == "LOBBY"
-        } ?: false
+        // The leader may edit in ANY non-COMPLETED state (LOBBY, ACTIVE and PAUSED are all
+        // editable); editing a live ride re-routes everyone via ride:updated.
+        val amLeader = myId != null && ride?.leaderId == myId
+        val canEdit = amLeader && ride != null && ride?.status != "COMPLETED"
         ConvoTrackTopBar(
-            title = (state as? UiState.Success)?.data?.title ?: "Lobby",
+            title = ride?.title ?: "Lobby",
             showBack = true,
             onBack = onBack,
             actions = {
-                // Leader can edit the ride while it's still in the lobby (iOS parity).
-                if (leaderInLobby) {
+                if (canEdit) {
                     Icon(
                         Icons.Filled.Edit,
                         contentDescription = "Edit ride",
@@ -119,112 +132,60 @@ fun RideLobbyScreen(
             },
         )
 
-        when (val s = state) {
-            is UiState.Loading -> LoadingBlock(Modifier.padding(top = 40.dp))
-            is UiState.Error -> Box(Modifier.padding(20.dp)) {
-                ErrorBlock(s.message, onRetry = { scope.launch { load() } })
+        val loadedRide = ride
+        when {
+            loadedRide == null && !rideLoaded -> LoadingBlock(Modifier.padding(top = 40.dp))
+            loadedRide == null -> Box(Modifier.padding(20.dp)) {
+                ErrorBlock(
+                    "Couldn't load this ride.",
+                    onRetry = { sessionVm.load(myId.orEmpty(), force = true) },
+                )
             }
-            is UiState.Success -> {
-                val ride = s.data
-                val myId = auth.userState.value?.id
-                val amLeader = myId != null && ride.leaderId == myId
+            else -> {
+                // The ride is live once EITHER the REST copy or a state_update says so — the
+                // session's status starts at LOBBY and only moves when the server broadcasts,
+                // so re-entering an already-ACTIVE ride would otherwise show START RIDE.
+                val isActive = liveStatus == "ACTIVE" || liveStatus == "IN_PROGRESS" ||
+                    loadedRide.status == "ACTIVE" || loadedRide.status == "IN_PROGRESS"
 
-                // Track the live ride status locally. We do NOT auto-navigate on ACTIVE — the
-                // lobby holds and shows a RESUME NAVIGATION button (iOS RideLobbyView parity).
-                var liveStatus by remember(ride.id) { mutableStateOf(ride.status) }
-                val isActive = liveStatus == "ACTIVE" || liveStatus == "IN_PROGRESS"
-
-                // Live roster (membership) seeded from REST, then kept current by socket events.
-                val riders = remember(ride.id) { mutableStateListOf(*ride.participants.toTypedArray()) }
-                // Online presence is a SEPARATE, server-authoritative set driven only by the
-                // heartbeat-based ride:presence snapshot — never inferred from roster membership
-                // or socket connect/disconnect. Seeded with self so we don't flash offline.
-                val onlineIds = remember(ride.id) {
-                    mutableStateListOf<String>().apply { myId?.let { add(it) } }
-                }
-                fun setReady(userId: String) {
-                    val i = riders.indexOfFirst { it.userId == userId }
-                    if (i >= 0) riders[i] = riders[i].copy(status = "READY")
-                }
-                LaunchedEffect(ride.id) {
-                    socket.connect()
-                    socket.joinRoom(ride.id)
-                    // Presence heartbeat while this screen is composed & foregrounded. Backgrounding
-                    // suspends the socket (ConvoTrackApp), so emits no-op and the server TTL lapses
-                    // us to offline — robust to locked/killed phones.
-                    launch {
-                        while (true) {
-                            socket.emitHeartbeat(ride.id)
-                            kotlinx.coroutines.delay(8_000)
-                        }
-                    }
-                    // Authoritative green-dot source.
-                    launch { socket.presence.collect { online -> onlineIds.clear(); onlineIds.addAll(online) } }
-                    // Roster membership only (no presence side effects).
-                    launch { socket.lobbyRoster.collect { roster -> riders.clear(); riders.addAll(roster.participants) } }
-                    launch { socket.participantReady.collect { setReady(it) } }
-                    launch {
-                        socket.participantJoined.collect { p ->
-                            if (riders.none { it.userId == p.userId }) riders.add(p)
-                            // Optimistic online (presence snapshot reconciles) — avoids a grey flash.
-                            if (!onlineIds.contains(p.userId)) onlineIds.add(p.userId)
-                            // Robustness: if the socket payload lacks a real name, reconcile from
-                            // REST (authoritative) so a new rider never lingers as a placeholder.
-                            if (p.name.isBlank() || p.name == "Unknown") {
-                                runCatching { apiCall { api.getRide(rideId) } }.getOrNull()?.let { fresh ->
-                                    val i = riders.indexOfFirst { it.userId == p.userId }
-                                    val real = fresh.participants.firstOrNull { it.userId == p.userId }
-                                    if (i >= 0 && real != null) riders[i] = real
-                                }
-                            }
-                        }
-                    }
-                    launch { socket.participantLeft.collect { uid -> riders.removeAll { it.userId == uid } } }
-                    // A leader starting the ride flips status to ACTIVE — surface the RESUME
-                    // button (don't auto-jump; the rider decides when to enter navigation).
-                    launch { socket.stateUpdates.collect { if (it.status == "ACTIVE" || it.status == "IN_PROGRESS") liveStatus = it.status } }
-                    // Leader edited the ride — refresh title/route/details live for everyone.
-                    launch {
-                        socket.rideUpdated.collect {
-                            runCatching { apiCall { api.getRide(rideId) } }.getOrNull()?.let { state = UiState.Success(it) }
-                        }
-                    }
-                }
+                // Optimistic local ready state: the tally and the button move the instant you tap
+                // rather than waiting for the server's ride:participant_ready echo.
+                var myReadyOptimistic by remember(rideId) { mutableStateOf(false) }
+                val myReady = myReadyOptimistic ||
+                    riders.firstOrNull { it.userId == myId }?.status == "READY"
 
                 val readyCount = riders.count { it.status == "READY" }
-                val myReady = myId != null && riders.firstOrNull { it.userId == myId }?.status == "READY"
                 val others = riders.filter { !it.isLeader }
                 val canStart = others.isEmpty() || others.all { it.status == "READY" }
                 var showQr by remember { mutableStateOf(false) }
 
                 // Leader-only rider management (remove from ride).
-                var riderToManage by remember(ride.id) { mutableStateOf<RideParticipant?>(null) }
-                var removing by remember(ride.id) { mutableStateOf(false) }
-                var removeError by remember(ride.id) { mutableStateOf<String?>(null) }
-                // Set when the leader removes *me* — surface a dialog then leave the ride.
-                var removedFromRide by remember(ride.id) { mutableStateOf(false) }
+                var riderToManage by remember(rideId) { mutableStateOf<RideParticipant?>(null) }
+                var removing by remember(rideId) { mutableStateOf(false) }
+                var removeError by remember(rideId) { mutableStateOf<String?>(null) }
 
-                // Live removal: drop the rider from the roster for everyone; if it's me, exit.
-                LaunchedEffect(ride.id) {
-                    socket.participantRemoved.collect { uid ->
-                        riders.removeAll { it.userId == uid }
-                        onlineIds.remove(uid)
-                        if (riderToManage?.userId == uid) { riderToManage = null; removing = false }
-                        if (uid == myId) removedFromRide = true
+                // Clear the leader's in-flight removal sheet once the roster confirms the kick.
+                LaunchedEffect(riders) {
+                    val target = riderToManage ?: return@LaunchedEffect
+                    if (riders.none { it.userId == target.userId }) {
+                        riderToManage = null
+                        removing = false
                     }
                 }
 
                 var routeCoords by remember { mutableStateOf<List<LatLng>>(emptyList()) }
                 // Draw the leader-selected polyline so every rider sees the same line; re-keyed on
                 // the stored geometry + waypoints so a live ride:updated edit re-draws the route.
-                LaunchedEffect(ride.routePolyline, ride.waypoints) { routeCoords = rideRoute(ride) }
+                LaunchedEffect(loadedRide.routePolyline, loadedRide.waypoints) {
+                    routeCoords = rideRoute(loadedRide)
+                }
 
                 // Map with a floating stat-pill strip over its lower edge (iOS lobby mapSection).
                 Box(Modifier.fillMaxWidth().height(260.dp)) {
                     ConvoTrackMap(
                         modifier = Modifier.matchParentSize(),
                         routeCoords = routeCoords,
-                        markers = rideMarkers(ride),
+                        markers = rideMarkers(loadedRide),
                         interactive = false,
                     )
                     Box(
@@ -241,7 +202,7 @@ fun RideLobbyScreen(
                         contentPadding = PaddingValues(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        item { FloatingStatPill(label = "DISTANCE", value = formatKm(ride.distanceMeters), unit = "km") }
+                        item { FloatingStatPill(label = "DISTANCE", value = formatKm(loadedRide.distanceMeters), unit = "km") }
                         item { FloatingStatPill(label = "RIDERS", value = "${riders.size}", unit = null) }
                         item {
                             FloatingStatPill(
@@ -251,8 +212,8 @@ fun RideLobbyScreen(
                                 dotColor = if (canStart) CT.primaryFixed else CT.tertiaryFixedDim,
                             )
                         }
-                        if (ride.inviteCode.isNotEmpty()) {
-                            item { FloatingStatPill(label = "CODE", value = ride.inviteCode, unit = null) }
+                        if (loadedRide.inviteCode.isNotEmpty()) {
+                            item { FloatingStatPill(label = "CODE", value = loadedRide.inviteCode, unit = null) }
                         }
                     }
                 }
@@ -264,7 +225,7 @@ fun RideLobbyScreen(
                 ) {
                     Text("SQUAD ROSTER", style = CTType.labelCaps, color = CT.primaryFixed, letterSpacing = 4.sp)
                     Spacer(Modifier.size(10.dp))
-                    if (socket.connected.value) {
+                    if (connected) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Box(Modifier.size(6.dp).clip(CircleShape).background(CT.primaryFixed))
                             Text("LIVE", style = CTType.labelCaps.copy(fontSize = 9.sp), color = CT.primaryFixed, letterSpacing = 2.sp)
@@ -273,7 +234,7 @@ fun RideLobbyScreen(
                     Spacer(Modifier.weight(1f))
                     Text("$readyCount / ${riders.size} READY", style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 1.sp)
                     Spacer(Modifier.size(10.dp))
-                    LobbyActionButton(Icons.Filled.Share, "Share invite") { shareInvite(ctx, ride.inviteCode, ride.title) }
+                    LobbyActionButton(Icons.Filled.Share, "Share invite") { shareInvite(ctx, loadedRide.inviteCode, loadedRide.title) }
                     Spacer(Modifier.size(8.dp))
                     LobbyActionButton(Icons.Filled.QrCode2, "Show QR code") { showQr = true }
                 }
@@ -295,7 +256,7 @@ fun RideLobbyScreen(
                 }
 
                 if (showQr) {
-                    QrCodeDialog(inviteCode = ride.inviteCode, onDismiss = { showQr = false })
+                    QrCodeDialog(inviteCode = loadedRide.inviteCode, onDismiss = { showQr = false })
                 }
 
                 riderToManage?.let { rider ->
@@ -309,15 +270,12 @@ fun RideLobbyScreen(
                             removeError = null
                             scope.launch {
                                 try {
-                                    apiCall { api.removeParticipant(ride.id, rider.userId) }
+                                    apiCall { api.removeParticipant(rideId, rider.userId) }
                                     // The ride:participant_removed broadcast (which the leader
-                                    // also receives) removes the rider from the roster.
-                                    riderToManage = null
-                                } catch (e: ApiException) {
-                                    removeError = e.message ?: "Couldn't remove rider."
+                                    // also receives) is what removes the rider from the roster
+                                    // and closes this sheet.
                                 } catch (e: Exception) {
-                                    removeError = "Couldn't remove rider."
-                                } finally {
+                                    removeError = e.riderMessage
                                     removing = false
                                 }
                             }
@@ -326,8 +284,15 @@ fun RideLobbyScreen(
                     )
                 }
 
-                if (removedFromRide) {
-                    RemovedFromRideDialog(onConfirm = { removedFromRide = false; onBack() })
+                // The leader removed me from the ride.
+                if (wasRemoved) {
+                    RemovedFromRideDialog(onConfirm = { sessionVm.endSession(); onBack() })
+                }
+
+                // The leader deleted the whole ride. Non-leaders learn of it only through this
+                // broadcast; the leader initiated it and already left via the edit page.
+                if (wasDeleted && !amLeader) {
+                    RideCancelledDialog(onConfirm = { sessionVm.endSession(); onBack() })
                 }
 
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -344,7 +309,13 @@ fun RideLobbyScreen(
                             text = if (myReady) "YOU'RE READY ✓" else "MARK READY",
                             enabled = !myReady,
                             highlighted = myReady,
-                            onClick = { scope.launch { if (socket.emitReady(ride.id) && myId != null) setReady(myId) } },
+                            onClick = {
+                                myReadyOptimistic = true
+                                scope.launch {
+                                    // Roll back if the server never acked it.
+                                    if (!session.markReady()) myReadyOptimistic = false
+                                }
+                            },
                         )
 
                         if (amLeader) {
@@ -361,13 +332,20 @@ fun RideLobbyScreen(
                                     startError = null
                                     scope.launch {
                                         try {
-                                            apiCall { api.startRide(ride.id) }
+                                            apiCall { api.startRide(rideId) }
                                             onStartRide()
                                         } catch (e: ApiException) {
-                                            startError = e.message ?: "Couldn't start the ride."
-                                            starting = false
+                                            // The ride is already ACTIVE (a double tap, or another
+                                            // device started it first). The goal is met — navigate
+                                            // rather than showing an error for it (iOS parity).
+                                            if (e.message?.contains("RIDE_NOT_IN_LOBBY") == true) {
+                                                onStartRide()
+                                            } else {
+                                                startError = e.riderMessage
+                                                starting = false
+                                            }
                                         } catch (e: Exception) {
-                                            startError = "Couldn't start the ride."
+                                            startError = e.riderMessage
                                             starting = false
                                         }
                                     }
@@ -388,6 +366,18 @@ fun RideLobbyScreen(
             }
         }
     }
+}
+
+/** Shown to a rider whose ride the leader deleted — acknowledging it leaves the ride flow. */
+@Composable
+private fun RideCancelledDialog(onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onConfirm,
+        containerColor = CT.surfaceContainer,
+        title = { Text("Ride Cancelled", style = CTType.headlineMd, color = CT.onSurface) },
+        text = { Text("The ride leader cancelled this ride.", style = CTType.bodyMd, color = CT.onSurfaceVariant) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("OK", color = CT.primaryFixed) } },
+    )
 }
 
 @Composable

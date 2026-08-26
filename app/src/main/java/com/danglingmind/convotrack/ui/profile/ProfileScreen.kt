@@ -41,8 +41,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.ErrorBlock
 import com.danglingmind.convotrack.ui.common.LoadingBlock
@@ -95,10 +95,8 @@ fun ProfileScreen(
                     led = rides.count { it.isLeader == true },
                 )
             )
-        } catch (e: ApiException) {
-            UiState.Error(e.message ?: "Couldn't load profile")
         } catch (e: Exception) {
-            UiState.Error("Couldn't load profile")
+            UiState.Error(e.riderMessage)
         }
     }
 

@@ -11,6 +11,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavHostController
+import androidx.navigation.navigation
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.remember
+import com.danglingmind.convotrack.ui.ride.RideSessionViewModel
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.danglingmind.convotrack.di.ServiceLocator
@@ -41,6 +47,12 @@ object Routes {
     const val RIDE_SUMMARY = "ride_summary"
     const val EDIT_RIDE = "edit_ride"
     const val MEMBERSHIP = "membership"
+
+    // The whole ride flow lives inside one nested graph so the lobby and the navigation screen
+    // share a single RideSessionViewModel (and therefore one socket session + roster) that
+    // survives the push between them. Entering the flow always enters at the lobby.
+    const val RIDE_GRAPH = "ride"
+    fun rideGraph(rideId: String) = "$RIDE_GRAPH/$rideId"
 
     // The ride flow carries the rideId through the URL so each screen can load its own data.
     fun lobby(rideId: String) = "$RIDE_LOBBY/$rideId"
@@ -107,7 +119,7 @@ fun AppRoot(
                     initialInviteCode = deepLinkCode,
                     onInviteConsumed = onDeepLinkConsumed,
                     onCreateRide = { nav.navigate(Routes.CREATE_RIDE) },
-                    onOpenLobby = { rideId -> nav.navigate(Routes.lobby(rideId)) },
+                    onOpenLobby = { rideId -> nav.navigate(Routes.rideGraph(rideId)) },
                     onOpenSummary = { rideId -> nav.navigate(Routes.summary(rideId)) },
                     onOpenMembership = { nav.navigate(Routes.MEMBERSHIP) },
                     onSignOut = {
@@ -122,45 +134,87 @@ fun AppRoot(
                 CreateRideScreen(
                     onBack = { nav.popBackStack() },
                     onCreated = { rideId ->
-                        nav.navigate(Routes.lobby(rideId)) {
+                        nav.navigate(Routes.rideGraph(rideId)) {
                             popUpTo(Routes.CREATE_RIDE) { inclusive = true }
                         }
                     },
                 )
             }
-            composable(
-                route = "${Routes.RIDE_LOBBY}/{rideId}",
-                arguments = listOf(navArgument("rideId") { type = NavType.StringType }),
-            ) { entry ->
-                val rideId = entry.arguments?.getString("rideId").orEmpty()
-                RideLobbyScreen(
-                    rideId = rideId,
-                    // Leaving the lobby back to the tabs means leaving the ride — drop the socket.
-                    onBack = {
-                        ServiceLocator.socket.disconnect()
-                        nav.popBackStack()
-                    },
-                    onStartRide = { nav.navigate(Routes.navigation(rideId)) },
-                    onEdit = { editRideId -> nav.navigate(Routes.edit(editRideId)) },
-                )
+            // The ride flow: lobby → navigation → (edit). All three share the graph-scoped
+            // RideSessionViewModel, so the socket session, roster and presence survive the
+            // lobby→navigation push instead of being rebuilt per screen.
+            navigation(
+                startDestination = "${Routes.RIDE_LOBBY}/{rideId}",
+                route = "${Routes.RIDE_GRAPH}/{rideId}",
+            ) {
+                composable(
+                    route = "${Routes.RIDE_LOBBY}/{rideId}",
+                    arguments = listOf(navArgument("rideId") { type = NavType.StringType }),
+                ) { entry ->
+                    val rideId = entry.arguments?.getString("rideId").orEmpty()
+                    val sessionVm = rideSessionViewModel(nav, entry, rideId)
+                    RideLobbyScreen(
+                        rideId = rideId,
+                        sessionVm = sessionVm,
+                        // Backing out of the lobby leaves the ride flow entirely, so the shared
+                        // session is torn down here rather than in each screen.
+                        onBack = {
+                            sessionVm.endSession()
+                            nav.popBackStack()
+                        },
+                        onStartRide = { nav.navigate(Routes.navigation(rideId)) },
+                        onEdit = { editRideId -> nav.navigate(Routes.edit(editRideId)) },
+                    )
+                }
+                composable(
+                    route = "${Routes.RIDE_NAVIGATION}/{rideId}",
+                    arguments = listOf(navArgument("rideId") { type = NavType.StringType }),
+                ) { entry ->
+                    val rideId = entry.arguments?.getString("rideId").orEmpty()
+                    val sessionVm = rideSessionViewModel(nav, entry, rideId)
+                    RideNavigationScreen(
+                        rideId = rideId,
+                        sessionVm = sessionVm,
+                        // Leaving navigation pops back to the lobby, which holds on ACTIVE and
+                        // shows RESUME NAVIGATION (iOS parity). The ride keeps running, so the
+                        // session is deliberately NOT stopped here.
+                        onExit = { nav.popBackStack() },
+                        onEndRide = {
+                            // The ride is over — drop the realtime connection before the summary.
+                            sessionVm.endSession()
+                            nav.navigate(Routes.summary(rideId)) {
+                                popUpTo(Routes.MAIN)
+                            }
+                        },
+                    )
+                }
+                composable(
+                    route = "${Routes.EDIT_RIDE}/{rideId}",
+                    arguments = listOf(navArgument("rideId") { type = NavType.StringType }),
+                ) { entry ->
+                    val rideId = entry.arguments?.getString("rideId").orEmpty()
+                    val sessionVm = rideSessionViewModel(nav, entry, rideId)
+                    EditRideScreen(
+                        rideId = rideId,
+                        onBack = { nav.popBackStack() },
+                        onSaved = {
+                            sessionVm.refreshRide()
+                            nav.popBackStack()
+                        },
+                        onDeleted = {
+                            // The ride no longer exists — tear the session down and leave the
+                            // flow rather than popping back to a lobby for a deleted ride.
+                            sessionVm.endSession()
+                            nav.navigate(Routes.MAIN) {
+                                popUpTo(Routes.MAIN) { inclusive = true }
+                            }
+                        },
+                    )
+                }
             }
-            composable(
-                route = "${Routes.RIDE_NAVIGATION}/{rideId}",
-                arguments = listOf(navArgument("rideId") { type = NavType.StringType }),
-            ) { entry ->
-                val rideId = entry.arguments?.getString("rideId").orEmpty()
-                RideNavigationScreen(
-                    rideId = rideId,
-                    // Leaving navigation pops back to the lobby, which holds on ACTIVE and shows
-                    // RESUME NAVIGATION (iOS parity). The ride keeps running.
-                    onExit = { nav.popBackStack() },
-                    onEndRide = {
-                        nav.navigate(Routes.summary(rideId)) {
-                            popUpTo(Routes.MAIN)
-                        }
-                    },
-                )
-            }
+            // Summary sits OUTSIDE the ride graph: by the time it shows, the ride is over and the
+            // session has been stopped, so keeping the graph (and its ViewModel) alive would only
+            // hold a dead session open.
             composable(
                 route = "${Routes.RIDE_SUMMARY}/{rideId}",
                 arguments = listOf(navArgument("rideId") { type = NavType.StringType }),
@@ -169,23 +223,10 @@ fun AppRoot(
                 RideSummaryScreen(
                     rideId = rideId,
                     onDone = {
-                        // The ride is over — tear down the realtime connection.
-                        ServiceLocator.socket.disconnect()
                         nav.navigate(Routes.MAIN) {
                             popUpTo(Routes.MAIN) { inclusive = true }
                         }
                     },
-                )
-            }
-            composable(
-                route = "${Routes.EDIT_RIDE}/{rideId}",
-                arguments = listOf(navArgument("rideId") { type = NavType.StringType }),
-            ) { entry ->
-                val rideId = entry.arguments?.getString("rideId").orEmpty()
-                EditRideScreen(
-                    rideId = rideId,
-                    onBack = { nav.popBackStack() },
-                    onSaved = { nav.popBackStack() },
                 )
             }
             composable(Routes.MEMBERSHIP) {
@@ -193,4 +234,24 @@ fun AppRoot(
             }
         }
     }
+}
+
+/**
+ * The [RideSessionViewModel] for the ride flow this [entry] belongs to.
+ *
+ * Resolved from the nested graph's back-stack entry rather than the screen's own, which is what
+ * makes the lobby and the navigation screen share one instance — and therefore one socket session,
+ * one roster, one heartbeat — across the push between them.
+ */
+@Composable
+private fun rideSessionViewModel(
+    nav: NavHostController,
+    entry: NavBackStackEntry,
+    rideId: String,
+): RideSessionViewModel {
+    val parentEntry = remember(entry) { nav.getBackStackEntry(Routes.rideGraph(rideId)) }
+    return viewModel(
+        viewModelStoreOwner = parentEntry,
+        factory = RideSessionViewModel.factory(rideId),
+    )
 }

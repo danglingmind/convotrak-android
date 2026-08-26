@@ -20,8 +20,6 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,13 +35,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
-import com.danglingmind.convotrack.ui.theme.LimePrimaryButton
 
 /**
- * Regroup reasons, mirroring iOS `CoordinationOverlayView.RegroupReason`.
- *
- * NOTE for backend wiring: EMERGENCY must emit the `ride:emergency` socket event —
- * the other three emit `ride:regroup`. See CLAUDE.md architectural decisions.
+ * Regroup reasons. EMERGENCY emits the `ride:emergency` socket event; the other three emit
+ * `ride:regroup` (see the architectural decision in CLAUDE.md).
  */
 enum class RegroupReason(val label: String, val icon: ImageVector, val isEmergency: Boolean = false) {
     FUEL("Fuel Stop", Icons.Filled.LocalGasStation),
@@ -52,18 +47,35 @@ enum class RegroupReason(val label: String, val icon: ImageVector, val isEmergen
     EMERGENCY("Emergency", Icons.Filled.Warning, isEmergency = true),
 }
 
-private enum class LocationMode { MY_POSITION, SEARCHED }
+/** How far ahead on the route to place the meet point when broadcasting from the rider's position. */
+enum class RegroupDistance(val meters: Double, val label: String) {
+    CURRENT(0.0, "Current"),
+    AHEAD_100(100.0, "100 m"),
+    AHEAD_500(500.0, "500 m"),
+}
 
+/**
+ * The regroup sheet.
+ *
+ * Two deliberate departures from the version this replaces:
+ *
+ * 1. **Tapping a reason broadcasts immediately** — no selection step, no confirm button. That is
+ *    now the entire interaction. A rider reaching for this is moving, usually with one glove off.
+ * 2. **There is no "search for a meet location" path.** Picking a place off a map takes long enough
+ *    that the group has already moved on, which defeats the point of a regroup. Instead the meet
+ *    point is the rider's own position, optionally offset a fixed distance ahead ALONG THE ROUTE —
+ *    which is what "let's stop at the next petrol station" actually means.
+ */
 @Composable
-fun RegroupSheet(onBroadcast: (RegroupReason) -> Unit) {
+fun RegroupSheet(
+    isBroadcasting: Boolean,
+    onBroadcast: (RegroupReason, aheadMeters: Double) -> Unit,
+    onCancel: () -> Unit,
+) {
     var selected by remember { mutableStateOf<RegroupReason?>(null) }
-    var mode by remember { mutableStateOf(LocationMode.MY_POSITION) }
-    var query by remember { mutableStateOf("") }
-
-    val blocked = selected == null || (mode == LocationMode.SEARCHED && query.isBlank())
+    var distance by remember { mutableStateOf(RegroupDistance.CURRENT) }
 
     Column(Modifier.padding(bottom = 32.dp)) {
-        // Header
         Row(
             Modifier.padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -74,13 +86,45 @@ fun RegroupSheet(onBroadcast: (RegroupReason) -> Unit) {
         }
 
         Text(
-            "Select a reason for the broadcast:",
+            "Tap a reason to broadcast instantly",
             style = CTType.bodyLg,
             color = CT.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 24.dp),
         )
 
-        // Reason grid (2x2)
+        // Distance selector — offsets the meet point this far ahead on the route. Chosen BEFORE
+        // the reason, because the reason tap is what fires.
+        Column(
+            Modifier.padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("MEET POINT", style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 2.sp)
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(CT.surfaceContainerHigh),
+            ) {
+                RegroupDistance.entries.forEach { option ->
+                    val active = distance == option
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .background(if (active) CT.primaryFixed else Color.Transparent)
+                            .clickable { distance = option }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            option.label,
+                            style = CTType.toggleLabel,
+                            color = if (active) CT.onPrimaryFixed else CT.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        // Reason grid (2x2). Each tile fires on tap.
         Column(
             Modifier.padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -91,63 +135,30 @@ fun RegroupSheet(onBroadcast: (RegroupReason) -> Unit) {
                         ReasonTile(
                             reason = reason,
                             isSelected = selected == reason,
+                            enabled = !isBroadcasting,
                             modifier = Modifier.weight(1f),
-                            onClick = { selected = reason },
+                            onClick = {
+                                if (isBroadcasting) return@ReasonTile
+                                selected = reason
+                                onBroadcast(reason, distance.meters)
+                            },
                         )
                     }
                 }
             }
         }
 
-        // Meet location
-        Column(
-            Modifier.padding(horizontal = 20.dp).padding(top = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("MEET LOCATION", style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 2.sp)
-
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .border(1.dp, CT.outlineVariant.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
-            ) {
-                ModeTab("My Position", mode == LocationMode.MY_POSITION, Modifier.weight(1f)) {
-                    mode = LocationMode.MY_POSITION
-                    query = ""
-                }
-                ModeTab("Search Location", mode == LocationMode.SEARCHED, Modifier.weight(1f)) {
-                    mode = LocationMode.SEARCHED
-                }
-            }
-
-            if (mode == LocationMode.SEARCHED) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = { Text("Search meet point...", color = CT.onSurfaceVariant.copy(alpha = 0.4f)) },
-                    singleLine = true,
-                    textStyle = CTType.bodyMd,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CT.primaryFixed,
-                        unfocusedBorderColor = CT.outlineVariant,
-                        focusedTextColor = CT.onSurface,
-                        unfocusedTextColor = CT.onSurface,
-                        cursorColor = CT.primaryFixed,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-
         Spacer(Modifier.height(24.dp))
 
-        Column(Modifier.padding(horizontal = 20.dp)) {
-            LimePrimaryButton(
-                text = "BROADCAST REGROUP",
-                enabled = !blocked,
-                onClick = { selected?.let(onBroadcast) },
+        Box(
+            Modifier.fillMaxWidth().clickable(onClick = onCancel).padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "CANCEL REQUEST",
+                style = CTType.labelCaps,
+                color = CT.onSurfaceVariant,
+                letterSpacing = 8.sp,
             )
         }
     }
@@ -157,6 +168,7 @@ fun RegroupSheet(onBroadcast: (RegroupReason) -> Unit) {
 private fun ReasonTile(
     reason: RegroupReason,
     isSelected: Boolean,
+    enabled: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -171,29 +183,12 @@ private fun ReasonTile(
             .clip(RoundedCornerShape(16.dp))
             .background(if (reason.isEmergency) CT.errorContainer.copy(alpha = 0.1f) else Color(0xFF1C1C1C))
             .border(if (isSelected) 2.dp else 1.dp, borderColor, RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Icon(reason.icon, null, tint = accent, modifier = Modifier.size(28.dp))
         Text(reason.label, style = CTType.labelCaps, color = accent, letterSpacing = 1.sp)
-    }
-}
-
-@Composable
-private fun ModeTab(label: String, isActive: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
-        modifier
-            .background(if (isActive) CT.primaryFixed else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            label,
-            style = CTType.toggleLabel,
-            color = if (isActive) CT.onPrimaryFixed else CT.onSurfaceVariant,
-        )
     }
 }
