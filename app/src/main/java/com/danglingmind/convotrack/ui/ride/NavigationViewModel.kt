@@ -691,7 +691,7 @@ class NavigationViewModel : ViewModel() {
      * is only the bootstrap for the seconds before the first refresh lands.
      */
     private fun computeEtaText(): String {
-        _etaSecondsRemaining.value?.let { return formatDuration(it) }
+        _etaSecondsRemaining.value?.let { return formatRemainingTime(it) }
         if (routeExpectedTravelTime <= 0 || totalDistanceMeters <= 0) return "--"
         val remainingKm = _myDistanceToGoalKm.value
         if (remainingKm < 0) return "--"
@@ -706,7 +706,7 @@ class NavigationViewModel : ViewModel() {
         } else {
             routeExpectedTravelTime * remainingFraction
         }
-        return formatDuration(secsToNextStop)
+        return formatRemainingTime(secsToNextStop)
     }
 
     // MARK: - Regroup meet point
@@ -780,8 +780,16 @@ class NavigationViewModel : ViewModel() {
         _leaderboardRows.value.count { it.isMe || onlineUserIds.contains(it.id) }
 }
 
-/** "45m", "1h", "2h 15m" — hours once ≥ 60 min, minutes below. */
-fun formatDuration(seconds: Double): String {
+/**
+ * "45m", "1h", "2h 15m" — hours once ≥ 60 min, minutes below.
+ *
+ * Deliberately NOT [com.danglingmind.convotrack.ui.common.RideDuration]: this is remaining travel
+ * time in the live HUD, which is read at a glance at road speed and wants a compact "1h 15m".
+ * RideDuration renders a finished ride's total, where "1:15 H:MM" disambiguates a value that sits
+ * next to distances and speeds. Same arithmetic, different job — sharing one would force one of the
+ * two surfaces into the wrong shape.
+ */
+fun formatRemainingTime(seconds: Double): String {
     val totalMins = max(0, Math.round(seconds / 60).toInt())
     if (totalMins < 60) return "${totalMins}m"
     val h = totalMins / 60

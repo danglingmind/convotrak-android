@@ -26,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -33,6 +34,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -40,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.danglingmind.convotrack.data.audio.SirenPlayer
+import com.danglingmind.convotrack.data.maps.AvatarCache
 import com.danglingmind.convotrack.data.socket.SocketEmergency
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.map.EdgeChipModel
@@ -453,15 +457,27 @@ fun RideNavigationScreen(
         }
     }
 
+    // Avatars for the riders currently off-screen. Read from the shared cache the map markers
+    // already populate, so a chip shows the same photo as the pin without a second download; a
+    // miss just falls back to the initial until the fetch lands.
+    val edgeAvatars = remember { mutableStateMapOf<String, ImageBitmap>() }
+    LaunchedEffect(edgeIndicators, riders) {
+        edgeIndicators.forEach { ind ->
+            val url = riders.firstOrNull { it.id == ind.id }?.avatarUrl ?: return@forEach
+            if (edgeAvatars.containsKey(url)) return@forEach
+            AvatarCache.get(url)?.let { edgeAvatars[url] = it.asImageBitmap() }
+        }
+    }
+
     // Off-screen riders joined with their display metadata, then clustered by screen proximity.
-    val edgeClusters = remember(edgeIndicators, riders, onlineIds, density) {
+    val edgeClusters = remember(edgeIndicators, riders, onlineIds, density, edgeAvatars.size) {
         val byId = riders.associateBy { it.id }
         val models = edgeIndicators.mapNotNull { ind ->
             val rider = byId[ind.id] ?: return@mapNotNull null
             EdgeChipModel(
                 id = ind.id,
                 name = rider.name,
-                avatar = null,
+                avatar = rider.avatarUrl?.let { edgeAvatars[it] },
                 isOffline = !onlineIds.contains(ind.id),
                 edgeX = ind.edgeX,
                 edgeY = ind.edgeY,
@@ -541,7 +557,7 @@ fun RideNavigationScreen(
                 },
                 speedText = if (hasLocationFix) String.format(java.util.Locale.US, "%.0f", mySpeedKmh) else "--",
                 etaText = etaText,
-                distText = if (myDistanceKm > 0) String.format(java.util.Locale.US, "%.1f", myDistanceKm) else "--",
+                distText = formatDistToGoal(myDistanceKm),
                 destinationName = destinationName,
                 myDistanceKm = myDistanceKm,
                 isEnding = isEnding,
@@ -594,7 +610,7 @@ fun RideNavigationScreen(
                 },
                 speedText = if (hasLocationFix) String.format(java.util.Locale.US, "%.0f", mySpeedKmh) else "--",
                 etaText = etaText,
-                distText = if (myDistanceKm > 0) String.format(java.util.Locale.US, "%.1f", myDistanceKm) else "--",
+                distText = formatDistToGoal(myDistanceKm),
                 destinationName = destinationName,
                 myDistanceKm = myDistanceKm,
                 isEnding = isEnding,
@@ -686,6 +702,19 @@ fun RideNavigationScreen(
             },
         )
     }
+}
+
+/**
+ * Distance-to-goal for the stat bar.
+ *
+ * A tenth of a kilometre is meaningful at 9.4 km and noise at 1438 km — and the four-digit form
+ * plus a decimal is wide enough to be clipped out of the bar's stat column. Dropping the decimal
+ * past 100 km keeps the value honest and the column narrow.
+ */
+private fun formatDistToGoal(km: Double): String = when {
+    km <= 0 -> "--"
+    km >= 100 -> String.format(java.util.Locale.US, "%.0f", km)
+    else -> String.format(java.util.Locale.US, "%.1f", km)
 }
 
 /** Compact distance label for rider markers. Quantized (10 m under 1 km, 0.1 km above) so the

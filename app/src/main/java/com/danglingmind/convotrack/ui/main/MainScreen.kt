@@ -72,8 +72,9 @@ fun MainScreen(
             CTTab.PROFILE -> ProfileScreen(onOpenMembership = onOpenMembership, onSignedOut = onSignOut)
         }
 
-        // Bottom nav floats over content, pinned to the bottom safe area.
-        Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding()) {
+        // Bottom nav floats over content. The gesture inset is applied INSIDE the nav, so its
+        // background reaches the screen edge and nothing shows through beneath it.
+        Box(Modifier.align(Alignment.BottomCenter)) {
             ConvoTrackBottomNav(activeTab = activeTab, onSelect = { activeTab = it })
         }
     }

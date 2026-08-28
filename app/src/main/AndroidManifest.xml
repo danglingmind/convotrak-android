@@ -60,6 +60,19 @@
             </intent-filter>
         </activity>
 
+        <!-- Hands the shareable ride-summary image to other apps. A raw file:// URI would be
+             rejected by the OS (FileUriExposedException); the receiving app reads this through a
+             one-shot read grant attached to the share intent. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Broadcasts the rider's position during an active ride. -->
         <service
             android:name=".data.location.RideLocationService"

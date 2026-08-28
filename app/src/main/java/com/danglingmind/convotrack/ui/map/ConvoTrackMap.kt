@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -20,6 +21,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.danglingmind.convotrack.R
+import com.danglingmind.convotrack.data.maps.AvatarCache
 import com.danglingmind.convotrack.ui.theme.CT
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.MapsInitializer
@@ -186,6 +188,9 @@ object NavCamera {
 
 // Route thickness. `ROUTE_CHUNKINESS` is the single dial; the casing (the 3D sidewall under the
 // bright face) derives from it so the extrude looks consistent at any width.
+/** Placeholder geometry for a hidden polyline: the SDK needs a valid path even when invisible. */
+private val EMPTY_LINE = listOf(LatLng(0.0, 0.0), LatLng(0.0, 0.0))
+
 private const val ROUTE_CHUNKINESS = 16f
 private const val CASING_RATIO = 13f / 8f
 
@@ -227,6 +232,10 @@ fun ConvoTrackMap(
     val context = LocalContext.current
     val density = LocalDensity.current
     val scale = density.density
+
+    // Drawn geometry is capped; the camera and all navigation math still use the full lists.
+    val drawRoute = remember(routeCoords) { simplifyForDisplay(routeCoords) }
+    val drawFullRoute = remember(fullRouteCoords) { simplifyForDisplay(fullRouteCoords) }
     val darkStyle = remember { MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style_dark) }
     val cameraPositionState = rememberCameraPositionState()
 
@@ -237,14 +246,13 @@ fun ConvoTrackMap(
     }
 
     // Avatar photos for rider markers. Baking a marker icon is synchronous, so each avatar is
-    // fetched once, cached by URL, and the affected marker re-baked when it lands.
+    // fetched once and the affected marker re-baked when it lands. The cache is process-wide
+    // (AvatarCache), so re-entering navigation doesn't re-download the whole convoy, and the
+    // decode is bounded to marker size rather than the CDN original.
     val avatars = remember { mutableStateMapOf<String, Bitmap>() }
-    val avatarsRequested = remember { mutableSetOf<String>() }
     LaunchedEffect(markers) {
         markers.mapNotNull { it.avatarUrl }.distinct().forEach { url ->
-            if (url in avatarsRequested) return@forEach
-            avatarsRequested += url
-            fetchBitmap(url)?.let { avatars[url] = it }
+            AvatarCache.peek(url)?.let { avatars[url] = it } ?: AvatarCache.get(url)?.let { avatars[url] = it }
         }
     }
 
@@ -275,7 +283,7 @@ fun ConvoTrackMap(
     // AutoFit re-frames on content change, so it is keyed on the content rather than a command id.
     if (camera is MapCamera.AutoFit) {
         LaunchedEffect(routeCoords, fullRouteCoords, markers, user) {
-            val points = routeCoords + fullRouteCoords + markers.map { it.position } + listOfNotNull(user?.position)
+            val points = drawRoute + drawFullRoute + markers.map { it.position } + listOfNotNull(user?.position)
             when {
                 points.isEmpty() -> Unit
                 points.size == 1 ->
@@ -351,11 +359,21 @@ fun ConvoTrackMap(
     // `conflate()` makes it coalescing rather than dropping: the chips still settle on the final
     // geometry instead of freezing at whatever the last un-throttled frame happened to be.
     if (onEdgeIndicators != null) {
-        val topInsetPx = with(density) { topOverlayDp.toPx() }
+        // The effect is keyed on Unit so the throttling collector lives for the map's lifetime —
+        // which means it must NOT read the composable's parameters directly. A lambda inside a
+        // `LaunchedEffect(Unit)` captures whatever those were on the FIRST composition and keeps
+        // them forever, so this computed against an empty marker list and a null user for the whole
+        // ride and never emitted a single indicator. `rememberUpdatedState` gives the long-lived
+        // collector a snapshot-state handle on the current values instead — which also makes
+        // `snapshotFlow` re-emit when they change.
+        val currentMarkers by rememberUpdatedState(markers)
+        val currentUser by rememberUpdatedState(user)
+        val currentTopInsetPx by rememberUpdatedState(with(density) { topOverlayDp.toPx() })
+        val emit by rememberUpdatedState(onEdgeIndicators)
         var lastEmitted by remember { mutableStateOf<List<EdgeIndicator>>(emptyList()) }
         LaunchedEffect(Unit) {
             snapshotFlow {
-                EdgeInputs(cameraPositionState.position, markers, user, mapWidthPx, mapHeightPx)
+                EdgeInputs(cameraPositionState.position, currentMarkers, currentUser, mapWidthPx, mapHeightPx)
             }
                 .conflate()
                 .collect { inputs ->
@@ -365,12 +383,12 @@ fun ConvoTrackMap(
                         user = inputs.user,
                         widthPx = inputs.widthPx,
                         heightPx = inputs.heightPx,
-                        topInsetPx = topInsetPx,
+                        topInsetPx = currentTopInsetPx,
                         scale = scale,
                     )
                     if (next != lastEmitted) {
                         lastEmitted = next
-                        onEdgeIndicators(next)
+                        emit(next)
                     }
                     delay(100)   // 10 Hz cap, matching the camera tick
                 }
@@ -410,7 +428,7 @@ fun ConvoTrackMap(
             alternativeRoutes.forEachIndexed { index, coords ->
                 if (index != selectedRouteIndex && coords.size >= 2) {
                     Polyline(
-                        points = coords,
+                        points = simplifyForDisplay(coords),
                         color = androidx.compose.ui.graphics.Color(0xFFC7C7C7).copy(alpha = 0.42f),
                         width = 8f,
                         zIndex = 0f,
@@ -425,45 +443,54 @@ fun ConvoTrackMap(
             }
         }
 
-        // Dim planned route underneath — the leader's plan, which a reroute never touches.
-        if (fullRouteCoords.size >= 2) {
-            Polyline(
-                points = fullRouteCoords,
-                color = CT.primaryFixed.copy(alpha = 0.28f),
-                width = 6f,
-                zIndex = 1f,
-                startCap = RoundCap(),
-                endCap = RoundCap(),
-                jointType = JointType.ROUND,
-            )
-        }
-        if (routeCoords.size >= 2) {
-            // Dark-lime casing, then the bright face on top: a cheap extrude that keeps the route
-            // reading as a raised ribbon rather than a flat stripe on dark tiles.
-            Polyline(
-                points = routeCoords,
-                color = androidx.compose.ui.graphics.Color(0xFF5A6C00),
-                width = ROUTE_CHUNKINESS * CASING_RATIO,
-                zIndex = 2f,
-                startCap = RoundCap(),
-                endCap = RoundCap(),
-                jointType = JointType.ROUND,
-            )
-            Polyline(
-                points = routeCoords,
-                color = CT.primaryFixed,
-                width = ROUTE_CHUNKINESS,
-                zIndex = 3f,
-                startCap = RoundCap(),
-                endCap = RoundCap(),
-                jointType = JointType.ROUND,
-            )
-        }
+        // The three route layers are ALWAYS emitted and toggled with `visible`, never wrapped in an
+        // `if`.
+        //
+        // maps-compose manages the map's children as an ordered node list, and dropping a node
+        // changes that list's shape. The lobby (which has no separate planned layer, so the dim
+        // polyline was absent) ended up with its BRIGHT route silently not rendering at all —
+        // present in the composition, correct points, simply never drawn — while navigation, which
+        // emits all three, drew fine. Keeping the node count fixed and flipping visibility instead
+        // makes the two call sites structurally identical.
+        val hasPlanned = drawFullRoute.size >= 2
+        val hasRoute = drawRoute.size >= 2
+        Polyline(
+            points = if (hasPlanned) drawFullRoute else EMPTY_LINE,
+            visible = hasPlanned,
+            color = CT.primaryFixed.copy(alpha = 0.28f),
+            width = 6f,
+            zIndex = 1f,
+            startCap = RoundCap(),
+            endCap = RoundCap(),
+            jointType = JointType.ROUND,
+        )
+        // Dark-lime casing, then the bright face on top: a cheap extrude that keeps the route
+        // reading as a raised ribbon rather than a flat stripe on dark tiles.
+        Polyline(
+            points = if (hasRoute) drawRoute else EMPTY_LINE,
+            visible = hasRoute,
+            color = androidx.compose.ui.graphics.Color(0xFF5A6C00),
+            width = ROUTE_CHUNKINESS * CASING_RATIO,
+            zIndex = 2f,
+            startCap = RoundCap(),
+            endCap = RoundCap(),
+            jointType = JointType.ROUND,
+        )
+        Polyline(
+            points = if (hasRoute) drawRoute else EMPTY_LINE,
+            visible = hasRoute,
+            color = CT.primaryFixed,
+            width = ROUTE_CHUNKINESS,
+            zIndex = 3f,
+            startCap = RoundCap(),
+            endCap = RoundCap(),
+            jointType = JointType.ROUND,
+        )
 
         // Curved dotted connectors: each end stop to its nearest polyline endpoint. Stops are
         // placed on a building, the route starts on the road — the connector makes that gap read
         // as intentional rather than as a broken line.
-        val connectorBase = fullRouteCoords.ifEmpty { routeCoords }
+        val connectorBase = drawFullRoute.ifEmpty { drawRoute }
         if (connectorBase.size >= 2) {
             stopCoords.firstOrNull()?.let { CurvedConnector(it, connectorBase.first()) }
             stopCoords.lastOrNull()?.let { CurvedConnector(it, connectorBase.last()) }
@@ -479,10 +506,10 @@ fun ConvoTrackMap(
         val endCapBright = remember(scale) {
             BitmapDescriptorFactory.fromBitmap(MapMarkerBitmaps.endCap(scale, 16f, 1f))
         }
-        fullRouteCoords.firstOrNull()?.let { EndCap("plan_head", it, endCapSmall) }
-        fullRouteCoords.lastOrNull()?.let { EndCap("plan_tail", it, endCapSmall) }
-        if (!isNavigating) routeCoords.firstOrNull()?.let { EndCap("route_head", it, endCapBright) }
-        routeCoords.lastOrNull()?.let { EndCap("route_tail", it, endCapBright) }
+        drawFullRoute.firstOrNull()?.let { EndCap("plan_head", it, endCapSmall) }
+        drawFullRoute.lastOrNull()?.let { EndCap("plan_tail", it, endCapSmall) }
+        if (!isNavigating) drawRoute.firstOrNull()?.let { EndCap("route_head", it, endCapBright) }
+        drawRoute.lastOrNull()?.let { EndCap("route_tail", it, endCapBright) }
 
         markers.forEach { marker ->
             BakedMarker(marker, scale, avatars[marker.avatarUrl])
@@ -724,6 +751,35 @@ private fun bearingTo(from: LatLng, to: LatLng): Double {
     return ((out[1] + 360) % 360).toDouble()
 }
 
+/**
+ * Caps a polyline's point count for DRAWING.
+ *
+ * A stored route for a long ride is enormous — a 1459 km ride decodes to ~33,000 vertices — and
+ * the Maps SDK silently declines to draw a polyline that large: the line simply never appears,
+ * with no error. (It showed up in navigation only because the route being drawn there is a
+ * freshly-stitched, much smaller one.)
+ *
+ * Uniform stride rather than Douglas-Peucker: this runs on every route change, the input is
+ * already road-snapped at 2-3 m spacing, and dropping every nth vertex of such a dense line is
+ * visually indistinguishable at any zoom a whole route is framed at. The first and last points are
+ * always kept so the line still starts and ends exactly where the route does.
+ *
+ * DISPLAY ONLY. Navigation measures progress, off-route distance and step positions against the
+ * full-resolution route in `NavRouteEngine` — simplifying that would move every turn.
+ */
+private fun simplifyForDisplay(points: List<LatLng>, maxPoints: Int = 3000): List<LatLng> {
+    if (points.size <= maxPoints) return points
+    val stride = (points.size + maxPoints - 1) / maxPoints
+    val out = ArrayList<LatLng>(points.size / stride + 2)
+    var i = 0
+    while (i < points.size) {
+        out.add(points[i])
+        i += stride
+    }
+    if (out.last() != points.last()) out.add(points.last())
+    return out
+}
+
 /** Snapshot of everything the edge-indicator pass reads, so it can be conflated as one value. */
 private data class EdgeInputs(
     val camera: CameraPosition,
@@ -733,13 +789,3 @@ private data class EdgeInputs(
     val heightPx: Int,
 )
 
-private val avatarClient by lazy { OkHttpClient() }
-
-private suspend fun fetchBitmap(url: String): Bitmap? = withContext(Dispatchers.IO) {
-    runCatching {
-        avatarClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
-            if (!resp.isSuccessful) return@use null
-            resp.body?.byteStream()?.let { BitmapFactory.decodeStream(it) }
-        }
-    }.getOrNull()
-}

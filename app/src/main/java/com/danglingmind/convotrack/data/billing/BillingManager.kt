@@ -16,6 +16,7 @@ import com.android.billingclient.api.QueryPurchasesParams
 import com.android.billingclient.api.acknowledgePurchase
 import com.android.billingclient.api.queryProductDetails
 import com.android.billingclient.api.queryPurchasesAsync
+import com.danglingmind.convotrack.data.net.UserFacingError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -62,7 +63,9 @@ class BillingManager(context: Context) {
         } else if (result.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
             _lastError.value = null
         } else {
-            _lastError.value = "Purchase failed. Please try again."
+            // Reassurance about not being charged goes first — that is the user's actual worry —
+            // and this is only reached on a real failure, never on a cancelled purchase.
+            _lastError.value = UserFacingError.PURCHASE_FAILED
         }
     }
 
@@ -125,11 +128,11 @@ class BillingManager(context: Context) {
     /** Launches the Play purchase sheet for the given product's base-plan offer. */
     fun purchase(activity: Activity, productId: String) {
         val details = _products.value[productId] ?: run {
-            _lastError.value = "Plan unavailable. Try again shortly."
+            _lastError.value = UserFacingError.RESTORE_FAILED
             return
         }
         val offerToken = details.subscriptionOfferDetails?.firstOrNull()?.offerToken ?: run {
-            _lastError.value = "Plan unavailable. Try again shortly."
+            _lastError.value = UserFacingError.RESTORE_FAILED
             return
         }
         _lastError.value = null
@@ -163,8 +166,48 @@ class BillingManager(context: Context) {
 
     /** Formatted base-plan price for a product, e.g. "$4.99", or null if not loaded. */
     fun formattedPrice(productId: String): String? =
-        _products.value[productId]
-            ?.subscriptionOfferDetails?.firstOrNull()
-            ?.pricingPhases?.pricingPhaseList?.firstOrNull()
-            ?.formattedPrice
+        PlanPeriod.recurringPhase(_products.value[productId] ?: return null)?.formattedPrice
+
+    /**
+     * The loaded plans, ordered LONGEST BILLING CYCLE FIRST, with price only as a tiebreak.
+     *
+     * Ordering by price would put the cheapest cycle at the top, which inverts the intent of a
+     * paywall and is wrong the moment a plan is discounted. Ordering by period is stable against
+     * price changes and against a new plan being added in the console.
+     */
+    fun displayPlans(): List<DisplayPlan> =
+        _products.value.values.mapNotNull { details ->
+            val phase = PlanPeriod.recurringPhase(details) ?: return@mapNotNull null
+            DisplayPlan(
+                productId = details.productId,
+                details = details,
+                period = PlanPeriod.of(details),
+                formattedPrice = phase.formattedPrice,
+                priceMicros = phase.priceAmountMicros,
+                currencyCode = phase.priceCurrencyCode,
+            )
+        }.sortedWith(
+            compareByDescending<DisplayPlan> { it.period?.months ?: 0.0 }
+                .thenByDescending { it.priceMicros },
+        )
+
+    /** Shortest cycle on offer — the yardstick every other plan's saving is measured against. */
+    fun baselinePlan(): DisplayPlan? = displayPlans().minByOrNull { it.period?.months ?: Double.MAX_VALUE }
+
+    /** Plan with the largest per-month saving versus the baseline; it carries the SAVE badge. */
+    fun bestValuePlan(): DisplayPlan? {
+        val baseline = baselinePlan() ?: return null
+        return displayPlans()
+            .filter { it.productId != baseline.productId }
+            .mapNotNull { plan -> savingsPercent(plan.details, baseline.details)?.let { plan to it } }
+            .maxByOrNull { it.second }
+            ?.first
+    }
+
+    /** Whole-percent saving of [plan] against the shortest cycle, or null when there isn't one. */
+    fun savingsFor(plan: DisplayPlan): Int? {
+        val baseline = baselinePlan() ?: return null
+        if (plan.productId == baseline.productId) return null
+        return savingsPercent(plan.details, baseline.details)
+    }
 }

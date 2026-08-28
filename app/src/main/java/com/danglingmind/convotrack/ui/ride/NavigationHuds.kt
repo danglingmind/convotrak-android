@@ -377,8 +377,12 @@ private fun NavBottomBar(
             .fillMaxWidth()
             .background(CT.surfaceContainerHigh.copy(alpha = 0.94f)),
     ) {
-        val showUnits = maxWidth >= 380.dp
-        val spacing = if (maxWidth >= 400.dp) 16.dp else 10.dp
+        // Units only where there is genuinely room for them. A worst-case row — "120 KM/H",
+        // "25h 8m", "1436.3 KM" plus both controls — needs ~466dp, which is wider than any phone
+        // in portrait: the row overflowed and the END RIDE button was pushed clean off the screen,
+        // leaving no way to end a ride at all.
+        val showUnits = maxWidth >= 430.dp
+        val spacing = if (maxWidth >= 400.dp) 12.dp else 8.dp
         Column {
             Box(Modifier.fillMaxWidth().height(1.dp).background(CT.outlineVariant.copy(alpha = 0.25f)))
             Row(
@@ -389,12 +393,19 @@ private fun NavBottomBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spacing),
             ) {
-                BarStat("SPEED", speedText, if (showUnits) "KM/H" else null, isLandscape = false)
-                BarDivider(false)
-                BarStat("ETA", etaText, null, isLandscape = false)
-                BarDivider(false)
-                BarStat("DIST", distText, if (showUnits) "KM" else null, isLandscape = false)
-                Spacer(Modifier.weight(1f))
+                // The stats are weighted as ONE group, so the fixed-size controls are measured
+                // first and can never be pushed out of the row however long a value gets.
+                Row(
+                    Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(spacing),
+                ) {
+                    BarStat("SPEED", speedText, if (showUnits) "KM/H" else null, isLandscape = false)
+                    BarDivider(false)
+                    BarStat("ETA", etaText, null, isLandscape = false)
+                    BarDivider(false)
+                    BarStat("DIST", distText, if (showUnits) "KM" else null, isLandscape = false)
+                }
                 NavControlButton(
                     icon = Icons.Filled.Groups,
                     description = "Regroup",
@@ -572,30 +583,30 @@ fun LandscapeHud(
                     // icon buttons; here the panel is the only chrome, so the actions get its full
                     // width.
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Box(Modifier.weight(1f)) {
-                            NavControlButton(
-                                icon = Icons.Filled.Groups,
-                                description = "Regroup",
-                                tint = CT.onSurface,
-                                background = CT.surfaceContainerHigh.copy(alpha = 0.9f),
-                                border = CT.outlineVariant.copy(alpha = 0.3f),
-                                size = BUTTON_SIZE_LANDSCAPE.dp,
-                                onClick = onRegroup,
-                            )
-                        }
-                        Box(Modifier.weight(1f)) {
-                            NavControlButton(
-                                icon = Icons.Filled.Stop,
-                                description = "End ride",
-                                tint = CT.errorColor,
-                                background = CT.errorContainer.copy(alpha = 0.12f),
-                                border = CT.errorColor.copy(alpha = 0.35f),
-                                size = BUTTON_SIZE_LANDSCAPE.dp,
-                                enabled = !isEnding,
-                                busy = isEnding,
-                                onClick = onEndRide,
-                            )
-                        }
+                        NavControlButton(
+                            icon = Icons.Filled.Groups,
+                            description = "Regroup",
+                            tint = CT.onSurface,
+                            background = CT.surfaceContainerHigh.copy(alpha = 0.9f),
+                            border = CT.outlineVariant.copy(alpha = 0.3f),
+                            size = BUTTON_SIZE_LANDSCAPE.dp,
+                            modifier = Modifier.weight(1f),
+                            fillWidth = true,
+                            onClick = onRegroup,
+                        )
+                        NavControlButton(
+                            icon = Icons.Filled.Stop,
+                            description = "End ride",
+                            tint = CT.errorColor,
+                            background = CT.errorContainer.copy(alpha = 0.12f),
+                            border = CT.errorColor.copy(alpha = 0.35f),
+                            size = BUTTON_SIZE_LANDSCAPE.dp,
+                            enabled = !isEnding,
+                            busy = isEnding,
+                            modifier = Modifier.weight(1f),
+                            fillWidth = true,
+                            onClick = onEndRide,
+                        )
                     }
                 } else {
                     NavigationPreviewBar(

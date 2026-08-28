@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Only the one directory the share card writes to. Exposing a broader root would let any
+         app we share with reach cached ride data and destination photos too. -->
+    <cache-path name="shared" path="shared/" />
+</paths>

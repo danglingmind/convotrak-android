@@ -24,20 +24,9 @@ fun HistoryRide.distanceLabel(): String =
 fun formatKm(meters: Double): String =
     if (meters > 0) String.format(Locale.US, "%.1f", meters / 1000) else "0"
 
-/** Seconds → "1h 12m" or "58m". */
-fun formatDuration(seconds: Int): String {
-    if (seconds <= 0) return "0m"
-    val minutes = seconds / 60
-    return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m"
-}
-
-/** "2h 14m" or "41m"; "--" when unknown. */
-fun HistoryRide.durationLabel(): String {
-    val secs = durationSeconds ?: return "--"
-    if (secs <= 0) return "--"
-    val minutes = secs / 60
-    return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m"
-}
+/** Inline duration for a history row. Delegates to [RideDuration] — see its doc for why a
+ *  duration has exactly one definition in this app. */
+fun HistoryRide.durationLabel(): String = RideDuration.inline(durationSeconds)
 
 /** A ride is "completed" (flagged/history) vs still active (resumable). */
 val HistoryRide.isCompleted: Boolean get() = status == "COMPLETED" || status == "ENDED"

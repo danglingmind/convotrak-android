@@ -5,6 +5,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.danglingmind.convotrack.data.audio.VoiceAnnouncer
+import com.danglingmind.convotrack.data.maps.PlacePhotoService
 import com.danglingmind.convotrack.di.ServiceLocator
 
 // Application entry point. Mirrors iOS ConvoTrackApp.swift: initialise Clerk here.
@@ -16,6 +17,8 @@ class ConvoTrackApp : Application() {
         // TTS init is async and slow on a cold start, so it is warmed here rather than on the
         // first announcement — which is a mid-ride reroute cue that must not be delayed.
         VoiceAnnouncer.init(this)
+        // Gives the photo cache an app context and registers its memory-pressure listener.
+        PlacePhotoService.init(this)
 
         // App-level presence: when the app goes to the background, drop the socket so other
         // riders see us go offline promptly (a backgrounded Android process otherwise keeps the

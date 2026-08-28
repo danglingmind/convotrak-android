@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -148,8 +149,12 @@ fun CreateRideScreen(
         ConvoTrackTopBar(title = "New Ride", showBack = true, onBack = onBack)
 
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)
-                .padding(top = 16.dp, bottom = 48.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                // The gesture bar sits over the last 24-48px of the screen; without this the
+                // CREATE RIDE button at the end of the form was sliced in half by it.
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp)
+                .padding(top = 16.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             // Title
@@ -403,9 +408,18 @@ internal fun PlacesField(stop: RouteStop, placeholder: String, leading: ImageVec
                             suggestions = emptyList()
                         }.padding(horizontal = 14.dp, vertical = 10.dp),
                     ) {
+                        // The name WRAPS rather than truncating — it is the whole point of the
+                        // row, and "Sri Krishna Temple Road Junc…" is not a choice anyone can make.
+                        // The address is the supporting detail, so it is capped at two lines.
                         Text(place.name, style = CTType.bodyMd, color = CT.onSurface)
                         if (!place.address.isNullOrBlank()) {
-                            Text(place.address, style = CTType.captionMd, color = CT.onSurfaceVariant)
+                            Text(
+                                place.address,
+                                style = CTType.captionMd,
+                                color = CT.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
                         }
                     }
                 }

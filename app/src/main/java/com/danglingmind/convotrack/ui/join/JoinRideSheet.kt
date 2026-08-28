@@ -317,7 +317,9 @@ private fun OrDivider() {
 
 @Composable
 private fun QrScanTarget(enabled: Boolean, onClick: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    // fillMaxWidth so the capped-width scan box below has something to centre WITHIN — a
+    // wrap-content Column is exactly as wide as that box, so aligning inside it is a no-op.
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Filled.CameraAlt, null, tint = CT.primaryFixed, modifier = Modifier.size(18.dp))
             Text("SCAN QR CODE", style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 3.sp)
@@ -326,6 +328,8 @@ private fun QrScanTarget(enabled: Boolean, onClick: () -> Unit) {
             Modifier
                 .widthIn(max = 260.dp)
                 .fillMaxWidth()
+                // Capped at 260dp, so without this it hugs the left edge of a wider sheet.
+                .align(Alignment.CenterHorizontally)
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(12.dp))
                 .background(CT.surfaceContainerLow)

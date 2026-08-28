@@ -21,7 +21,12 @@ fun rememberQrBitmap(content: String, sizePx: Int = 512): ImageBitmap? = remembe
     runCatching { encodeQr(content, sizePx) }.getOrNull()
 }
 
-private fun encodeQr(content: String, size: Int): ImageBitmap {
+/** The Compose-facing wrapper. The share card needs the raw [Bitmap] instead, to draw onto a
+ *  Canvas — see [encodeQrBitmap]. */
+private fun encodeQr(content: String, size: Int): ImageBitmap = encodeQrBitmap(content, size).asImageBitmap()
+
+/** Raw QR bitmap, for drawing into the shareable summary poster. */
+fun encodeQrBitmap(content: String, size: Int): Bitmap {
     val hints = mapOf(
         EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.H,
         EncodeHintType.MARGIN to 1,
@@ -33,5 +38,5 @@ private fun encodeQr(content: String, size: Int): ImageBitmap {
             bmp.setPixel(x, y, if (matrix[x, y]) AndroidColor.BLACK else AndroidColor.WHITE)
         }
     }
-    return bmp.asImageBitmap()
+    return bmp
 }

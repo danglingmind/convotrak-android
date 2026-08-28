@@ -45,7 +45,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
+import com.danglingmind.convotrack.data.maps.DestinationHeroPhase
 import com.danglingmind.convotrack.data.net.HistoryRide
+import com.danglingmind.convotrack.data.net.Ride
+import com.danglingmind.convotrack.data.net.RideStatusFilter
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
@@ -54,6 +57,8 @@ import com.danglingmind.convotrack.ui.map.ConvoTrackMap
 import com.danglingmind.convotrack.ui.ride.rideRoute
 import com.google.android.gms.maps.model.LatLng
 import androidx.compose.ui.graphics.Brush
+import com.danglingmind.convotrack.ui.common.DestinationPhotoImage
+import com.danglingmind.convotrack.ui.common.rememberDestinationHero
 import com.danglingmind.convotrack.ui.common.EmptyCard
 import com.danglingmind.convotrack.ui.common.ErrorBlock
 import com.danglingmind.convotrack.ui.common.LoadingBlock
@@ -80,7 +85,11 @@ fun HomeScreen(
     suspend fun load() {
         state = UiState.Loading
         state = try {
-            UiState.Success(apiCall { api.getMyRides().rides })
+            UiState.Success(
+                // In-progress only: this list is the "resume a ride" surface, and the endpoint's
+                // 50-row cap means finished rides would otherwise push live ones out of it.
+                apiCall { api.getMyRides(RideStatusFilter.query(RideStatusFilter.IN_PROGRESS)) }.rides,
+            )
         } catch (e: Exception) {
             UiState.Error(e.riderMessage)
         }
@@ -203,11 +212,26 @@ private fun statusLabel(status: String): String = when (status) {
 @Composable
 private fun ActiveRideSection(ride: HistoryRide, onClick: () -> Unit) {
     val api = remember { ServiceLocator.api }
-    // Fetch the full ride to draw its route as the card background (iOS ActiveRideCard).
+    // The full ride carries the destination coordinate (which the history row does not) and the
+    // route geometry used as the card background when there is no photo.
+    var full by remember(ride.rideId) { mutableStateOf<Ride?>(null) }
     var route by remember(ride.rideId) { mutableStateOf<List<LatLng>>(emptyList()) }
     LaunchedEffect(ride.rideId) {
-        val full = runCatching { apiCall { api.getRide(ride.rideId) } }.getOrNull()
-        full?.let { route = rideRoute(it) }
+        full = runCatching { apiCall { api.getRide(ride.rideId) } }.getOrNull()
+    }
+
+    val heroPhase by rememberDestinationHero(
+        rideId = full?.id,
+        destinationName = full?.destinationName,
+        lat = full?.destinationLat,
+        lng = full?.destinationLng,
+    )
+
+    // The route is only needed for the map fallback, so a card showing a photo skips the
+    // Directions work entirely — this card appears on every visit to Home.
+    LaunchedEffect(full, heroPhase) {
+        val r = full ?: return@LaunchedEffect
+        if (heroPhase is DestinationHeroPhase.Unavailable && route.isEmpty()) route = rideRoute(r)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -226,12 +250,29 @@ private fun ActiveRideSection(ride: HistoryRide, onClick: () -> Unit) {
                 .border(1.dp, CT.primaryFixed.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
                 .background(CT.surfaceContainerHigh),
         ) {
-            if (route.isNotEmpty()) {
-                ConvoTrackMap(
-                    modifier = Modifier.matchParentSize(),
-                    routeCoords = route,
-                    interactive = false,
-                )
+            when (val phase = heroPhase) {
+                // The card's own surface stands in while we don't yet know whether there's a photo
+                // — showing the map here would only be replaced a moment later.
+                DestinationHeroPhase.Resolving -> Unit
+
+                is DestinationHeroPhase.Photo ->
+                    DestinationPhotoImage(
+                        bitmap = phase.photo.bitmap,
+                        // A wide letterbox banner, near-identical to the 16:9 Places serves, so a
+                        // crop loses almost nothing — and it sits under a heavy scrim as texture
+                        // rather than as the subject.
+                        crop = true,
+                        modifier = Modifier.matchParentSize(),
+                    )
+
+                DestinationHeroPhase.Unavailable ->
+                    if (route.isNotEmpty()) {
+                        ConvoTrackMap(
+                            modifier = Modifier.matchParentSize(),
+                            routeCoords = route,
+                            interactive = false,
+                        )
+                    }
             }
             // Dark scrim so the title/RESUME stay legible over the map. It also sits above the
             // map view and carries the click, since the (non-interactive) map consumes touches.

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -168,17 +169,36 @@ fun ConvoTrackBottomNav(
     activeTab: CTTab,
     onSelect: (CTTab) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
+    // The background is painted by an outer Box that extends THROUGH the gesture inset, while the
+    // items are inset above it. Padding the whole bar up instead left a transparent strip beneath
+    // it where list content showed through, so the bar read as a floating pill rather than a bar.
+    Box(
+        Modifier
             .fillMaxWidth()
-            .height(80.dp)
-            .background(CT.surfaceContainerLowest.copy(alpha = 0.95f))
-            .padding(horizontal = 48.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .background(CT.surfaceContainerLowest.copy(alpha = 0.95f)),
     ) {
-        navItem(Icons.Outlined.Flag, CTTab.FLAGGED, activeTab, onSelect, Modifier.weight(1f))
-        navItem(Icons.Outlined.NearMe, CTTab.TRACK, activeTab, onSelect, Modifier.weight(1f))
-        navItem(Icons.Outlined.Person, CTTab.PROFILE, activeTab, onSelect, Modifier.weight(1f))
+        // A hairline top edge. Without it the bar has no boundary, and content scrolling under a
+        // 95%-opaque surface ghosts through with nothing to read as the bar's start (iOS draws the
+        // same 0.5pt rule).
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(CT.outlineVariant.copy(alpha = 0.5f)),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .height(80.dp)
+                .padding(horizontal = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            navItem(Icons.Outlined.Flag, CTTab.FLAGGED, activeTab, onSelect, Modifier.weight(1f))
+            navItem(Icons.Outlined.NearMe, CTTab.TRACK, activeTab, onSelect, Modifier.weight(1f))
+            navItem(Icons.Outlined.Person, CTTab.PROFILE, activeTab, onSelect, Modifier.weight(1f))
+        }
     }
 }
 

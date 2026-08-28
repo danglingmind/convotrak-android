@@ -52,14 +52,20 @@ import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.ApiException
 import com.danglingmind.convotrack.data.net.RideParticipant
 import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.data.net.isNotFoundError
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.data.realtime.RideRealtimeSession
 import com.danglingmind.convotrack.di.ServiceLocator
+import com.danglingmind.convotrack.data.maps.DestinationHeroPhase
+import com.danglingmind.convotrack.ui.common.DestinationPhotoImage
 import com.danglingmind.convotrack.ui.common.ErrorBlock
+import com.danglingmind.convotrack.ui.common.rememberDestinationHero
 import com.danglingmind.convotrack.ui.common.LoadingBlock
 import com.danglingmind.convotrack.ui.common.formatKm
 import com.danglingmind.convotrack.ui.common.rememberQrBitmap
 import com.danglingmind.convotrack.ui.map.ConvoTrackMap
+import com.danglingmind.convotrack.ui.map.MapCamera
+import com.danglingmind.convotrack.ui.map.NavCamera
 import com.google.android.gms.maps.model.LatLng
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
@@ -102,6 +108,9 @@ fun RideLobbyScreen(
 
     var starting by remember { mutableStateOf(false) }
     var startError by remember { mutableStateOf<String?>(null) }
+    var showLeaveConfirm by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf(false) }
+    var leaveError by remember { mutableStateOf<String?>(null) }
 
     // Fetches the ride and starts the shared session. Idempotent, so re-entering the lobby from
     // navigation just re-joins the room rather than resetting the live roster.
@@ -116,6 +125,13 @@ fun RideLobbyScreen(
         // editable); editing a live ride re-routes everyone via ride:updated.
         val amLeader = myId != null && ride?.leaderId == myId
         val canEdit = amLeader && ride != null && ride?.status != "COMPLETED"
+        // Riders only, in both LOBBY and ACTIVE — a rider who has to peel off mid-ride is exactly
+        // who needs this, and waiting for the leader to kick them is not an answer.
+        //
+        // The leader has no equivalent: leaving would orphan the ride, leaving nobody able to
+        // start, end or edit it, so they cancel it from the edit page instead (the server rejects a
+        // leader leave with LEADER_CANNOT_LEAVE regardless of what the UI does).
+        val canLeave = !amLeader && ride != null && ride?.status != "COMPLETED"
         ConvoTrackTopBar(
             title = ride?.title ?: "Lobby",
             showBack = true,
@@ -128,6 +144,32 @@ fun RideLobbyScreen(
                         tint = CT.primaryFixed,
                         modifier = Modifier.size(40.dp).clip(CircleShape).clickable { onEdit(rideId) }.padding(9.dp),
                     )
+                } else if (canLeave) {
+                    // Takes the leader's Edit slot — the two are mutually exclusive, so the corner
+                    // holds whichever applies to you and never both.
+                    //
+                    // Tinted rather than filled: a solid red capsule would be the only saturated
+                    // red on a lime-and-green screen, pulling the eye to the one control a rider is
+                    // least likely to want. It also overstates the stakes — leaving is reversible
+                    // (you can re-join with the code), whereas END RIDE and DELETE RIDE are not.
+                    Box(
+                        Modifier
+                            .height(36.dp)
+                            .clip(CircleShape)
+                            .background(CT.errorContainer.copy(alpha = 0.18f))
+                            .border(1.dp, CT.errorColor.copy(alpha = 0.28f), CircleShape)
+                            .clickable(enabled = !leaving) { showLeaveConfirm = true }
+                            .padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (leaving) "LEAVING…" else "LEAVE",
+                            style = CTType.labelCaps,
+                            color = CT.errorColor,
+                            letterSpacing = 1.sp,
+                            maxLines = 1,
+                        )
+                    }
                 }
             },
         )
@@ -154,8 +196,19 @@ fun RideLobbyScreen(
                 val myReady = myReadyOptimistic ||
                     riders.firstOrNull { it.userId == myId }?.status == "READY"
 
-                val readyCount = riders.count { it.status == "READY" }
+                // Riders only. The leader has no MARK READY control (they get START instead), so
+                // counting them would leave the tally permanently one short and looking stuck.
                 val others = riders.filter { !it.isLeader }
+                val readyCount = others.count { rider ->
+                    // Own row uses the optimistic local state, matching how the roster renders it,
+                    // so the tally moves the instant you tap rather than waiting for the echo.
+                    if (rider.userId == myId) myReady else rider.status == "READY"
+                }
+                val readyStatusText = when {
+                    others.isEmpty() -> "SOLO"
+                    readyCount == others.size -> "ALL READY"
+                    else -> "$readyCount/${others.size} READY"
+                }
                 val canStart = others.isEmpty() || others.all { it.status == "READY" }
                 var showQr by remember { mutableStateOf(false) }
 
@@ -180,14 +233,70 @@ fun RideLobbyScreen(
                     routeCoords = rideRoute(loadedRide)
                 }
 
+                // Destination photo hero — the image Google Maps shows for this place, in place of
+                // the route map. Three-state, so the map fallback never flashes before a photo.
+                val heroPhase by rememberDestinationHero(
+                    rideId = loadedRide.id,
+                    destinationName = loadedRide.destinationName,
+                    lat = loadedRide.destinationLat,
+                    lng = loadedRide.destinationLng,
+                )
+
                 // Map with a floating stat-pill strip over its lower edge (iOS lobby mapSection).
-                Box(Modifier.fillMaxWidth().height(260.dp)) {
-                    ConvoTrackMap(
+                //
+                // 360dp, not 260: the camera has to reserve ~100dp at the top for the destination
+                // pin's art (stop pins are bottom-anchored and tower above their coordinate) and
+                // ~84dp at the bottom for the floating pills. On a 260dp map that left a ~76dp
+                // band to frame a route in, so the fit zoomed out until the route was a speck.
+                Box(Modifier.fillMaxWidth().height(LOBBY_MAP_HEIGHT.dp)) {
+                    // An explicit fit, not AutoFit: stop pins are bottom-anchored and tower up to
+                    // ~92dp ABOVE their coordinate, and the stat pills float over the map's lower
+                    // edge. A symmetric fit put the destination pin underneath the top app bar.
+                    var lobbyCameraId by remember(rideId) { mutableStateOf(0L) }
+                    LaunchedEffect(routeCoords, loadedRide.id) { lobbyCameraId += 1 }
+                    when (val phase = heroPhase) {
+                        // Deliberately empty: neither the photo nor the map. Showing the map here
+                        // is what makes a ride switch flash map → photo. A plain surface reads as
+                        // "loading" without committing to either outcome.
+                        DestinationHeroPhase.Resolving ->
+                            Box(Modifier.matchParentSize().background(CT.surfaceContainerLow))
+
+                        is DestinationHeroPhase.Photo ->
+                            DestinationPhotoImage(
+                                bitmap = phase.photo.bitmap,
+                                crop = false,   // near-square slot: show the whole frame
+                                modifier = Modifier.matchParentSize(),
+                            )
+
+                        DestinationHeroPhase.Unavailable -> ConvoTrackMap(
                         modifier = Modifier.matchParentSize(),
                         routeCoords = routeCoords,
                         markers = rideMarkers(loadedRide),
+                        stopCoords = rideStopCoords(loadedRide),
                         interactive = false,
-                    )
+                        camera = if (routeCoords.isEmpty()) {
+                            MapCamera.AutoFit
+                        } else {
+                            val rawTop = NavCamera.STOP_PIN_TOP_EXTENT_DP + 8f
+                            val rawBottom = 84f   // clears the floating stat-pill row
+                            // The insets must leave a usable band — asking the SDK to fit into a
+                            // zero-height viewport yields a nonsense zoom. Scale both back
+                            // proportionally if the chrome ever grows enough to threaten that
+                            // (larger text, more pills), keeping their ratio so the route stays
+                            // centred in whatever band is left (iOS `squeeze`).
+                            val maxVertical = LOBBY_MAP_HEIGHT - 80f
+                            val squeeze = minOf(1f, maxVertical / maxOf(rawTop + rawBottom, 1f))
+                            MapCamera.Fit(
+                                id = lobbyCameraId,
+                                coords = routeCoords,
+                                topDp = rawTop * squeeze,
+                                leftDp = 40f,
+                                bottomDp = rawBottom * squeeze,
+                                rightDp = 40f,
+                            )
+                        },
+                        )
+                    }
                     Box(
                         Modifier.matchParentSize().background(
                             Brush.verticalGradient(
@@ -216,6 +325,23 @@ fun RideLobbyScreen(
                             item { FloatingStatPill(label = "CODE", value = loadedRide.inviteCode, unit = null) }
                         }
                     }
+
+                    // Photographer credit. Required by Google's Places policy whenever a Place
+                    // Photo is displayed, so it renders WITH the image rather than being optional
+                    // decoration. Sits just above the floating stat-pill row.
+                    (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
+                        Text(
+                            "Photo: $credit · Google",
+                            style = CTType.bodyMd.copy(fontSize = 9.sp),
+                            color = Color.White.copy(alpha = 0.75f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(horizontal = 20.dp)
+                                .padding(bottom = 86.dp),
+                        )
+                    }
                 }
 
                 // Roster header: SQUAD ROSTER · LIVE indicator · share / QR actions.
@@ -223,16 +349,33 @@ fun RideLobbyScreen(
                     Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("SQUAD ROSTER", style = CTType.labelCaps, color = CT.primaryFixed, letterSpacing = 4.sp)
-                    Spacer(Modifier.size(10.dp))
+                    // The title takes the slack and truncates; everything to its right is
+                    // fixed-size. A plain weighted Spacer here collapsed to nothing on a phone and
+                    // the LIVE dot ran straight into the ready tally ("LIVE0 / 2 READY").
+                    Text(
+                        "SQUAD ROSTER",
+                        style = CTType.labelCaps,
+                        color = CT.primaryFixed,
+                        letterSpacing = 2.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
                     if (connected) {
+                        Spacer(Modifier.size(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Box(Modifier.size(6.dp).clip(CircleShape).background(CT.primaryFixed))
-                            Text("LIVE", style = CTType.labelCaps.copy(fontSize = 9.sp), color = CT.primaryFixed, letterSpacing = 2.sp)
+                            Text("LIVE", style = CTType.labelCaps.copy(fontSize = 9.sp), color = CT.primaryFixed, letterSpacing = 1.sp)
                         }
                     }
                     Spacer(Modifier.weight(1f))
-                    Text("$readyCount / ${riders.size} READY", style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 1.sp)
+                    Text(
+                        readyStatusText,
+                        style = CTType.labelCaps,
+                        color = CT.onSurfaceVariant,
+                        letterSpacing = 1.sp,
+                        maxLines = 1,
+                    )
                     Spacer(Modifier.size(10.dp))
                     LobbyActionButton(Icons.Filled.Share, "Share invite") { shareInvite(ctx, loadedRide.inviteCode, loadedRide.title) }
                     Spacer(Modifier.size(8.dp))
@@ -250,6 +393,7 @@ fun RideLobbyScreen(
                             rider = rider,
                             isMe = rider.userId == myId,
                             isOnline = onlineIds.contains(rider.userId),
+                            rideActive = isActive,
                             onClick = if (canManage) ({ riderToManage = rider }) else null,
                         )
                     }
@@ -281,6 +425,74 @@ fun RideLobbyScreen(
                             }
                         },
                         onDismiss = { if (!removing) { riderToManage = null; removeError = null } },
+                    )
+                }
+
+                if (showLeaveConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showLeaveConfirm = false },
+                        containerColor = CT.surfaceContainer,
+                        title = { Text("Leave this ride?", style = CTType.headlineMd, color = CT.onSurface) },
+                        text = {
+                            Text(
+                                "You'll stop sharing your location and drop off the roster. " +
+                                    "You can re-join later with the invite code.",
+                                style = CTType.bodyMd,
+                                color = CT.onSurfaceVariant,
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showLeaveConfirm = false
+                                leaving = true
+                                leaveError = null
+                                scope.launch {
+                                    try {
+                                        apiCall { api.leaveRide(rideId) }
+                                        // Confirmation-FIRST, deliberately: tearing the session
+                                        // down optimistically would drop the socket before the
+                                        // server's ride:participant_left broadcast — the very event
+                                        // every other rider's roster, ready tally and map pin
+                                        // removal hangs off.
+                                        sessionVm.endSession()
+                                        onBack()
+                                    } catch (e: ApiException) {
+                                        // "You aren't in this ride" counts as success. The rider
+                                        // asked to be out; if the server already has them out (a
+                                        // double tap, a stale lobby, a leader who kicked them a
+                                        // moment earlier) the goal is met, and trapping them behind
+                                        // an error alert would be absurd.
+                                        if (e.message == "PARTICIPANT_NOT_FOUND" || isNotFoundError(e.message)) {
+                                            sessionVm.endSession()
+                                            onBack()
+                                        } else {
+                                            leaveError = e.riderMessage
+                                            leaving = false
+                                        }
+                                    } catch (e: Exception) {
+                                        leaveError = e.riderMessage
+                                        leaving = false
+                                    }
+                                }
+                            }) { Text("Leave Ride", color = CT.errorColor) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showLeaveConfirm = false }) {
+                                Text("Cancel", color = CT.onSurfaceVariant)
+                            }
+                        },
+                    )
+                }
+
+                leaveError?.let { message ->
+                    AlertDialog(
+                        onDismissRequest = { leaveError = null },
+                        containerColor = CT.surfaceContainer,
+                        title = { Text("Couldn't Leave Ride", style = CTType.headlineMd, color = CT.onSurface) },
+                        text = { Text(message, style = CTType.bodyMd, color = CT.onSurfaceVariant) },
+                        confirmButton = {
+                            TextButton(onClick = { leaveError = null }) { Text("OK", color = CT.primaryFixed) }
+                        },
                     )
                 }
 
@@ -368,6 +580,10 @@ fun RideLobbyScreen(
     }
 }
 
+/** Height of the lobby's map preview. Shared by the frame and the camera-fit clamp so they can't
+ *  drift apart. */
+private const val LOBBY_MAP_HEIGHT = 360f
+
 /** Shown to a rider whose ride the leader deleted — acknowledging it leaves the ride flow. */
 @Composable
 private fun RideCancelledDialog(onConfirm: () -> Unit) {
@@ -396,9 +612,29 @@ private fun SecondaryButton(text: String, enabled: Boolean, highlighted: Boolean
     }
 }
 
+/**
+ * One roster row.
+ *
+ * The badge is a tri-state, not a boolean. The leader starts the ride rather than readying up, so a
+ * leader must never render as WAITING; and once the ride is ACTIVE the ready/waiting distinction is
+ * moot for everyone — they're all riding.
+ */
+private fun rosterBadge(rider: RideParticipant, rideActive: Boolean): Triple<String, Color, Color> = when {
+    rideActive -> Triple("RIDING", CT.onPrimaryFixed, CT.tertiaryFixed)
+    rider.isLeader || rider.status == "READY" -> Triple("READY", CT.onPrimaryContainer, CT.primaryContainer)
+    else -> Triple("WAITING", CT.onSurfaceVariant, CT.surfaceVariant)
+}
+
 @Composable
-private fun RiderRow(rider: RideParticipant, isMe: Boolean, isOnline: Boolean, onClick: (() -> Unit)? = null) {
-    val ready = rider.status == "READY"
+private fun RiderRow(
+    rider: RideParticipant,
+    isMe: Boolean,
+    isOnline: Boolean,
+    rideActive: Boolean = false,
+    onClick: (() -> Unit)? = null,
+) {
+    val (badgeText, badgeFg, badgeBg) = rosterBadge(rider, rideActive)
+    val ready = badgeText != "WAITING"
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(CT.surfaceContainerHigh.copy(alpha = 0.7f))
             .border(1.dp, if (ready) CT.primaryFixed else CT.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
@@ -439,12 +675,12 @@ private fun RiderRow(rider: RideParticipant, isMe: Boolean, isOnline: Boolean, o
             )
         }
         Text(
-            if (ready) "READY" else "WAITING",
+            badgeText,
             style = CTType.labelCaps,
-            color = if (ready) CT.onPrimaryContainer else CT.onSurfaceVariant,
+            color = badgeFg,
             letterSpacing = 1.sp,
             modifier = Modifier.clip(CircleShape)
-                .background(if (ready) CT.primaryContainer else CT.surfaceVariant)
+                .background(badgeBg)
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }

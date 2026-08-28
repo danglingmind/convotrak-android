@@ -18,6 +18,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -154,53 +157,85 @@ fun OffscreenIndicatorsOverlay(
     modifier: Modifier = Modifier,
 ) {
     var expandedClusterId by remember { mutableStateOf<String?>(null) }
+    val density = LocalDensity.current
+    val fanStepPx = with(density) { 46.dp.toPx() }
+
+    // Flatten to one entry per chip FIRST, so the content lambda emits exactly one composable per
+    // entry in the same order. The measure block then matches measurables to entries by index.
+    val entries = remember(clusters, expandedClusterId) {
+        buildList {
+            clusters.forEach { cluster ->
+                val expanded = cluster.id == expandedClusterId && cluster.members.size > 1
+                when {
+                    expanded -> cluster.members.forEachIndexed { idx, m ->
+                        add(ChipEntry(cluster.anchorX, cluster.anchorY, idx, m, null))
+                    }
+                    cluster.members.size > 1 ->
+                        add(ChipEntry(cluster.anchorX, cluster.anchorY, 0, null, cluster))
+                    else -> cluster.members.firstOrNull()?.let {
+                        add(ChipEntry(cluster.anchorX, cluster.anchorY, 0, it, null))
+                    }
+                }
+            }
+        }
+    }
 
     Box(modifier.fillMaxSize()) {
-        // Dismiss the expanded fan by tapping elsewhere.
+        // Tapping anywhere else collapses an expanded fan.
         if (expandedClusterId != null) {
             Box(
                 Modifier.matchParentSize().clickable(
                     indication = null,
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    interactionSource = remember { MutableInteractionSource() },
                 ) { expandedClusterId = null },
             )
         }
 
-        val density = LocalDensity.current
-        val fanStepPx = with(density) { 46.dp.toPx() }
-
-        clusters.forEach { cluster ->
-            when {
-                cluster.id == expandedClusterId && cluster.members.size > 1 -> {
-                    // Members stack toward the screen interior from the cluster anchor.
-                    BoxWithCenter(cluster.anchorX, cluster.anchorY) { centerX, centerY ->
-                        val dx = centerX - cluster.anchorX
-                        val dy = centerY - cluster.anchorY
-                        val len = maxOf(hypot(dx, dy), 0.001f)
-                        cluster.members.forEachIndexed { idx, member ->
-                            val step = idx * fanStepPx
-                            EdgeChip(
-                                model = member,
-                                modifier = Modifier
-                                    .offsetAt(cluster.anchorX + dx / len * step, cluster.anchorY + dy / len * step)
-                                    .clickable { onTapRider(member.id) },
-                            )
-                        }
+        // A Layout, not offset modifiers: each chip's CENTRE has to land on a point that can sit
+        // hard against (or past) the overlay's edge, and it must not be constrained to the parent's
+        // bounds. Positioning that with padding/offset modifiers silently produced chips that were
+        // composed but never placed anywhere visible.
+        Layout(
+            modifier = Modifier.fillMaxSize(),
+            content = {
+                entries.forEach { entry ->
+                    val member = entry.member
+                    val cluster = entry.cluster
+                    when {
+                        member != null -> EdgeChip(
+                            model = member,
+                            modifier = Modifier.clickable { onTapRider(member.id) },
+                        )
+                        cluster != null -> ClusterChip(
+                            count = cluster.members.size,
+                            distanceMeters = cluster.minDistance,
+                            modifier = Modifier.clickable { expandedClusterId = cluster.id },
+                        )
                     }
                 }
-                cluster.members.size > 1 -> ClusterChip(
-                    count = cluster.members.size,
-                    distanceMeters = cluster.minDistance,
-                    modifier = Modifier
-                        .offsetAt(cluster.anchorX, cluster.anchorY)
-                        .clickable { expandedClusterId = cluster.id },
-                )
-                else -> cluster.members.firstOrNull()?.let { only ->
-                    EdgeChip(
-                        model = only,
-                        modifier = Modifier
-                            .offsetAt(cluster.anchorX, cluster.anchorY)
-                            .clickable { onTapRider(only.id) },
+            },
+        ) { measurables, constraints ->
+            // Measure each chip at its natural size, unbounded by the overlay.
+            val placeables = measurables.map { it.measure(Constraints()) }
+            val w = constraints.maxWidth
+            val h = constraints.maxHeight
+            layout(w, h) {
+                placeables.forEachIndexed { i, placeable ->
+                    val entry = entries.getOrNull(i) ?: return@forEachIndexed
+                    // Expanded members stack toward the screen interior from the cluster anchor.
+                    var x = entry.anchorX
+                    var y = entry.anchorY
+                    if (entry.fanIndex > 0) {
+                        val dx = w / 2f - entry.anchorX
+                        val dy = h / 2f - entry.anchorY
+                        val len = maxOf(hypot(dx, dy), 0.001f)
+                        val step = entry.fanIndex * fanStepPx
+                        x += dx / len * step
+                        y += dy / len * step
+                    }
+                    placeable.place(
+                        (x - placeable.width / 2f).roundToInt(),
+                        (y - placeable.height / 2f).roundToInt(),
                     )
                 }
             }
@@ -208,40 +243,14 @@ fun OffscreenIndicatorsOverlay(
     }
 }
 
-/** Positions content so its CENTRE sits at (x, y) in map-view pixels. */
-private fun Modifier.offsetAt(x: Float, y: Float): Modifier = this
-    .wrapContentSize(align = Alignment.TopStart, unbounded = true)
-    .offset {
-        // The chip's CENTRE goes to (x, y): the anchor is a point on the screen border, and a chip
-        // hung off its top-left corner would sit half a chip inboard of it.
-        IntOffset(x.roundToInt(), y.roundToInt())
-    }
-    .layoutCenteredOnOrigin()
-
-/** Shifts the composable so its centre, rather than its top-left, sits at the current offset. */
-private fun Modifier.layoutCenteredOnOrigin(): Modifier = this.then(
-    Modifier.layout { measurable, constraints ->
-        val placeable = measurable.measure(constraints)
-        layout(placeable.width, placeable.height) {
-            placeable.place(-placeable.width / 2, -placeable.height / 2)
-        }
-    },
+/** One chip to draw: where it anchors, its position in an expanded fan, and what it shows. */
+private data class ChipEntry(
+    val anchorX: Float,
+    val anchorY: Float,
+    val fanIndex: Int,
+    val member: EdgeChipModel?,
+    val cluster: EdgeCluster?,
 )
-
-/** Supplies the overlay's centre point in pixels, for the fan-out direction. */
-@Composable
-private fun BoxWithCenter(
-    anchorX: Float,
-    anchorY: Float,
-    content: @Composable (centerX: Float, centerY: Float) -> Unit,
-) {
-    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
-        val density = LocalDensity.current
-        val cx = with(density) { maxWidth.toPx() } / 2f
-        val cy = with(density) { maxHeight.toPx() } / 2f
-        content(cx, cy)
-    }
-}
 
 private fun formatEdgeDistance(meters: Double): String =
     if (meters < 1000) "${(Math.round(meters / 10) * 10)}m"

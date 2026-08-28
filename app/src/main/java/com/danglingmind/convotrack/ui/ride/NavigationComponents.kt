@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -561,10 +563,18 @@ fun NavControlButton(
     size: androidx.compose.ui.unit.Dp,
     enabled: Boolean = true,
     busy: Boolean = false,
+    /** Portrait passes nothing and gets a square button; the landscape panel passes `weight(1f)`
+     *  so the two actions split its full width, since the panel is the only chrome there. */
+    modifier: Modifier = Modifier,
+    /** False (portrait) pins the button square at [size]; true lets [modifier] set the width. */
+    fillWidth: Boolean = false,
     onClick: () -> Unit,
 ) {
     Box(
-        Modifier.size(size).clip(RoundedCornerShape(12.dp)).background(background)
+        modifier
+            .height(size)
+            .then(if (fillWidth) Modifier else Modifier.width(size))
+            .clip(RoundedCornerShape(12.dp)).background(background)
             .border(1.dp, border, RoundedCornerShape(12.dp))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,

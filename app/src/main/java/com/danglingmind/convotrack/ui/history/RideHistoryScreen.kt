@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.data.net.HistoryRide
+import com.danglingmind.convotrack.data.net.RideStatusFilter
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
@@ -50,6 +52,7 @@ import com.danglingmind.convotrack.ui.common.isCompleted
 import com.danglingmind.convotrack.ui.common.durationLabel
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
+import com.danglingmind.convotrack.ui.theme.FloatingStatPill
 import com.danglingmind.convotrack.ui.theme.ConvoTrackTopBar
 import kotlinx.coroutines.launch
 
@@ -65,7 +68,12 @@ fun RideHistoryScreen(
     suspend fun load() {
         state = UiState.Loading
         state = try {
-            UiState.Success(apiCall { api.getMyRides().rides })
+            UiState.Success(
+                // COMPLETED only. The endpoint caps at 50 rows, so filtering server-side is also
+                // what stops a busy rider's finished rides being crowded out — and an ACTIVE ride
+                // has no duration or summary to show in a history row.
+                apiCall { api.getMyRides(RideStatusFilter.query(RideStatusFilter.COMPLETED)) }.rides,
+            )
         } catch (e: Exception) {
             UiState.Error(e.riderMessage)
         }
@@ -93,10 +101,42 @@ fun RideHistoryScreen(
                         )
                     }
                 } else {
+                    // Totals across the finished rides only — the list is already COMPLETED-only,
+                    // but these are derived from the same filtered set so a looser server response
+                    // can't quietly inflate them.
+                    val completed = s.data.filter { it.isCompleted }
+                    val totalKm = completed.sumOf { it.distanceMeters } / 1000
+                    val avgSpeed = completed.mapNotNull { it.avgSpeedKmh }.takeIf { it.isNotEmpty() }?.average()
+
                     LazyColumn(
                         contentPadding = PaddingValues(20.dp, 20.dp, 20.dp, 120.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        item {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                item {
+                                    FloatingStatPill(
+                                        label = "TOTAL DISTANCE",
+                                        value = String.format(java.util.Locale.US, "%.0f", totalKm),
+                                        unit = "km",
+                                    )
+                                }
+                                item {
+                                    FloatingStatPill(
+                                        label = "TOTAL RIDES",
+                                        value = "${completed.size}",
+                                        unit = null,
+                                    )
+                                }
+                                item {
+                                    FloatingStatPill(
+                                        label = "AVG SPEED",
+                                        value = avgSpeed?.let { String.format(java.util.Locale.US, "%.0f", it) } ?: "--",
+                                        unit = "km/h",
+                                    )
+                                }
+                            }
+                        }
                         items(s.data, key = { it.rideId }) { ride ->
                             // Completed rides open their summary; anything still live (LOBBY/
                             // ACTIVE/PAUSED) opens the lobby — matches iOS RideHistoryView.handleTap.

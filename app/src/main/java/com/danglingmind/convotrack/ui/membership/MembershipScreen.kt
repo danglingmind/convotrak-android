@@ -51,22 +51,15 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import com.danglingmind.convotrack.data.billing.BillingManager
+import com.danglingmind.convotrack.data.billing.DisplayPlan
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
 import com.danglingmind.convotrack.ui.theme.LimePrimaryButton
 
-// Prices mirror the iOS StoreKit products (convotrack.storekit):
-//   danglingmind.convotrack.membership.monthly  $4.99 / month
-//   danglingmind.convotrack.membership.yearly   $39.99 / year  (= $3.33/mo, save 33%)
-// Billing is Google Play on Android, so the store wording differs from the Apple copy.
-private const val MONTHLY_PRICE = "$4.99"
-private const val YEARLY_PRICE = "$39.99"
-private const val YEARLY_PER_MONTH = "$3.33"
-private const val SAVINGS_PCT = 33
-
-private enum class Plan { MONTHLY, YEARLY }
-
+// Prices, billing periods and savings all come from Play at runtime — nothing here hardcodes a
+// figure. A price or period stated from a constant is one the store may not actually charge, and a
+// hardcoded "SAVE 33%" silently becomes a false claim the moment either plan is repriced.
 private data class Benefit(val icon: ImageVector, val title: String, val detail: String)
 
 private val benefits = listOf(
@@ -80,7 +73,7 @@ private val benefits = listOf(
 fun MembershipScreen(onClose: () -> Unit) {
     val context = LocalContext.current
     val billing = remember { ServiceLocator.billing }
-    var selected by remember { mutableStateOf(Plan.YEARLY) }
+    var selectedProductId by remember { mutableStateOf<String?>(null) }
     var showSuccess by remember { mutableStateOf(false) }
 
     val isPremium by billing.isPremium.collectAsState()
@@ -91,9 +84,18 @@ fun MembershipScreen(onClose: () -> Unit) {
     LaunchedEffect(Unit) { billing.start() }
     LaunchedEffect(isPremium) { if (isPremium) showSuccess = true }
 
-    // Live Play prices when available, else the placeholder figures.
-    val monthlyPrice = billing.formattedPrice(BillingManager.MONTHLY_ID) ?: MONTHLY_PRICE
-    val yearlyPrice = billing.formattedPrice(BillingManager.YEARLY_ID) ?: YEARLY_PRICE
+    // Plans come from Play, ordered longest-cycle-first, with savings derived from the actual
+    // billing periods rather than a hardcoded percentage. Empty until Play answers — the paywall
+    // then shows its placeholder copy rather than inventing prices.
+    val plans = billing.displayPlans()
+    val bestValueId = billing.bestValuePlan()?.productId
+
+    // Default to the best-value plan once the store answers, not to a hardcoded "yearly".
+    LaunchedEffect(bestValueId, plans.size) {
+        if (selectedProductId == null) {
+            selectedProductId = bestValueId ?: plans.firstOrNull()?.productId
+        }
+    }
 
     Box(
         Modifier
@@ -132,16 +134,20 @@ fun MembershipScreen(onClose: () -> Unit) {
                 ) {
                     HeroSection()
                     BenefitsGrid()
-                    PlansSection(selected, monthlyPrice, yearlyPrice) { selected = it }
+                    PlansSection(
+                        plans = plans,
+                        selectedProductId = selectedProductId,
+                        bestValueId = bestValueId,
+                        savingsFor = { billing.savingsFor(it) },
+                        onSelect = { selectedProductId = it },
+                    )
                     CtaStack(
-                        selected = selected,
-                        monthlyPrice = monthlyPrice,
-                        yearlyPrice = yearlyPrice,
+                        selected = plans.firstOrNull { it.productId == selectedProductId },
                         error = error,
                         onPurchase = {
                             val activity = context.findActivity()
-                            val productId = if (selected == Plan.YEARLY) BillingManager.YEARLY_ID else BillingManager.MONTHLY_ID
-                            if (activity != null) billing.purchase(activity, productId)
+                            val productId = selectedProductId
+                            if (activity != null && productId != null) billing.purchase(activity, productId)
                         },
                     )
                 }
@@ -200,56 +206,71 @@ private fun BenefitsGrid() {
 }
 
 @Composable
-private fun PlansSection(selected: Plan, monthlyPrice: String, yearlyPrice: String, onSelect: (Plan) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // The SAVE badge straddles the card's top edge (iOS uses offset(x:-14, y:-10)),
-        // so the card is inset from the top to leave room — otherwise the badge would
-        // sit inside the card and collide with the price column on the right.
-        Box(Modifier.fillMaxWidth()) {
-            PlanCard(
-                plan = Plan.YEARLY,
-                isSelected = selected == Plan.YEARLY,
-                title = "YEARLY",
-                subtitle = "Billed every 12 months",
-                price = "$yearlyPrice / yr",
-                // Per-month + savings are marketing approximations (placeholder figures).
-                perMonth = "≈ $YEARLY_PER_MONTH / mo",
-                onSelect = onSelect,
-                modifier = Modifier.padding(top = 12.dp),
-            )
-            Text(
-                "SAVE $SAVINGS_PCT%",
-                style = CTType.labelCaps,
-                color = CT.onPrimaryFixed,
-                letterSpacing = 0.5.sp,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 14.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(CT.primaryFixed)
-                    .padding(horizontal = 9.dp, vertical = 5.dp),
-            )
+private fun PlansSection(
+    plans: List<DisplayPlan>,
+    selectedProductId: String?,
+    bestValueId: String?,
+    savingsFor: (DisplayPlan) -> Int?,
+    onSelect: (String) -> Unit,
+) {
+    if (plans.isEmpty()) {
+        // Play hasn't answered yet. Deliberately shows nothing rather than placeholder prices: a
+        // price we haven't been told is a price we might charge differently.
+        Box(Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
+            Text("Loading plans…", style = CTType.bodyMd, color = CT.onSurfaceVariant)
         }
-        PlanCard(
-            plan = Plan.MONTHLY,
-            isSelected = selected == Plan.MONTHLY,
-            title = "MONTHLY",
-            subtitle = "Billed every month",
-            price = "$monthlyPrice / mo",
-            onSelect = onSelect,
-        )
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        plans.forEach { plan ->
+            val savings = savingsFor(plan)
+            val isBest = plan.productId == bestValueId
+            Box(Modifier.fillMaxWidth()) {
+                PlanCard(
+                    isSelected = plan.productId == selectedProductId,
+                    isHighlighted = isBest,
+                    title = plan.period?.label?.uppercase() ?: "SUBSCRIPTION",
+                    subtitle = plan.period?.let { "Billed every ${it.label}" } ?: "Recurring",
+                    price = plan.period?.let { "${plan.formattedPrice} / ${it.shortLabel}" }
+                        // No period we can prove → show the bare price and claim nothing.
+                        ?: plan.formattedPrice,
+                    perMonth = plan.monthlyEquivalentText(),
+                    onSelect = { onSelect(plan.productId) },
+                    // The SAVE badge straddles the card's top edge, so a card that carries one is
+                    // inset to leave room — otherwise the badge sits inside the card and collides
+                    // with the price column.
+                    modifier = if (isBest && savings != null) Modifier.padding(top = 12.dp) else Modifier,
+                )
+                if (isBest && savings != null) {
+                    Text(
+                        "SAVE $savings%",
+                        style = CTType.labelCaps,
+                        color = CT.onPrimaryFixed,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(end = 14.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(CT.primaryFixed)
+                            .padding(horizontal = 9.dp, vertical = 5.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun PlanCard(
-    plan: Plan,
     isSelected: Boolean,
+    /** The best-value plan gets the stronger selected treatment. */
+    isHighlighted: Boolean = false,
     title: String,
     subtitle: String,
     price: String,
     perMonth: String? = null,
-    onSelect: (Plan) -> Unit,
+    onSelect: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -257,7 +278,7 @@ private fun PlanCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(
-                if (isSelected) CT.primaryFixed.copy(alpha = if (plan == Plan.YEARLY) 0.1f else 0.06f)
+                if (isSelected) CT.primaryFixed.copy(alpha = if (isHighlighted) 0.1f else 0.06f)
                 else CT.surfaceContainerHigh.copy(alpha = 0.4f)
             )
             .border(
@@ -265,7 +286,7 @@ private fun PlanCard(
                 if (isSelected) CT.primaryFixed.copy(alpha = 0.7f) else CT.outlineVariant.copy(alpha = 0.2f),
                 RoundedCornerShape(16.dp),
             )
-            .clickable { onSelect(plan) }
+            .clickable { onSelect() }
             .padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -288,7 +309,7 @@ private fun PlanCard(
             Text(
                 price,
                 style = CTType.headlineMd,
-                color = if (isSelected && plan == Plan.YEARLY) CT.primaryFixed else CT.onSurface,
+                color = if (isSelected && isHighlighted) CT.primaryFixed else CT.onSurface,
             )
             if (perMonth != null) {
                 Text(perMonth, style = CTType.captionSm, color = CT.onSurfaceVariant.copy(alpha = 0.55f))
@@ -299,15 +320,17 @@ private fun PlanCard(
 
 @Composable
 private fun CtaStack(
-    selected: Plan,
-    monthlyPrice: String,
-    yearlyPrice: String,
+    selected: DisplayPlan?,
     error: String?,
     onPurchase: () -> Unit,
 ) {
-    val period = if (selected == Plan.YEARLY) "year" else "month"
-    val price = if (selected == Plan.YEARLY) yearlyPrice else monthlyPrice
-    val ctaLabel = if (selected == Plan.YEARLY) "GET PRO  ·  $yearlyPrice/yr" else "GET PRO  ·  $monthlyPrice/mo"
+    val price = selected?.formattedPrice
+    val period = selected?.period?.label
+    val ctaLabel = when {
+        selected == null -> "GET PRO"
+        selected.period != null -> "GET PRO  ·  ${selected.formattedPrice}/${selected.period.shortLabel}"
+        else -> "GET PRO  ·  ${selected.formattedPrice}"
+    }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         if (error != null) {
@@ -319,7 +342,9 @@ private fun CtaStack(
                 modifier = Modifier.padding(bottom = 10.dp),
             )
         }
-        LimePrimaryButton(text = ctaLabel, onClick = onPurchase)
+        // Disabled until a plan is actually loaded and selected. With no plans the tap had
+        // nothing to purchase and silently did nothing, which reads as a broken button.
+        LimePrimaryButton(text = ctaLabel, enabled = selected != null, onClick = onPurchase)
 
         Row(
             Modifier.padding(top = 12.dp),
@@ -335,11 +360,23 @@ private fun CtaStack(
         }
 
         // Auto-renewal disclosure (Play Store equivalent of App Store Guideline 3.1.2).
+        //
+        // The price and period here are the ones Play reported for the SELECTED plan, never
+        // constants: this text is a representation of what the user will actually be charged, so a
+        // stale hardcoded figure in it is a compliance problem rather than a typo. Until a plan is
+        // loaded and chosen, the sentence omits the specifics instead of inventing them.
         Text(
-            "ConvoTrack Pro is a $price/$period auto-renewing subscription. Payment is charged " +
-                "to your Google Play account at confirmation of purchase. The subscription renews " +
-                "automatically unless it is canceled at least 24 hours before the end of the current " +
-                "period. Manage or cancel anytime in Google Play subscription settings.",
+            if (price != null && period != null) {
+                "ConvoTrack Pro is a $price/$period auto-renewing subscription. Payment is charged " +
+                    "to your Google Play account at confirmation of purchase. The subscription renews " +
+                    "automatically unless it is canceled at least 24 hours before the end of the current " +
+                    "period. Manage or cancel anytime in Google Play subscription settings."
+            } else {
+                "ConvoTrack Pro is an auto-renewing subscription. Payment is charged to your Google " +
+                    "Play account at confirmation of purchase. The subscription renews automatically " +
+                    "unless it is canceled at least 24 hours before the end of the current period. " +
+                    "Manage or cancel anytime in Google Play subscription settings."
+            },
             style = CTType.captionMd,
             color = CT.onSurfaceVariant.copy(alpha = 0.42f),
             textAlign = TextAlign.Center,
