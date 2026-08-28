@@ -1,6 +1,7 @@
 package com.danglingmind.convotrack.data.billing
 
 import com.android.billingclient.api.ProductDetails
+import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -126,15 +127,23 @@ data class DisplayPlan(
     val priceMicros: Long,
     val currencyCode: String,
 ) {
-    /** "≈ $3.33 / mo", or null when a per-month breakdown says nothing useful. */
+    /**
+     * "≈ $3.33 / mo", or null when a per-month breakdown says nothing useful.
+     *
+     * Formatted by [NumberFormat], not by hand: a hand-built "symbol then number" is wrong in every
+     * locale that puts the symbol last ("3,33 €"), and falling back to a bare symbol-less number
+     * would print an unqualified figure on a paywall — the exact class of misstatement this file's
+     * header argues against. If the currency can't be resolved we return null and show nothing.
+     */
     fun monthlyEquivalentText(): String? {
         val p = period ?: return null
         if (!p.isLongerThanAMonth) return null
         val micros = p.monthlyEquivalentMicros(priceMicros) ?: return null
-        return String.format(Locale.getDefault(), "≈ %s%.2f / mo", currencySymbol(), micros / 1_000_000.0)
+        val formatter = runCatching {
+            NumberFormat.getCurrencyInstance(Locale.getDefault()).apply {
+                currency = java.util.Currency.getInstance(currencyCode)
+            }
+        }.getOrNull() ?: return null
+        return "≈ ${formatter.format(micros / 1_000_000.0)} / mo"
     }
-
-    private fun currencySymbol(): String =
-        runCatching { java.util.Currency.getInstance(currencyCode).getSymbol(Locale.getDefault()) }
-            .getOrNull() ?: ""
 }

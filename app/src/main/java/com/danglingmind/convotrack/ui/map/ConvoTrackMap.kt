@@ -236,6 +236,9 @@ fun ConvoTrackMap(
     // Drawn geometry is capped; the camera and all navigation math still use the full lists.
     val drawRoute = remember(routeCoords) { simplifyForDisplay(routeCoords) }
     val drawFullRoute = remember(fullRouteCoords) { simplifyForDisplay(fullRouteCoords) }
+    // Alternatives are simplified once per change too, not per recomposition — the route picker
+    // recomposes on every selection tap and these lists are the same size as the main route.
+    val drawAlternatives = remember(alternativeRoutes) { alternativeRoutes.map { simplifyForDisplay(it) } }
     val darkStyle = remember { MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style_dark) }
     val cameraPositionState = rememberCameraPositionState()
 
@@ -424,11 +427,11 @@ fun ConvoTrackMap(
     ) {
         // Dim, tappable alternatives sit below the bright selected route. Only shown when there's
         // more than one option to choose between.
-        if (alternativeRoutes.size > 1) {
-            alternativeRoutes.forEachIndexed { index, coords ->
+        if (drawAlternatives.size > 1) {
+            drawAlternatives.forEachIndexed { index, coords ->
                 if (index != selectedRouteIndex && coords.size >= 2) {
                     Polyline(
-                        points = simplifyForDisplay(coords),
+                        points = coords,
                         color = androidx.compose.ui.graphics.Color(0xFFC7C7C7).copy(alpha = 0.42f),
                         width = 8f,
                         zIndex = 0f,

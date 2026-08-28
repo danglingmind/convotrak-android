@@ -65,26 +65,58 @@ object AvatarCache {
         memory.get(url)?.let { return it }
         lock.withLock { if (url in knownBad) return null }
 
+        // The cache write happens INSIDE the shared task, not here.
+        //
+        // Callers are cancelled constantly — the map's avatar effect is keyed on the marker list,
+        // which changes on every GPS fix — so recording the result in the caller's coroutine threw
+        // away every download that outlived a position update, and the next pass started a fresh
+        // HTTP request. For any avatar slower than the gap between fixes that was an unbounded
+        // re-download loop that never populated the cache.
         val task = lock.withLock {
-            inFlight[url] ?: scope.async { fetchAndDecode(url) }.also { inFlight[url] = it }
+            inFlight[url] ?: scope.async { fetchAndRemember(url) }.also { inFlight[url] = it }
         }
-        val bitmap = try {
+        return try {
             task.await()
         } finally {
+            // `scope` is not the caller's, so the task itself runs to completion and caches even
+            // when this await is cancelled; this only tidies the in-flight map.
             lock.withLock { if (inFlight[url] === task) inFlight.remove(url) }
         }
-
-        if (bitmap == null) {
-            lock.withLock { knownBad.add(url) }
-        } else {
-            memory.put(url, bitmap)
-        }
-        return bitmap
     }
 
+    private suspend fun fetchAndRemember(url: String): Bitmap? {
+        val result = fetchAndDecode(url)
+        if (result == null) {
+            // Only a genuinely unusable image is blacklisted. A momentary dropout must stay
+            // retryable, or one second without signal at the start of a ride leaves a rider as a
+            // letter marker for the rest of the session.
+            if (!lastFailureWasTransient) lock.withLock { knownBad.add(url) }
+        } else {
+            memory.put(url, result)
+        }
+        return result
+    }
+
+    /** Set by [fetchAndDecode] when the last failure was a network problem rather than a bad
+     *  image, so [fetchAndRemember] knows whether the URL deserves blacklisting. */
+    @Volatile
+    private var lastFailureWasTransient = false
+
     private fun fetchAndDecode(url: String): Bitmap? = runCatching {
-        val bytes = client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
-            if (!resp.isSuccessful) return@use null
+        lastFailureWasTransient = false
+        val response = try {
+            client.newCall(Request.Builder().url(url).build()).execute()
+        } catch (e: java.io.IOException) {
+            lastFailureWasTransient = true
+            return null
+        }
+        val bytes = response.use { resp ->
+            // 5xx is the server having a bad moment; 4xx means this URL genuinely isn't an image
+            // we can have, which is worth remembering.
+            if (!resp.isSuccessful) {
+                lastFailureWasTransient = resp.code >= 500
+                return@use null
+            }
             resp.body?.bytes()
         } ?: return null
 

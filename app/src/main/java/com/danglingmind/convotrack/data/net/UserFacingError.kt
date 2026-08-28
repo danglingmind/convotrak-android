@@ -115,6 +115,10 @@ object UserFacingError {
     const val PURCHASE_FAILED = "The store wasn't having it. Nothing was charged — try again."
     const val RESTORE_FAILED = "Couldn't dig up your previous purchases. Try again in a moment."
 
+    /** The plan itself couldn't be loaded — distinct from a purchase that failed, and from a
+     *  restore, because the user tapped neither. */
+    const val PLAN_UNAVAILABLE = "That plan isn't available right now. Try again shortly."
+
     /** Every code we have wording for, used for substring matching when a code arrives wrapped in
      *  other text. Kept next to [messageForCode] so the two can't drift. */
     val KNOWN_CODES = listOf(

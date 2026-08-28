@@ -110,7 +110,8 @@ fun RideNavigationScreen(
     val riders by vm.riders.collectAsState()
     val leaderboardRows by vm.leaderboardRows.collectAsState()
     val mySpeedKmh by vm.mySpeedKmh.collectAsState()
-    val hasLocationFix by vm.hasLocationFix.collectAsState()
+    val hasSpeedFix by vm.hasSpeedFix.collectAsState()
+    val isRiderMoving by vm.isMoving.collectAsState()
     val myDistanceKm by vm.myDistanceToGoalKm.collectAsState()
     val routeCoords by vm.routeCoordinates.collectAsState()
     val activeRoute by vm.activeRouteCoordinates.collectAsState()
@@ -396,8 +397,9 @@ fun RideNavigationScreen(
             cameraSpeedKmh + 0.25f * (mySpeedKmh.toFloat() - cameraSpeedKmh)
         }
 
-        // `mySpeedKmh` is already zeroed below the stationary band, so "moving" is simply non-zero.
-        val isMoving = mySpeedKmh > 0
+        // The real movement signal, not the display band. `mySpeedKmh > 0` reads as ">0" but means
+        // ">4 km/h", so a rider creeping forward got no camera follow and no free-look clear.
+        val isMoving = isRiderMoving
         val idleMs = System.currentTimeMillis() - lastInteractionAt
         val shouldFollow = wasFirst || (isMoving && idleMs >= 3_000)
         if (isFreeLooking && shouldFollow) isFreeLooking = false
@@ -461,9 +463,13 @@ fun RideNavigationScreen(
     // already populate, so a chip shows the same photo as the pin without a second download; a
     // miss just falls back to the initial until the fetch lands.
     val edgeAvatars = remember { mutableStateMapOf<String, ImageBitmap>() }
-    LaunchedEffect(edgeIndicators, riders) {
-        edgeIndicators.forEach { ind ->
-            val url = riders.firstOrNull { it.id == ind.id }?.avatarUrl ?: return@forEach
+    // Keyed on the stable SET of avatar URLs, never on `edgeIndicators` — the map emits those at
+    // 10 Hz, so an effect keyed on them is cancelled roughly every 100 ms, far shorter than any
+    // download, and a chip would only ever show a photo if the map's own marker pass happened to
+    // win the race first.
+    val riderAvatarUrls = remember(riders) { riders.mapNotNull { it.avatarUrl }.toSet() }
+    LaunchedEffect(riderAvatarUrls) {
+        riderAvatarUrls.forEach { url ->
             if (edgeAvatars.containsKey(url)) return@forEach
             AvatarCache.get(url)?.let { edgeAvatars[url] = it.asImageBitmap() }
         }
@@ -555,7 +561,7 @@ fun RideNavigationScreen(
                     activeRegroup?.let { session.markArrivedAtRegroup(it.regroupId) }
                     hasMarkedArrived = true
                 },
-                speedText = if (hasLocationFix) String.format(java.util.Locale.US, "%.0f", mySpeedKmh) else "--",
+                speedText = if (hasSpeedFix) String.format(java.util.Locale.US, "%.0f", mySpeedKmh) else "--",
                 etaText = etaText,
                 distText = formatDistToGoal(myDistanceKm),
                 destinationName = destinationName,
@@ -608,7 +614,7 @@ fun RideNavigationScreen(
                     activeRegroup?.let { session.markArrivedAtRegroup(it.regroupId) }
                     hasMarkedArrived = true
                 },
-                speedText = if (hasLocationFix) String.format(java.util.Locale.US, "%.0f", mySpeedKmh) else "--",
+                speedText = if (hasSpeedFix) String.format(java.util.Locale.US, "%.0f", mySpeedKmh) else "--",
                 etaText = etaText,
                 distText = formatDistToGoal(myDistanceKm),
                 destinationName = destinationName,

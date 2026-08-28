@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
@@ -286,6 +287,21 @@ private fun ActiveRideSection(ride: HistoryRide, onClick: () -> Unit) {
                         ),
                     ),
             )
+            // Photographer credit. Google's Places policy requires it wherever a Place Photo is
+            // displayed — the lobby renders it, so this surface showing the same photo without it
+            // was the one non-compliant half.
+            (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
+                Text(
+                    "Photo: $credit · Google",
+                    style = CTType.captionMd.copy(fontSize = 9.sp),
+                    color = Color.White.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
             Column(Modifier.fillMaxSize().padding(18.dp)) {
                 Spacer(Modifier.weight(1f))
                 Row(verticalAlignment = Alignment.Bottom) {

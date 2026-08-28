@@ -128,11 +128,11 @@ class BillingManager(context: Context) {
     /** Launches the Play purchase sheet for the given product's base-plan offer. */
     fun purchase(activity: Activity, productId: String) {
         val details = _products.value[productId] ?: run {
-            _lastError.value = UserFacingError.RESTORE_FAILED
+            _lastError.value = UserFacingError.PLAN_UNAVAILABLE
             return
         }
         val offerToken = details.subscriptionOfferDetails?.firstOrNull()?.offerToken ?: run {
-            _lastError.value = UserFacingError.RESTORE_FAILED
+            _lastError.value = UserFacingError.PLAN_UNAVAILABLE
             return
         }
         _lastError.value = null

@@ -76,8 +76,20 @@ class NavigationViewModel : ViewModel() {
      * used to render as "--", so the readout showed the same thing at a red light as it did before
      * the GPS had said anything at all.
      */
-    private val _hasLocationFix = MutableStateFlow(false)
-    val hasLocationFix: StateFlow<Boolean> = _hasLocationFix.asStateFlow()
+    private val _hasSpeedFix = MutableStateFlow(false)
+    val hasSpeedFix: StateFlow<Boolean> = _hasSpeedFix.asStateFlow()
+
+    /**
+     * Whether the rider is actually moving, independent of the display band.
+     *
+     * Separate from `mySpeedKmh > 0` because that band flattens everything under 4 km/h to zero to
+     * stop a parked bike's readout flickering — a display concern. Using it to decide whether the
+     * map keeps up with someone crawling through traffic silently raised the follow threshold to
+     * 4 km/h, so between 2 and 4 the map stopped re-centring and a rider who had panned never had
+     * free-look auto-cleared: the viewport just froze behind them.
+     */
+    private val _isMoving = MutableStateFlow(false)
+    val isMoving: StateFlow<Boolean> = _isMoving.asStateFlow()
 
     private val _myDistanceToGoalKm = MutableStateFlow(0.0)
     val myDistanceToGoalKm: StateFlow<Double> = _myDistanceToGoalKm.asStateFlow()
@@ -206,6 +218,11 @@ class NavigationViewModel : ViewModel() {
     // Heading bookkeeping. `lastCourseFixAtMs` gates the compass fallback.
     private var lastCourseFixAtMs = 0L
 
+    /** Anchor for the displacement fallback in [updateMovementState]. Held only while speed-less
+     *  fixes are arriving. */
+    private var movementAnchor: LatLng? = null
+    private var movementAnchorAtMs = 0L
+
     private var cameraTickAtMs = 0L
     private var rerouteJob: Job? = null
 
@@ -229,6 +246,16 @@ class NavigationViewModel : ViewModel() {
          * set under a brisk walk, well below anything this app is ridden at.
          */
         const val STATIONARY_SPEED_KMH = 4.0
+
+        /** Speed at which the rider counts as moving. Deliberately BELOW the stationary band:
+         *  that band exists to steady the readout, not to decide whether the camera follows. */
+        const val MOVING_SPEED_KMH = 2.0
+
+        /** Displacement that counts as movement when a fix carries no speed solution. Well past
+         *  the few metres a stationary fix wanders by, so a parked bike can't fake it — a
+         *  jitter-derived km/h on a parked bike routinely clears 2 km/h and would yank the camera
+         *  back from a rider who deliberately panned. */
+        const val MOVING_DISPLACEMENT_METERS = 15.0
 
         /** One Routes API call per rider per minute while navigating. Frequent enough that a jam is
          *  reflected quickly, rare enough not to be a per-second billing drain. */
@@ -464,8 +491,12 @@ class NavigationViewModel : ViewModel() {
 
     fun onLocationUpdate(location: Location, compassHeading: Float?) {
         val fix = LatLng(location.latitude, location.longitude)
-        _mySpeedKmh.value = displaySpeedKmh(location)
-        _hasLocationFix.value = true
+        val displaySpeed = displaySpeedKmh(location)
+        // Nil means the fix carries no speed solution at all — the readout shows "--", not a
+        // confident "0 KM/H".
+        _mySpeedKmh.value = displaySpeed ?: 0.0
+        _hasSpeedFix.value = displaySpeed != null
+        updateMovementState(location, fix)
         _userLocation.value = fix
 
         // A GPS bearing is derived from successive fixes, so below a walking pace it wanders
@@ -543,10 +574,38 @@ class NavigationViewModel : ViewModel() {
      * `Location.speed` is meaningless when the fix carries no valid speed at all — not slow, but
      * unknown — and treating that as zero states a confident falsehood.
      */
-    private fun displaySpeedKmh(location: Location): Double {
-        if (!location.hasSpeed() || location.speed < 0) return 0.0
+    private fun displaySpeedKmh(location: Location): Double? {
+        if (!location.hasSpeed() || location.speed < 0) return null
         val kmh = location.speed * 3.6
         return if (kmh < STATIONARY_SPEED_KMH) 0.0 else kmh
+    }
+
+    /** Refreshes [isMoving] from whichever signal this fix carries. */
+    private fun updateMovementState(location: Location, fix: LatLng) {
+        if (location.hasSpeed() && location.speed >= 0) {
+            movementAnchor = null
+            _isMoving.value = location.speed * 3.6 >= MOVING_SPEED_KMH
+            return
+        }
+        // No speed solution. Reading that as stopped left the follow camera parked for the whole
+        // ride on any fix source that omits speed, so fall back to displacement, which needs none.
+        val anchor = movementAnchor
+        if (anchor == null) {
+            movementAnchor = fix
+            movementAnchorAtMs = System.currentTimeMillis()
+            return
+        }
+        val moved = metersBetween(anchor, fix)
+        if (moved >= MOVING_DISPLACEMENT_METERS) {
+            _isMoving.value = true
+            movementAnchor = fix
+            movementAnchorAtMs = System.currentTimeMillis()
+        } else if (System.currentTimeMillis() - movementAnchorAtMs > 10_000) {
+            // Held under the bar for long enough that this is a genuine stop, not a slow crawl.
+            _isMoving.value = false
+            movementAnchor = fix
+            movementAnchorAtMs = System.currentTimeMillis()
+        }
     }
 
     /**

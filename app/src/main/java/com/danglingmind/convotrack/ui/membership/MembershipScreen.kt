@@ -78,7 +78,12 @@ fun MembershipScreen(onClose: () -> Unit) {
 
     val isPremium by billing.isPremium.collectAsState()
     val error by billing.lastError.collectAsState()
-    billing.products.collectAsState() // recompose when live prices arrive
+    // The COLLECTED VALUE must be read, not just the collector started. `collectAsState()` returns
+    // a State; writing to it only invalidates composables that read it. A bare call whose result is
+    // discarded starts the collection and then invalidates nothing — the paywall sat on
+    // "Loading plans…" forever once the hardcoded price fallbacks were removed, because every
+    // derivation below read `_products.value` imperatively.
+    val products by billing.products.collectAsState()
 
     // Connect to Play + load products/entitlement on open; flip to success once entitled.
     LaunchedEffect(Unit) { billing.start() }
@@ -87,8 +92,14 @@ fun MembershipScreen(onClose: () -> Unit) {
     // Plans come from Play, ordered longest-cycle-first, with savings derived from the actual
     // billing periods rather than a hardcoded percentage. Empty until Play answers — the paywall
     // then shows its placeholder copy rather than inventing prices.
-    val plans = billing.displayPlans()
-    val bestValueId = billing.bestValuePlan()?.productId
+    // Keyed on `products` so they recompute exactly when Play answers — and only then. Each of
+    // these re-maps and re-sorts the whole list, and `savingsFor` is called per plan, so computing
+    // them inline ran the same sort several times per frame.
+    val plans = remember(products) { billing.displayPlans() }
+    val bestValueId = remember(products) { billing.bestValuePlan()?.productId }
+    val savingsByProductId = remember(products) {
+        plans.mapNotNull { plan -> billing.savingsFor(plan)?.let { plan.productId to it } }.toMap()
+    }
 
     // Default to the best-value plan once the store answers, not to a hardcoded "yearly".
     LaunchedEffect(bestValueId, plans.size) {
@@ -138,7 +149,7 @@ fun MembershipScreen(onClose: () -> Unit) {
                         plans = plans,
                         selectedProductId = selectedProductId,
                         bestValueId = bestValueId,
-                        savingsFor = { billing.savingsFor(it) },
+                        savingsFor = { savingsByProductId[it.productId] },
                         onSelect = { selectedProductId = it },
                     )
                     CtaStack(

@@ -94,7 +94,23 @@ suspend fun rideRouteWithSteps(ride: Ride): RouteWithSteps {
             cumulativeStopSeconds = listOf(matched.durationSeconds),
         )
     } else {
-        computed   // follow the road we have instructions for; the plan stays visible underneath
+        // No instruction set could be matched to the line the leader drew — always the case on a
+        // multi-stop ride, where there is no alternative set to search. Drop the TURNS, never the
+        // geometry.
+        //
+        // The backend measures every rider against the STORED polyline: `progressEngine`
+        // derives both `progress` and `offRoute` from `ride.route_polyline`. Following the
+        // recompute instead put the client in disagreement with the server about where everyone
+        // is — riders dead on the drawn line reported off-route, ranked off a progress figure
+        // measured on a different road, and charged the gap as `detourMeters` in the summary.
+        //
+        // With no steps the banner falls back to "Follow route" (upcomingBanner returns empty for
+        // an empty list, and updateCurrentStep early-returns). Reciting no turns beats reciting
+        // another road's turns, and both beat silently disagreeing with the server.
+        //
+        // `durationSeconds` stays the recompute's: it is only the bootstrap ETA until the first
+        // traffic-aware refresh lands, and both roads run between the same stops.
+        computed.copy(coords = stored, steps = emptyList())
     }
 }
 
@@ -109,16 +125,25 @@ private suspend fun alternativeMatching(
     origin: LatLng,
     destination: LatLng,
 ): DirectionsResult? {
-    val options = runCatching {
-        DirectionsService.alternativeRoutesWithSteps(origin, destination)
-    }.getOrNull() ?: return null
+    // Traffic-aware FIRST, because that is the set the leader actually chose from (the create and
+    // edit screens both request alternatives traffic-aware). But Google's alternative set varies
+    // with traffic and time of day, so hours after a ride was created the leader's pick may simply
+    // not be offered any more — hence the traffic-unaware second pass, which asks the
+    // time-invariant road-network set. Strictly more matches than either alone; the extra call is
+    // only ever made on a ride that would otherwise lose turn guidance entirely.
+    for (trafficAware in listOf(true, false)) {
+        val options = runCatching {
+            DirectionsService.alternativeRoutesWithSteps(origin, destination, trafficAware)
+        }.getOrNull() ?: continue
 
-    return options
-        .filter { it.steps.isNotEmpty() }
-        .map { it to routeDeviation(it.coordinates, stored) }
-        .minByOrNull { it.second }
-        ?.takeIf { it.second <= ROUTE_MATCH_TOLERANCE_METERS }
-        ?.first
+        options
+            .filter { it.steps.isNotEmpty() }
+            .map { it to routeDeviation(it.coordinates, stored) }
+            .minByOrNull { it.second }
+            ?.takeIf { it.second <= ROUTE_MATCH_TOLERANCE_METERS }
+            ?.let { return it.first }
+    }
+    return null
 }
 
 /**

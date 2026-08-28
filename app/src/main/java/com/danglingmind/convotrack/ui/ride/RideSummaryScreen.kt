@@ -223,9 +223,16 @@ private fun AutoShrinkText(
         color = color,
         maxLines = 1,
         softWrap = false,
+        // A fixed line height tied to the font size, so the measured height shrinks with it —
+        // otherwise the default line spacing keeps the box tall no matter how small the glyphs get.
+        lineHeight = fontSize,
         modifier = modifier.drawWithContent { if (settled) drawContent() },
         onTextLayout = { result ->
-            if (result.didOverflowWidth && fontSize.value > minSp) {
+            // Height as well as width. The card is a fixed 110dp and clips, so at a system font
+            // scale of ~1.15+ a 48sp value overflowed VERTICALLY and was cut off — reintroducing
+            // the silent truncation this helper exists to prevent, on the axis it wasn't checking.
+            val overflowed = result.didOverflowWidth || result.didOverflowHeight
+            if (overflowed && fontSize.value > minSp) {
                 fontSize = (fontSize.value - 4f).sp
             } else {
                 settled = true

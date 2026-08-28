@@ -101,12 +101,24 @@ fun RideHistoryScreen(
                         )
                     }
                 } else {
-                    // Totals across the finished rides only — the list is already COMPLETED-only,
-                    // but these are derived from the same filtered set so a looser server response
-                    // can't quietly inflate them.
+                    // Totals across the finished rides in THIS RESPONSE.
+                    //
+                    // `/rides/me` caps at 50 rows and there is no aggregate endpoint, so these are
+                    // not lifetime figures and must not be labelled as such — a rider with 120
+                    // finished rides would otherwise see "TOTAL RIDES 50" and a distance total that
+                    // silently stopped growing. The labels say what is actually being counted.
                     val completed = s.data.filter { it.isCompleted }
                     val totalKm = completed.sumOf { it.distanceMeters } / 1000
-                    val avgSpeed = completed.mapNotNull { it.avgSpeedKmh }.takeIf { it.isNotEmpty() }?.average()
+                    // Distance-WEIGHTED, not a mean of per-ride means: an unweighted average lets a
+                    // 3 km errand count as much as a 400 km tour, which is not anyone's average
+                    // speed. Rides without a recorded speed are excluded from both sides.
+                    val timed = completed.filter { it.avgSpeedKmh != null && it.distanceMeters > 0 }
+                    val avgSpeed = timed
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { rides ->
+                            rides.sumOf { it.avgSpeedKmh!! * it.distanceMeters } /
+                                rides.sumOf { it.distanceMeters }
+                        }
 
                     LazyColumn(
                         contentPadding = PaddingValues(20.dp, 20.dp, 20.dp, 120.dp),
@@ -116,14 +128,14 @@ fun RideHistoryScreen(
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 item {
                                     FloatingStatPill(
-                                        label = "TOTAL DISTANCE",
+                                        label = "DISTANCE · LAST ${completed.size}",
                                         value = String.format(java.util.Locale.US, "%.0f", totalKm),
                                         unit = "km",
                                     )
                                 }
                                 item {
                                     FloatingStatPill(
-                                        label = "TOTAL RIDES",
+                                        label = "RIDES SHOWN",
                                         value = "${completed.size}",
                                         unit = null,
                                     )

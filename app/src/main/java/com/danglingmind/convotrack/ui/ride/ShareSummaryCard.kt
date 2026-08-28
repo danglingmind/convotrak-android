@@ -186,13 +186,18 @@ object ShareSummaryCard {
         bmp
     }
 
-    /** Writes the card to app cache and hands back a shareable content:// URI. */
-    suspend fun share(context: Context, bitmap: Bitmap, rideTitle: String) = withContext(Dispatchers.IO) {
-        val dir = File(context.cacheDir, "shared").apply { mkdirs() }
-        val file = File(dir, "ride-summary.png")
-        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    /** Writes the card to app cache and hands it to the share sheet. */
+    suspend fun share(context: Context, bitmap: Bitmap, rideTitle: String) {
+        val uri = withContext(Dispatchers.IO) {
+            val dir = File(context.cacheDir, "shared").apply { mkdirs() }
+            // A per-share filename. Reusing one path meant two shares in quick succession produced
+            // the same content:// URI, so a receiver that had cached it by URI could re-send the
+            // PREVIOUS ride's card. Older cards are swept so the directory can't grow unbounded.
+            dir.listFiles()?.forEach { it.delete() }
+            val file = File(dir, "ride-summary-${'$'}{System.currentTimeMillis()}.png")
+            FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            FileProvider.getUriForFile(context, "${'$'}{context.packageName}.fileprovider", file)
+        }
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
@@ -201,10 +206,14 @@ object ShareSummaryCard {
             // FileProvider is useless to them unless the grant travels with the intent.
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(
-            Intent.createChooser(intent, "Share ride summary")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
+        // Activity starts belong on the main thread; the encode above is the only part that needed
+        // to be off it.
+        withContext(Dispatchers.Main) {
+            context.startActivity(
+                Intent.createChooser(intent, "Share ride summary")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
     }
 
     private fun ellipsise(text: String, p: Paint, maxWidth: Float): String {

@@ -149,7 +149,21 @@ object PlacePhotoService {
 
     private data class FetchedPhoto(val data: ByteArray, val attribution: String?)
 
+    /**
+     * Why a lookup produced nothing.
+     *
+     * [RESOLVED_NO_PHOTO] is a real answer about the place and is worth persisting. [TRANSIENT] is
+     * a statement about the network, and persisting it wrote a destination off as photo-less for
+     * the full 7-day empty TTL — so opening a lobby once in a tunnel meant the hero silently fell
+     * back to the route map on every relaunch for a week, on full signal.
+     */
+    private enum class MissReason { RESOLVED_NO_PHOTO, TRANSIENT }
+
     private data class Candidate(val photoName: String, val attribution: String?)
+
+    /** Set by the network path so [photo] can tell a resolved "no photo" from a failed request. */
+    @Volatile
+    private var lastMiss: MissReason = MissReason.RESOLVED_NO_PHOTO
 
     // MARK: - Entry point
 
@@ -192,8 +206,12 @@ object PlacePhotoService {
         }
 
         if (fetched == null) {
-            lock.withLock { knownEmpty.add(key) }
-            withContext(Dispatchers.IO) { DiskCache.storeEmpty(appContext, key) }
+            // Only a resolved answer about the PLACE is remembered. A failed request says nothing
+            // about whether this destination has a photo, so it is retried on the next appearance.
+            if (lastMiss == MissReason.RESOLVED_NO_PHOTO) {
+                lock.withLock { knownEmpty.add(key) }
+                withContext(Dispatchers.IO) { DiskCache.storeEmpty(appContext, key) }
+            }
             return null
         }
 
@@ -397,6 +415,7 @@ object PlacePhotoService {
     // MARK: - Network
 
     private suspend fun fetch(query: String, coordinate: LatLng): FetchedPhoto? {
+        lastMiss = MissReason.RESOLVED_NO_PHOTO
         val candidate = searchPlace(query, coordinate) ?: return null
         val data = photoData(candidate.photoName) ?: return null
         return FetchedPhoto(data, candidate.attribution)
@@ -437,7 +456,12 @@ object PlacePhotoService {
 
         runCatching {
             client.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) return@use null
+                if (!resp.isSuccessful) {
+                    // 5xx / 429 is Google having a bad moment; a 4xx is a real answer about this
+                    // query and may legitimately mean there is nothing to find.
+                    if (resp.code >= 500 || resp.code == 429) lastMiss = MissReason.TRANSIENT
+                    return@use null
+                }
                 val text = resp.body?.string().orEmpty()
                 // A query with no results returns `{}`, so `places` is legitimately absent.
                 val parsed = json.decodeFromString(SearchResponse.serializer(), text)
@@ -456,7 +480,7 @@ object PlacePhotoService {
                     distance to Candidate(photo.name, author)
                 }.minByOrNull { it.first }?.second
             }
-        }.getOrNull()
+        }.onFailure { lastMiss = MissReason.TRANSIENT }.getOrNull()
     }
 
     /**
@@ -469,10 +493,13 @@ object PlacePhotoService {
             "?maxWidthPx=$MAX_DECODED_PIXEL_SIZE&key=${BuildConfig.MAPS_API_KEY}"
         runCatching {
             client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
-                if (!resp.isSuccessful) return@use null
+                if (!resp.isSuccessful) {
+                    if (resp.code >= 500 || resp.code == 429) lastMiss = MissReason.TRANSIENT
+                    return@use null
+                }
                 resp.body?.bytes()
             }
-        }.getOrNull()
+        }.onFailure { lastMiss = MissReason.TRANSIENT }.getOrNull()
     }
 
     // MARK: - Response models

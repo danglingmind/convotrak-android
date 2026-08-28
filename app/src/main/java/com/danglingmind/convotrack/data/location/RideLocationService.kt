@@ -39,7 +39,10 @@ class RideLocationService : Service() {
         private const val MAX_FIX_AGE_MS = 5_000L
         /** Below this the rider is treated as stopped for broadcast-cadence purposes. Matches the
          *  band the speed readout flattens to a plain 0. */
-        private const val STATIONARY_SPEED_KMH = 4.0
+        /** Speed at which the rider counts as moving for broadcast cadence. Below the display
+         *  band on purpose — that band steadies a readout, it does not decide how often the pack
+         *  hears from someone crawling through traffic. */
+        private const val MOVING_SPEED_KMH = 2.0
         private const val MOVING_BROADCAST_MS = 2_000L
         private const val STATIONARY_BROADCAST_MS = 10_000L
     }
@@ -50,7 +53,10 @@ class RideLocationService : Service() {
     // Where the last broadcast went out from, so a rider who has genuinely stopped can be told
     // apart from one merely reading 0 km/h between two fixes.
     private var lastBroadcastAt = 0L
-    private var lastBroadcastLocation: Location? = null
+
+    /** Anchored on the last FAST broadcast only, so displacement accumulates across slow ticks and
+     *  sustained movement escapes the slow cadence on its own. */
+    private var lastFastBroadcastLocation: Location? = null
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -69,13 +75,20 @@ class RideLocationService : Service() {
             // position are by definition not changing.
             val id = rideId ?: return
             val now = android.os.SystemClock.elapsedRealtime()
-            val speedKmh = if (loc.hasSpeed() && loc.speed >= 0) loc.speed * 3.6 else 0.0
-            val isStationary = speedKmh < STATIONARY_SPEED_KMH &&
-                lastBroadcastLocation?.let { it.distanceTo(loc) < 10f } == true
+            // Both halves of this test used to latch a moving rider onto the slow cadence. The
+            // speed was compared against the DISPLAY band, so anything under 4 km/h read as parked;
+            // and the displacement was measured from the last broadcast of any kind, re-anchored on
+            // every slow tick, so a ~3 km/h crawl covering ~8 m per 10 s interval never accumulated
+            // past the 10 m bar. Everyone else's pin, leaderboard distance and edge indicator for
+            // that rider then lagged by up to 10 s, in exactly the dense traffic where the pack
+            // needs them live.
+            val movingBySpeed = loc.hasSpeed() && loc.speed >= 0 && loc.speed * 3.6 >= MOVING_SPEED_KMH
+            val isStationary = !movingBySpeed &&
+                lastFastBroadcastLocation?.let { it.distanceTo(loc) < 10f } == true
             val intervalMs = if (isStationary) STATIONARY_BROADCAST_MS else MOVING_BROADCAST_MS
             if (lastBroadcastAt != 0L && now - lastBroadcastAt < intervalMs) return
             lastBroadcastAt = now
-            lastBroadcastLocation = loc
+            if (!isStationary) lastFastBroadcastLocation = loc
 
             ServiceLocator.socket.emitLocation(
                 rideId = id,
