@@ -16,7 +16,12 @@ import com.android.billingclient.api.QueryPurchasesParams
 import com.android.billingclient.api.acknowledgePurchase
 import com.android.billingclient.api.queryProductDetails
 import com.android.billingclient.api.queryPurchasesAsync
+import com.danglingmind.convotrack.data.net.ActivateMembershipRequest
+import com.danglingmind.convotrack.data.net.ApiService
+import com.danglingmind.convotrack.data.net.NotAuthenticatedException
 import com.danglingmind.convotrack.data.net.UserFacingError
+import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.data.net.riderMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,13 +36,22 @@ import kotlinx.coroutines.launch
  *
  * PLACEHOLDER product IDs: create matching subscription products in Play Console.
  *
- * Verification note: iOS activates on the server via a StoreKit JWS (POST /memberships/activate
- * with `signedTransaction`). Play uses a purchase token verified server-side against the Play
- * Developer API — a DIFFERENT contract the backend does not expose yet. Until that endpoint
- * exists, entitlement is granted locally from Play's own acknowledged purchase (see the TODO in
- * [handlePurchase]).
+ * Server sync: a purchase is only half-real until the backend knows about it. Plan limits are
+ * enforced server-side (`QUOTA_EXCEEDED`, and the rider cap on ride creation), so a rider whose
+ * purchase never reached the server sees an unlocked paywall and is still refused at ride four.
+ * [activateOnServer] posts the Play purchase token to `POST /memberships/activate`, which
+ * exchanges it with the Play Developer API — the Play-side analogue of iOS posting a StoreKit JWS.
+ *
+ * Retry model differs from iOS deliberately. iOS withholds `finish()` until the server confirms,
+ * because an unfinished transaction is what `Transaction.updates` replays. Play has no equivalent
+ * lever worth pulling: `queryPurchasesAsync` returns every active purchase whether or not it has
+ * been acknowledged, so [queryEntitlement] can re-post on each launch for free — while withholding
+ * acknowledgement would hand Play grounds to auto-refund the subscription after three days.
  */
-class BillingManager(context: Context) {
+class BillingManager(
+    context: Context,
+    private val api: ApiService,
+) {
 
     companion object {
         const val MONTHLY_ID = "convotrack_pro_monthly" // TODO: create in Play Console
@@ -56,6 +70,14 @@ class BillingManager(context: Context) {
 
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError
+
+    /**
+     * Purchase tokens this process has already had confirmed, so that a fresh purchase — which
+     * reaches [handlePurchase] and then [queryEntitlement] — is not posted twice in a row.
+     * Deliberately not persisted: forgetting it across launches is what makes the retry work.
+     * Only ever touched from [scope], which is single-threaded on Main.
+     */
+    private val serverConfirmed = mutableSetOf<String>()
 
     private val purchasesListener = PurchasesUpdatedListener { result, purchases ->
         if (result.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
@@ -110,7 +132,13 @@ class BillingManager(context: Context) {
         _products.value = list.associateBy { it.productId }
     }
 
-    /** Local entitlement: any active, acknowledged subscription = premium. */
+    /**
+     * Local entitlement: any active, acknowledged subscription = premium.
+     *
+     * Doubles as the retry for server activation. Every active purchase is re-posted on each
+     * launch, so a purchase made while the backend was unreachable repairs itself the next time
+     * the app opens, with no persisted queue to keep correct.
+     */
     suspend fun queryEntitlement() {
         val result = client.queryPurchasesAsync(
             QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build(),
@@ -120,6 +148,7 @@ class BillingManager(context: Context) {
             if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
                 premium = true
                 if (!purchase.isAcknowledged) acknowledge(purchase)
+                activateOnServer(purchase, surfaceErrors = false)
             }
         }
         _isPremium.value = premium
@@ -152,10 +181,38 @@ class BillingManager(context: Context) {
     private suspend fun handlePurchase(purchase: Purchase) {
         if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return
         if (!purchase.isAcknowledged) acknowledge(purchase)
-        // TODO [backend]: when the server exposes a Google Play verification endpoint, POST
-        //  purchase.purchaseToken + productId there (analogue of iOS activateMembership(JWS)).
-        //  Until then, Play's acknowledged purchase is the source of truth.
+        // Play has taken the money, so the paywall unlocks now rather than waiting on a round
+        // trip. The server call below is what makes the server-side plan limits agree.
         _isPremium.value = true
+        activateOnServer(purchase, surfaceErrors = true)
+    }
+
+    /**
+     * Tell the backend about a verified Play purchase.
+     *
+     * [surfaceErrors] is on only for the interactive path. A rider who has just paid needs to hear
+     * that the store rejected the purchase — silently leaving them locally premium would strand
+     * them on a plan the server will not honour. A background retry has no such audience, and
+     * would only be reporting a transient network failure to someone who is already premium.
+     */
+    private suspend fun activateOnServer(purchase: Purchase, surfaceErrors: Boolean) {
+        if (purchase.purchaseToken in serverConfirmed) return
+        try {
+            apiCall {
+                api.activateMembership(
+                    ActivateMembershipRequest(
+                        provider = "google",
+                        purchaseToken = purchase.purchaseToken,
+                    ),
+                )
+            }
+            serverConfirmed += purchase.purchaseToken
+        } catch (e: NotAuthenticatedException) {
+            // Signed out mid-purchase. Nothing to say and nothing to fix here — the next launch
+            // re-posts once there is a token to send.
+        } catch (e: Exception) {
+            if (surfaceErrors) _lastError.value = e.riderMessage
+        }
     }
 
     private suspend fun acknowledge(purchase: Purchase) {

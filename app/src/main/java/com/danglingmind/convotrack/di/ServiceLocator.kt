@@ -38,6 +38,6 @@ object ServiceLocator {
         auth = ClerkAuthRepository()
         api = ApiClient.create(auth)
         socket = SocketService(auth)
-        billing = BillingManager(app)
+        billing = BillingManager(app, api)
     }
 }

@@ -84,6 +84,12 @@ object UserFacingError {
             "That purchase expired before we could confirm it. Nothing was charged."
         "SANDBOX_TRANSACTION_IN_PRODUCTION" ->
             "That was a test purchase, and this isn't a test. Nothing was charged."
+        "PURCHASE_ALREADY_CLAIMED" ->
+            "That subscription is already tied to another account. Sign in with the one that bought it, or contact us and we'll sort it out."
+        "PLAY_VERIFICATION_UNAVAILABLE" ->
+            "We couldn't reach the store to confirm your purchase. Nothing is lost — try again in a moment."
+        "PURCHASE_NOT_FOUND", "PURCHASE_NOT_ACTIVE" ->
+            "The store doesn't show an active subscription on this account. If you've just bought one, give it a minute and try again."
 
         // Written straight — no jokes on safety
         "EMERGENCY_NOT_FOUND" ->
@@ -129,6 +135,8 @@ object UserFacingError {
         "RIDE_NOT_LOBBY", "RIDE_NOT_PAUSED", "MISSING_REQUIRED_FIELDS", "INVALID_WAYPOINTS",
         "USERNAME_TAKEN", "USER_NOT_FOUND", "INVALID_PRODUCT_ID", "INVALID_TRANSACTION_PAYLOAD",
         "INVALID_TRANSACTION", "TRANSACTION_EXPIRED", "SANDBOX_TRANSACTION_IN_PRODUCTION",
+        "PURCHASE_ALREADY_CLAIMED", "PLAY_VERIFICATION_UNAVAILABLE", "PURCHASE_NOT_FOUND",
+        "PURCHASE_NOT_ACTIVE",
         "EMERGENCY_NOT_FOUND", "USE_EMERGENCY_EVENT", "REGROUP_NOT_FOUND", "PARTICIPANT_NOT_FOUND",
         "INTERNAL_SERVER_ERROR",
     )

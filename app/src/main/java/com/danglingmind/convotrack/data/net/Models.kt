@@ -265,7 +265,12 @@ data class SyncProfileRequest(
 
 @Serializable
 data class ActivateMembershipRequest(
-    val signedTransaction: String,
+    /** "apple" or "google". Always sent explicitly — no default, so it is never elided. */
+    val provider: String,
+    /** Apple only. Omitted from the payload when null (`explicitNulls = false`). */
+    val signedTransaction: String? = null,
+    /** Google Play only. The opaque token the server exchanges with the Play Developer API. */
+    val purchaseToken: String? = null,
 )
 
 @Serializable
