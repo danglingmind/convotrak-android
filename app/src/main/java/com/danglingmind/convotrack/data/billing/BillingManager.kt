@@ -132,6 +132,10 @@ class BillingManager(
         _products.value = list.associateBy { it.productId }
     }
 
+    /** What a pass over Play's purchase list found. Callers that run it in the background ignore
+     *  this; [restorePurchases] is the one that has to tell a waiting rider what happened. */
+    enum class EntitlementResult { ACTIVE, NONE, UNAVAILABLE }
+
     /**
      * Local entitlement: any active, acknowledged subscription = premium.
      *
@@ -139,10 +143,17 @@ class BillingManager(
      * launch, so a purchase made while the backend was unreachable repairs itself the next time
      * the app opens, with no persisted queue to keep correct.
      */
-    suspend fun queryEntitlement() {
+    suspend fun queryEntitlement(): EntitlementResult {
+        if (!client.isReady) return EntitlementResult.UNAVAILABLE
         val result = client.queryPurchasesAsync(
             QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build(),
         )
+        // An empty list means "no subscription" only if Play actually answered. A disconnected
+        // client returns the same empty list, and treating that as an answer would silently
+        // revoke premium from a paying rider whose Play connection dropped for a moment.
+        if (result.billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+            return EntitlementResult.UNAVAILABLE
+        }
         var premium = false
         result.purchasesList.forEach { purchase ->
             if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
@@ -152,6 +163,26 @@ class BillingManager(
             }
         }
         _isPremium.value = premium
+        return if (premium) EntitlementResult.ACTIVE else EntitlementResult.NONE
+    }
+
+    /**
+     * Rider-initiated restore, behind the paywall's "Restore purchases".
+     *
+     * [queryEntitlement] already runs on every launch, so this recovers nothing that time would
+     * not — which is exactly why it has to report an outcome. A rider who reinstalled and taps
+     * this needs an answer either way; a button that runs the same silent query the launch already
+     * ran is indistinguishable from one that is not wired up at all.
+     */
+    suspend fun restorePurchases(): EntitlementResult {
+        _lastError.value = null
+        // A cold client is the common case here — the rider may have opened the paywall before
+        // Play finished connecting. Kick the connection so the retry a moment later can work.
+        if (!client.isReady) {
+            start()
+            return EntitlementResult.UNAVAILABLE
+        }
+        return runCatching { queryEntitlement() }.getOrDefault(EntitlementResult.UNAVAILABLE)
     }
 
     /** Launches the Play purchase sheet for the given product's base-plan offer. */

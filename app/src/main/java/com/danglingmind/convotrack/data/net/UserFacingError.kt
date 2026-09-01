@@ -119,7 +119,12 @@ object UserFacingError {
     /** Store failures. Reassurance about not being charged goes first — that's the rider's actual
      *  worry — and only reached on a real failure, never on a cancelled purchase. */
     const val PURCHASE_FAILED = "The store wasn't having it. Nothing was charged — try again."
-    const val RESTORE_FAILED = "Couldn't dig up your previous purchases. Try again in a moment."
+    const val RESTORE_FAILED = "Couldn't reach the store to check for previous purchases. Try again in a moment."
+
+    /** Restore ran and genuinely found nothing. Not a failure — the rider asked a question and
+     *  this is the answer — so it names the likeliest cause instead of apologising. */
+    const val NOTHING_TO_RESTORE =
+        "No active subscription on this Google account. If you bought one on a different account, switch to it in the Play Store and try again."
 
     /** The plan itself couldn't be loaded — distinct from a purchase that failed, and from a
      *  restore, because the user tapped neither. */

@@ -35,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
@@ -43,8 +44,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.app.Activity
@@ -52,10 +55,13 @@ import android.content.Context
 import android.content.ContextWrapper
 import com.danglingmind.convotrack.data.billing.BillingManager
 import com.danglingmind.convotrack.data.billing.DisplayPlan
+import com.danglingmind.convotrack.data.net.ApiClient
+import com.danglingmind.convotrack.data.net.UserFacingError
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
 import com.danglingmind.convotrack.ui.theme.LimePrimaryButton
+import kotlinx.coroutines.launch
 
 // Prices, billing periods and savings all come from Play at runtime — nothing here hardcodes a
 // figure. A price or period stated from a constant is one the store may not actually charge, and a
@@ -75,6 +81,11 @@ fun MembershipScreen(onClose: () -> Unit) {
     val billing = remember { ServiceLocator.billing }
     var selectedProductId by remember { mutableStateOf<String?>(null) }
     var showSuccess by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    // A successful restore flips `isPremium` and the success overlay takes over, so this only ever
+    // carries the two outcomes that leave the paywall on screen: nothing found, or Play unreachable.
+    var restoreNotice by remember { mutableStateOf<String?>(null) }
+    var restoring by remember { mutableStateOf(false) }
 
     val isPremium by billing.isPremium.collectAsState()
     val error by billing.lastError.collectAsState()
@@ -154,11 +165,25 @@ fun MembershipScreen(onClose: () -> Unit) {
                     )
                     CtaStack(
                         selected = plans.firstOrNull { it.productId == selectedProductId },
-                        error = error,
+                        error = error ?: restoreNotice,
+                        restoring = restoring,
                         onPurchase = {
                             val activity = context.findActivity()
                             val productId = selectedProductId
                             if (activity != null && productId != null) billing.purchase(activity, productId)
+                        },
+                        onRestore = {
+                            if (restoring) return@CtaStack
+                            restoring = true
+                            restoreNotice = null
+                            scope.launch {
+                                restoreNotice = when (billing.restorePurchases()) {
+                                    BillingManager.EntitlementResult.ACTIVE -> null
+                                    BillingManager.EntitlementResult.NONE -> UserFacingError.NOTHING_TO_RESTORE
+                                    BillingManager.EntitlementResult.UNAVAILABLE -> UserFacingError.RESTORE_FAILED
+                                }
+                                restoring = false
+                            }
                         },
                     )
                 }
@@ -333,8 +358,11 @@ private fun PlanCard(
 private fun CtaStack(
     selected: DisplayPlan?,
     error: String?,
+    restoring: Boolean,
     onPurchase: () -> Unit,
+    onRestore: () -> Unit,
 ) {
+    val uriHandler = LocalUriHandler.current
     val price = selected?.formattedPrice
     val period = selected?.period?.label
     val ctaLabel = when {
@@ -394,17 +422,45 @@ private fun CtaStack(
             modifier = Modifier.padding(top = 10.dp, start = 4.dp, end = 4.dp),
         )
 
+        // These three were rendered as plain text with no click handling, which is worse than
+        // omitting them: the store requires a reachable privacy policy and a working restore, and
+        // a rider tapping a word that looks like a link and getting nothing concludes the app is
+        // broken rather than that the label was decorative.
         Row(
             Modifier.padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Restore purchases", style = CTType.captionMd, color = CT.onSurfaceVariant.copy(alpha = 0.38f))
-            Text("·", style = CTType.captionMd, color = CT.onSurfaceVariant.copy(alpha = 0.38f))
-            Text("Terms", style = CTType.captionMd, color = CT.onSurfaceVariant.copy(alpha = 0.38f))
-            Text("·", style = CTType.captionMd, color = CT.onSurfaceVariant.copy(alpha = 0.38f))
-            Text("Privacy", style = CTType.captionMd, color = CT.onSurfaceVariant.copy(alpha = 0.38f))
+            FooterLink(if (restoring) "Restoring…" else "Restore purchases", onClick = onRestore)
+            FooterSeparator()
+            FooterLink("Terms") { uriHandler.openUri(ApiClient.TERMS_URL) }
+            FooterSeparator()
+            FooterLink("Privacy") { uriHandler.openUri(ApiClient.PRIVACY_URL) }
         }
     }
+}
+
+/** Footer action. Underlined because at 38% opacity on a dark ground nothing else marks it as
+ *  tappable, and these are the three the store expects a rider to be able to find. */
+@Composable
+private fun FooterLink(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        style = CTType.captionMd.copy(textDecoration = TextDecoration.Underline),
+        color = CT.onSurfaceVariant.copy(alpha = 0.55f),
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+    )
+}
+
+@Composable
+private fun FooterSeparator() {
+    Text(
+        "·",
+        style = CTType.captionMd,
+        color = CT.onSurfaceVariant.copy(alpha = 0.38f),
+        modifier = Modifier.padding(vertical = 6.dp),
+    )
 }
 
 @Composable

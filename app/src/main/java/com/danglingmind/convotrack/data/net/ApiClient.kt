@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.data.net
 
+import com.danglingmind.convotrack.BuildConfig
 import com.danglingmind.convotrack.data.auth.AuthRepository
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -40,6 +41,16 @@ object ApiClient {
     /** Canonical shareable invite link, e.g. https://convotrack.in/join/ABC123 */
     fun joinLink(code: String): String = "https://$JOIN_LINK_HOST/join/$code"
 
+    /**
+     * Legal pages, served by the marketing site off the same host as the invite links.
+     *
+     * They live here rather than in the screens that open them because the host is already stated
+     * once above, and because Play treats the privacy policy as a requirement rather than a
+     * footer link: it has to be reachable from inside the app, not only from the store listing.
+     */
+    const val PRIVACY_URL = "https://$JOIN_LINK_HOST/privacy"
+    const val TERMS_URL = "https://$JOIN_LINK_HOST/terms"
+
     val json: Json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
@@ -47,13 +58,17 @@ object ApiClient {
     }
 
     fun create(auth: AuthRepository): ApiService {
+        // BASIC prints no headers, so the bearer token was never at risk — but it does print the
+        // URL and timing of every call, ride IDs included, and on a release build that is
+        // production traffic narrated into logcat for any app with READ_LOGS to read back. The
+        // interceptor is therefore not merely quietened in release, it is never installed.
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         }
 
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(auth))
-            .addInterceptor(logging)
+            .apply { if (BuildConfig.DEBUG) addInterceptor(logging) }
             // The backend runs on Render's free tier, which cold-starts (~30-60s) after
             // idling. Generous timeouts keep the first request after a spin-down alive.
             .connectTimeout(java.time.Duration.ofSeconds(30))

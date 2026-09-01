@@ -39,13 +39,18 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.danglingmind.convotrack.data.audio.SirenPlayer
 import com.danglingmind.convotrack.data.maps.AvatarCache
 import com.danglingmind.convotrack.data.socket.SocketEmergency
 import com.danglingmind.convotrack.di.ServiceLocator
+import com.danglingmind.convotrack.ui.common.LocationDeniedDialog
+import com.danglingmind.convotrack.ui.common.LocationDisclosureDialog
 import com.danglingmind.convotrack.ui.map.EdgeChipModel
 import com.danglingmind.convotrack.ui.map.MapCamera
 import com.danglingmind.convotrack.ui.map.MapFraming
@@ -220,12 +225,23 @@ fun RideNavigationScreen(
     LaunchedEffect(rideCompleted) { if (rideCompleted) onEndRide() }
     LaunchedEffect(endError) { showEndError = endError != null }
 
-    // Location permission → start broadcasting my position (foreground service) + compass.
+    // Location permission → broadcast my position (foreground service) + compass.
+    //
+    // The system prompt is never the first thing the rider sees. It describes none of what
+    // actually happens to the fix — that it is broadcast to the other riders, that it reaches our
+    // server, that it carries on with the screen off — so a disclosure saying all three comes
+    // first, and the prompt is launched from its accept button. Declining is a supported outcome
+    // rather than a dead end: the ride still opens, the rider is simply not on anyone's map.
+    var showLocationDisclosure by remember(rideId) { mutableStateOf(false) }
+    var showLocationDenied by remember(rideId) { mutableStateOf(false) }
+
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
         if (grants[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
             locationController.start(ctx, rideId)
+        } else {
+            showLocationDenied = true
         }
     }
     LaunchedEffect(rideId) {
@@ -234,11 +250,47 @@ fun RideNavigationScreen(
         if (granted) {
             locationController.start(ctx, rideId)
         } else {
-            permLauncher.launch(
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS),
-            )
+            showLocationDisclosure = true
         }
         locationController.startCompass(ctx, this)
+    }
+
+    if (showLocationDisclosure) {
+        LocationDisclosureDialog(
+            onAccept = {
+                showLocationDisclosure = false
+                permLauncher.launch(
+                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS),
+                )
+            },
+            onDecline = {
+                showLocationDisclosure = false
+                showLocationDenied = true
+            },
+        )
+    }
+
+    if (showLocationDenied) {
+        LocationDeniedDialog(onDismiss = { showLocationDenied = false })
+    }
+
+    // Granting the permission in system settings is a round trip out of the app, and the OS does
+    // not restart the screen on the way back — so without this the rider does everything asked of
+    // them, returns, and is still invisible to the pack until they leave the ride and re-enter it.
+    // Re-checking on resume is what makes "Open Settings" an actual fix rather than a suggestion.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, rideId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
+            val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+            if (granted && !locationController.active.value) {
+                showLocationDenied = false
+                locationController.start(ctx, rideId)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Keep the screen awake and allow landscape while navigating; both are restored on the way out.

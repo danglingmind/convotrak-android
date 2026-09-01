@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.profile
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,11 +24,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,9 +44,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
@@ -72,6 +81,10 @@ fun ProfileScreen(
     val billing = remember { ServiceLocator.billing }
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<UiState<ProfileData>>(UiState.Loading) }
+
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { billing.start() }
 
@@ -107,7 +120,14 @@ fun ProfileScreen(
     ) {
         ConvoTrackTopBar(title = "PROFILE")
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                // The floating bottom nav is drawn over this scroll area, so the last row has to
+                // be given room to clear it — the same 120.dp the home list reserves. Without it
+                // "Delete Account", now the final row, sits half-hidden behind the nav bar.
+                .padding(top = 20.dp, bottom = 120.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             when (val s = state) {
@@ -117,9 +137,38 @@ fun ProfileScreen(
                     data = s.data,
                     onOpenMembership = onOpenMembership,
                     onSignOut = { scope.launch { auth.signOut(); onSignedOut() } },
+                    onDeleteAccount = { showDeleteConfirm = true },
                 )
             }
         }
+    }
+
+    if (showDeleteConfirm) {
+        DeleteAccountDialog(
+            deleting = deleting,
+            error = deleteError,
+            onDismiss = { if (!deleting) { showDeleteConfirm = false; deleteError = null } },
+            onConfirm = {
+                if (deleting) return@DeleteAccountDialog
+                deleting = true
+                deleteError = null
+                scope.launch {
+                    try {
+                        apiCall { api.deleteAccount() }
+                        // The account is gone server-side, so the session token now authorises
+                        // nothing. Clearing it locally is cleanup after the fact, not a sign-out
+                        // the rider could undo by signing back in — there is nothing to sign in to.
+                        auth.signOut()
+                        showDeleteConfirm = false
+                        onSignedOut()
+                    } catch (e: Exception) {
+                        deleteError = e.riderMessage
+                    } finally {
+                        deleting = false
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -128,7 +177,11 @@ private fun ProfileContent(
     data: ProfileData,
     onOpenMembership: () -> Unit,
     onSignOut: () -> Unit,
+    onDeleteAccount: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+
     // Header
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         Box(
@@ -182,19 +235,90 @@ private fun ProfileContent(
         )
     }
 
-    // Settings
+    // Settings. Every row here goes somewhere: a settings list that renders a chevron and then
+    // does nothing on tap reads as a broken app, and the two legal rows are the app's own copy of
+    // documents the store requires be reachable from inside it, not only from the listing.
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(CT.surfaceContainerLow)
             .border(1.dp, CT.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
     ) {
-        SettingsRow(Icons.Filled.Notifications, "Notifications")
+        SettingsRow(Icons.Filled.Notifications, "Notifications") {
+            // The ride-tracking notification is the only one the app posts, and its channel is
+            // owned by the system — so this hands over to the place that can actually change it
+            // rather than mirroring those controls badly.
+            runCatching {
+                context.startActivity(
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+                )
+            }
+        }
         Divider()
         SettingsRow(Icons.Filled.CreditCard, "Membership & Billing", onClick = onOpenMembership)
         Divider()
-        SettingsRow(Icons.Filled.Shield, "Privacy")
+        SettingsRow(Icons.Filled.Shield, "Privacy Policy") { uriHandler.openUri(ApiClient.PRIVACY_URL) }
+        Divider()
+        SettingsRow(Icons.Filled.Description, "Terms of Service") { uriHandler.openUri(ApiClient.TERMS_URL) }
         Divider()
         SettingsRow(Icons.AutoMirrored.Filled.Logout, "Sign Out", tint = CT.errorColor, onClick = onSignOut)
+        Divider()
+        SettingsRow(Icons.Filled.DeleteForever, "Delete Account", tint = CT.errorColor, onClick = onDeleteAccount)
     }
+}
+
+/**
+ * Confirmation for the one action in the app that cannot be walked back.
+ *
+ * It names what goes rather than asking "are you sure", and it says out loud that the Play
+ * subscription is a separate thing — a rider who deletes their account assuming it also stops the
+ * billing will otherwise keep being charged for a plan attached to nothing, which is the worst
+ * possible way to find out.
+ */
+@Composable
+private fun DeleteAccountDialog(
+    deleting: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CT.surfaceContainer,
+        title = { Text("Delete your account?", style = CTType.headlineMd, color = CT.onSurface) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "This erases your profile, your ride history, and any rides you lead — for " +
+                        "everyone in them. It cannot be undone.",
+                    style = CTType.bodyMd,
+                    color = CT.onSurfaceVariant,
+                )
+                Text(
+                    "A ConvoTrack Pro subscription is billed by Google Play and is not cancelled " +
+                        "by this. Cancel it in Google Play subscription settings.",
+                    style = CTType.bodyMd,
+                    color = CT.onSurfaceVariant,
+                )
+                if (error != null) {
+                    Text(error, style = CTType.bodyMd, color = CT.errorColor)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !deleting) {
+                Text(
+                    if (deleting) "DELETING…" else "DELETE",
+                    style = CTType.labelCaps,
+                    color = if (deleting) CT.onSurfaceVariant else CT.errorColor,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !deleting) {
+                Text("CANCEL", style = CTType.labelCaps, color = CT.onSurfaceVariant)
+            }
+        },
+    )
 }
 
 @Composable
@@ -218,7 +342,7 @@ private fun SettingsRow(
     icon: ImageVector,
     label: String,
     tint: androidx.compose.ui.graphics.Color = CT.onSurface,
-    onClick: () -> Unit = {},
+    onClick: () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 16.dp),

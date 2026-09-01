@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nothing in this app's data directory is worth moving to another device, and one thing in it is
+  actively dangerous to move: the Clerk session store. Backup would have carried a live session
+  onto whatever device restored it, signing a stranger in as the rider.
+
+  Everything a rider owns — profile, rides, history — lives on the server and comes back with a
+  sign-in, so excluding the lot costs nothing. `allowBackup="false"` in the manifest covers cloud
+  backup; this file is what covers direct device-to-device transfer, which allowBackup does not.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" />
+        <exclude domain="database" />
+        <exclude domain="file" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" />
+        <exclude domain="database" />
+        <exclude domain="file" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

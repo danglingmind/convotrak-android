@@ -80,6 +80,20 @@ interface ApiService {
     @PATCH("/users/me")
     suspend fun updateProfile(@Body request: UpdateProfileRequest)
 
+    /**
+     * Erases the signed-in rider's account and everything attached to it.
+     *
+     * Play's account deletion policy does not accept deactivation, so the server contract here is
+     * a real cascade: the user row, their participations, the rides they lead, their waypoints and
+     * their history all go, and the Clerk user is revoked with them. Freezing or flagging the
+     * account instead would satisfy the UI and fail the policy.
+     *
+     * The token used to authorise this call is dead by the time the response lands, which is why
+     * the caller signs out locally off the back of it rather than making a second request.
+     */
+    @DELETE("/users/me")
+    suspend fun deleteAccount()
+
     // Membership
     @POST("/memberships/activate")
     suspend fun activateMembership(@Body request: ActivateMembershipRequest): ActivateMembershipResponse

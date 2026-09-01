@@ -15,7 +15,9 @@
 
     <application
         android:name=".ConvoTrackApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="ConvoTrack"
         android:roundIcon="@mipmap/ic_launcher"
@@ -47,15 +49,21 @@
             </intent-filter>
 
             <!-- HTTPS App Link: https://convotrack.in/join/CODE
-                 autoVerify checks https://convotrack.in/.well-known/assetlinks.json so
-                 the link opens the app directly (no chooser). Host must match
-                 ApiClient.JOIN_LINK_HOST. -->
+                 autoVerify checks /.well-known/assetlinks.json on EVERY host listed here, and
+                 the check does not follow redirects — so both the apex and www are declared and
+                 both must serve the file with a 200 and a matching signing fingerprint. Listing
+                 only the apex, while the site 308s it to www, is a verification that silently
+                 never succeeds and an invite link that opens a browser instead of the app.
+                 Apex must match ApiClient.JOIN_LINK_HOST. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https"
                     android:host="convotrack.in"
+                    android:pathPrefix="/join" />
+                <data android:scheme="https"
+                    android:host="www.convotrack.in"
                     android:pathPrefix="/join" />
             </intent-filter>
         </activity>
