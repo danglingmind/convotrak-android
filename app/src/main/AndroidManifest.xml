@@ -49,21 +49,23 @@
             </intent-filter>
 
             <!-- HTTPS App Link: https://convotrack.in/join/CODE
-                 autoVerify checks /.well-known/assetlinks.json on EVERY host listed here, and
-                 the check does not follow redirects — so both the apex and www are declared and
-                 both must serve the file with a 200 and a matching signing fingerprint. Listing
-                 only the apex, while the site 308s it to www, is a verification that silently
-                 never succeeds and an invite link that opens a browser instead of the app.
-                 Apex must match ApiClient.JOIN_LINK_HOST. -->
+                 autoVerify fetches /.well-known/assetlinks.json from every host listed here and
+                 does not follow redirects, so each one must answer 200 with a matching signing
+                 fingerprint. On Android 11 and below it is all-or-nothing: a single host that
+                 fails takes the rest down with it.
+
+                 Hence the apex ALONE, deliberately. It is the host every invite link and QR code
+                 is built from (ApiClient.JOIN_LINK_HOST) and must therefore be the one that
+                 verifies, which in turn means it is the host that must not redirect. Adding www
+                 here would only work if www also served the file directly — and if www redirects
+                 to the apex, as a canonical setup normally has it, listing it would break the
+                 apex too on every device below Android 12. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https"
                     android:host="convotrack.in"
-                    android:pathPrefix="/join" />
-                <data android:scheme="https"
-                    android:host="www.convotrack.in"
                     android:pathPrefix="/join" />
             </intent-filter>
         </activity>
