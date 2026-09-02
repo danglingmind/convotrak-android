@@ -7,12 +7,37 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-// Google Maps key is read from local.properties (gitignored) so it never lands in source
-// control. Set `MAPS_API_KEY=...` there. Falls back to empty so the project still builds.
-val mapsApiKey: String = Properties().apply {
+// Secrets live in local.properties (gitignored) so they never land in source control.
+val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
-}.getProperty("MAPS_API_KEY", "")
+}
+
+// Google Maps key. Falls back to empty so the project still builds without it.
+val mapsApiKey: String = localProps.getProperty("MAPS_API_KEY", "")
+
+// Upload signing. Play refuses an unsigned bundle at upload, and with no signingConfig declared
+// that is exactly what `bundleRelease` produced: the signReleaseBundle task still runs, finds
+// nothing to sign with, and succeeds — so the build looked clean and the failure only appeared
+// after uploading to the Console.
+//
+// Set all four in local.properties:
+//   RELEASE_STORE_FILE=/absolute/path/to/upload-keystore.jks
+//   RELEASE_STORE_PASSWORD=...
+//   RELEASE_KEY_ALIAS=upload
+//   RELEASE_KEY_PASSWORD=...
+//
+// Environment variables of the same names win when set, so CI can supply them without a file.
+fun signingProp(name: String): String? =
+    (System.getenv(name) ?: localProps.getProperty(name))?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = signingProp("RELEASE_STORE_FILE")
+val releaseStorePassword = signingProp("RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = signingProp("RELEASE_KEY_ALIAS")
+val releaseKeyPassword = signingProp("RELEASE_KEY_PASSWORD")
+val hasReleaseSigning =
+    releaseStoreFile != null && releaseStorePassword != null &&
+        releaseKeyAlias != null && releaseKeyPassword != null
 
 android {
     namespace = "com.danglingmind.convotrack"
@@ -33,8 +58,23 @@ android {
         buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // Left unset when the credentials are absent, so a local `bundleRelease` still works
+            // for checking that the thing compiles. The warning below is what stops that being
+            // mistaken for an uploadable artifact again.
+            signingConfig = if (hasReleaseSigning) signingConfigs.getByName("release") else null
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -107,4 +147,13 @@ dependencies {
     implementation(libs.zxing.core)
 
     debugImplementation(libs.androidx.ui.tooling)
+}
+
+if (!hasReleaseSigning) {
+    logger.warn(
+        "\n[signing] No release signing credentials found. `bundleRelease` will produce an " +
+            "UNSIGNED app-release.aab, which Google Play rejects at upload.\n" +
+            "[signing] Set RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and " +
+            "RELEASE_KEY_PASSWORD in local.properties (or as env vars).\n",
+    )
 }
