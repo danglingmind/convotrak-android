@@ -9,3 +9,10 @@
 .cxx
 local.properties
 /app/build
+
+# Android Studio's "Generate Signed App Bundle" wizard writes here. It takes its keystore from
+# its own dialog rather than the signingConfig in app/build.gradle.kts, so a bundle produced this
+# way can be signed with the wrong key while the Gradle setup looks correct — which is exactly
+# what Play rejected once. Use `./gradlew bundleRelease` and upload from
+# app/build/outputs/bundle/release/ instead.
+app/release/
