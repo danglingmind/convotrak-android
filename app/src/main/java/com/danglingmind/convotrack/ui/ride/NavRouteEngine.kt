@@ -38,13 +38,19 @@ fun metersBetween(a: LatLng, b: LatLng): Double {
  * A point projected onto the segment a→b in a local flat-earth frame.
  *
  * [t] matters to callers as much as [point] does: `t == 1` means the projection ran off the far
- * end, i.e. the rider is already PAST this segment — which is how [advanceRouteProgress] tells
- * "sitting on this segment" apart from "near its end, heading away".
+ * end, i.e. the rider is already PAST this segment — which is how [locateOnRoute] tells "sitting
+ * on this segment" apart from "near its end, heading away".
  *
- * One implementation for all three former copies of this math (progress tracking, route trimming,
- * off-route distance), so they cannot disagree about where the rider is.
+ * One implementation for all four former copies of this math (progress tracking, route trimming,
+ * off-route distance, remaining length), so they cannot disagree about where the rider is.
  */
 data class SegmentHit(val point: LatLng, val t: Double, val distanceMeters: Double)
+
+/** Metres per degree of latitude. Constant enough at any latitude for the spans measured here. */
+private const val METERS_PER_DEG_LAT = 111_132.0
+
+/** Metres per degree of longitude at the equator; scaled by cos(latitude) at the point of use. */
+private const val METERS_PER_DEG_LNG = 111_320.0
 
 fun segmentProjection(p: LatLng, a: LatLng, b: LatLng): SegmentHit {
     val cosLat = cos(a.latitude * Math.PI / 180)
@@ -55,12 +61,16 @@ fun segmentProjection(p: LatLng, a: LatLng, b: LatLng): SegmentHit {
     val lenSq = dx * dx + dy * dy
     val t = if (lenSq < 1e-18) 0.0 else (((px - ax) * dx + (py - ay) * dy) / lenSq).coerceIn(0.0, 1.0)
     val foot = LatLng(a.latitude + t * (b.latitude - a.latitude), a.longitude + t * (b.longitude - a.longitude))
-    return SegmentHit(foot, t, metersBetween(p, foot))
+    // Equirectangular rather than geodesic. This runs hundreds of times per GPS fix inside
+    // [locateOnRoute], and `Location.distanceBetween` — an iterative Vincenty solve — is two
+    // orders of magnitude more expensive than the arithmetic above it. Over the tens of metres a
+    // perpendicular offset ever spans the two agree to well under a centimetre, which is noise
+    // against a 40 m off-route threshold. It is also what made the old code afford only a
+    // 200-segment window; the cheap distance is what lets the window be sized in metres instead.
+    val dLat = (p.latitude - foot.latitude) * METERS_PER_DEG_LAT
+    val dLng = (p.longitude - foot.longitude) * METERS_PER_DEG_LNG * cosLat
+    return SegmentHit(foot, t, sqrt(dLat * dLat + dLng * dLng))
 }
-
-/** Perpendicular distance in metres from [p] to segment a→b, clamped to the segment ends. */
-fun distanceToSegmentMeters(p: LatLng, a: LatLng, b: LatLng): Double =
-    segmentProjection(p, a, b).distanceMeters
 
 /** Prefix distances: `result[i]` is metres from the route start to vertex `i`. */
 fun cumulativeDistances(route: List<LatLng>): DoubleArray {
@@ -106,11 +116,15 @@ fun nearestPointOnRoute(route: List<LatLng>, point: LatLng, from: Int = 0): Rout
 /**
  * Distance still to travel along [route] from wherever the rider currently is on it.
  *
- * Measuring the polyline's TOTAL length only works while the line is being re-cut to start at the
- * rider — and that is deliberately skipped while off-route, so the bright line keeps showing the
- * reroute being followed. The side effect was that DIST froze off-route while ETA kept counting
- * down. Projecting the rider onto the line and summing what is left keeps the two consistent in
- * both states, and costs one projection per fix.
+ * The fallback for distance-to-goal when there is no followed route to measure against — normally
+ * that figure comes from the route's total length minus [progressAlongRoute], which reuses the
+ * single per-fix [locateOnRoute] result and so cannot disagree with the drawn line.
+ *
+ * Measuring the polyline's TOTAL length would only work while the line is being re-cut to start at
+ * the rider, and that is deliberately skipped while off-route so the bright line keeps showing the
+ * route being followed; the side effect was that DIST froze off-route while ETA kept counting down.
+ * Projecting the rider onto the line and summing what is left keeps the two consistent in both
+ * states.
  */
 fun remainingRouteLength(route: List<LatLng>, from: LatLng): Double {
     if (route.size < 2) return 0.0
@@ -301,12 +315,11 @@ const val ROUTE_MATCH_TOLERANCE_METERS = 60.0
  * A percentile rather than the maximum, so one clipped corner or a differently-modelled junction
  * approach can't condemn an otherwise identical route.
  *
- * Runs its own flat-earth arithmetic rather than reusing [nearestPointOnRoute]: this compares every
- * sample against every segment of the reference — 64 × several thousand on a long ride — and that
- * helper takes a geodesic distance per segment. Half a million of those at the moment navigation
- * opens is a visible stall, to decide a question whose answer is "same road or a different one".
- * Metres here are equirectangular about the route's mid-latitude: good to a fraction of a percent
- * over a ride's span, against a 60 m tolerance.
+ * Projects the reference ONCE into a local frame rather than reusing [nearestPointOnRoute]: this
+ * compares every sample against every segment of the reference — 64 × several thousand on a long
+ * ride — so hoisting the per-vertex trigonometry out of the inner loop is worth the duplicated
+ * arithmetic. Metres here are equirectangular about the route's mid-latitude: good to a fraction
+ * of a percent over a ride's span, against a 60 m tolerance.
  */
 fun routeDeviation(candidate: List<LatLng>, reference: List<LatLng>): Double {
     if (candidate.size < 2 || reference.size < 2) return Double.MAX_VALUE
@@ -341,61 +354,153 @@ fun routeDeviation(candidate: List<LatLng>, reference: List<LatLng>): Double {
     return deviations[((deviations.size - 1) * 0.9).toInt()]
 }
 
-// MARK: - Progress along the followed route
+// MARK: - Locating the rider on the followed route
 
 /**
- * Advance the progress index to the closest upcoming segment, never backwards.
+ * How far AHEAD of the current progress index the per-fix search looks, in metres.
  *
- * The early break tests that the rider is sitting ON this segment (`t < 0.999`) — not merely close
- * to its far endpoint. A plain `distance < 5` proximity break stalls on dense curve geometry
- * (Google polylines run 2–3 m per vertex through a bend): the very first segment tried, the one
- * already behind the rider, keeps satisfying it and the index never advances. The polyline head is
- * then clamped to a vertex the rider has already driven through, so the bright line's start stalls
- * while the chevron carries on, then jumps to catch up — the disjointed, uneven-pace head this
- * search feeds.
+ * Sized in metres rather than in vertices, which is what the old fixed 200-segment window got
+ * wrong. Google's HIGH_QUALITY geometry runs 2-3 m per vertex through a bend and tens of metres
+ * on an open highway, so 200 segments is anywhere between 500 m and 8 km depending on where the
+ * rider happens to be. At the dense end that is less than twenty seconds of motorway driving: one
+ * skipped fix — a tunnel, a doze window, the app coming back from the background — put the true
+ * position outside the window, nothing inside it was within the acceptance bound, and the index
+ * then froze for the REST OF THE RIDE. A metre-based window is the same amount of road everywhere.
  */
-fun advanceRouteProgress(route: List<LatLng>, from: LatLng, segmentIndex: Int): Int {
-    if (route.size < 2) return segmentIndex
-    val lookEnd = min(route.size - 2, segmentIndex + 200)
-    if (lookEnd < segmentIndex) return segmentIndex
-    var minDist = Double.MAX_VALUE
-    var bestIdx = segmentIndex
-    for (i in segmentIndex..lookEnd) {
-        val hit = segmentProjection(from, route[i], route[i + 1])
-        if (hit.distanceMeters < minDist) { minDist = hit.distanceMeters; bestIdx = i }
-        if (hit.distanceMeters < 5 && hit.t < 0.999) break
+const val ROUTE_LOOKAHEAD_METERS = 3_000.0
+
+/** How far BEHIND the index the search may reach, to absorb GPS jitter around a vertex. */
+const val ROUTE_LOOKBEHIND_METERS = 60.0
+
+/** Where the rider is on the route: the segment, the foot of the perpendicular, and the offset. */
+data class RouteLocation(
+    val segmentIndex: Int,
+    val point: LatLng,
+    /** Position along the segment, 0..1. `1` means the projection ran off the far end. */
+    val t: Double,
+    /** Perpendicular distance from the fix to [point], in metres. */
+    val distanceMeters: Double,
+)
+
+/**
+ * The single answer to "where is the rider on this route", computed once per GPS fix.
+ *
+ * Everything downstream — the off-route test, the along-route progress that drives the turn
+ * banner, and above all the polyline trim that decides what is DRAWN — now reads this one result.
+ * They used to run three different searches with three different windows: `advanceRouteProgress`
+ * over 200 segments with an 80 m acceptance bound, `minDistanceToUpcomingRoute` over a *different*
+ * 105-segment window, and the trim over exactly ONE segment, the one at the index, with no search
+ * at all.
+ *
+ * That last one is what drew the straight lines. The moment the index lagged reality — and the
+ * two paragraphs above list several ways it could — the trim projected the rider onto a segment
+ * hundreds of metres behind, then emitted `rider → that stale point → the route onwards from
+ * there`. On screen: a long straight chord shooting off the chevron across the map, with the route
+ * doubling back to meet it. Meanwhile the off-route gate, searching its own wider window, found
+ * the rider comfortably on the road and let the bad geometry through.
+ *
+ * Returns null only when [route] is too short to have a segment.
+ */
+fun locateOnRoute(
+    route: List<LatLng>,
+    cumulative: DoubleArray,
+    from: LatLng,
+    fromIndex: Int,
+): RouteLocation? {
+    if (route.size < 2) return null
+    val lastSegment = route.size - 2
+    val anchor = fromIndex.coerceIn(0, lastSegment)
+    // Window bounds in metres along the route, resolved to vertex indices through the prefix sums
+    // we already keep. Falls back to the anchor alone if the cumulative array doesn't match.
+    val (start, end) = if (cumulative.size == route.size) {
+        val here = cumulative[anchor]
+        indexRangeCovering(cumulative, here - ROUTE_LOOKBEHIND_METERS, here + ROUTE_LOOKAHEAD_METERS, lastSegment)
+    } else {
+        anchor to min(lastSegment, anchor + 200)
     }
-    // Only advance if the rider is actually near the route — prevents a far-away GPS fix from
-    // jumping the index to the end of a short route (the old straight-line bug).
-    return if (bestIdx > segmentIndex && minDist <= 80) bestIdx else segmentIndex
+    return scanSegments(route, from, start, end)
 }
 
 /**
- * The rider's distance along [route], measured from [segmentIndex].
+ * Full-route search, used only to RE-ACQUIRE after the windowed search has lost the rider.
  *
- * Built on the forward-only index rather than a global nearest-point search, so progress cannot
- * jump backwards (or leap ahead) where a route passes close to itself.
+ * Progress is forward-only by design, because a route that touches itself — a loop, an
+ * out-and-back, a cloverleaf, the two carriageways of a divided highway — would otherwise let a
+ * single noisy fix throw the index onto the wrong pass. But forward-only with no escape hatch is
+ * how the index came to freeze permanently after one GPS gap. This is the escape hatch: the caller
+ * runs it only when the window has already failed, and accepts the result only when it lands the
+ * rider genuinely on the road.
  */
-fun progressAlongRoute(route: List<LatLng>, cumulative: DoubleArray, from: LatLng, segmentIndex: Int): Double {
-    if (route.size < 2 || cumulative.size != route.size) return 0.0
-    val i = min(segmentIndex, route.size - 2)
-    val projected = segmentProjection(from, route[i], route[i + 1]).point
-    return cumulative[i] + metersBetween(route[i], projected)
+fun locateAnywhereOnRoute(route: List<LatLng>, from: LatLng): RouteLocation? {
+    if (route.size < 2) return null
+    return scanSegments(route, from, 0, route.size - 2)
 }
 
-/** Minimum perpendicular distance to any segment in a window around the current progress index. */
-fun minDistanceToUpcomingRoute(route: List<LatLng>, from: LatLng, segmentIndex: Int): Double {
-    if (route.size < 2) return 0.0
-    val start = maxOf(0, segmentIndex - 5)
-    val end = min(route.size - 2, segmentIndex + 100)
-    if (end < start) return 0.0
-    var minDist = Double.MAX_VALUE
+/** Inclusive vertex-index range whose cumulative distances span [lowMeters, highMeters]. */
+private fun indexRangeCovering(
+    cumulative: DoubleArray,
+    lowMeters: Double,
+    highMeters: Double,
+    lastSegment: Int,
+): Pair<Int, Int> {
+    // Hand-rolled rather than `cumulative.toList().binarySearch { }`: this runs on every GPS fix
+    // and that idiom boxes the whole prefix-sum array into a List<Double> first.
+    fun search(target: Double): Int {
+        var lo = 0
+        var hi = cumulative.size
+        while (lo < hi) {
+            val mid = (lo + hi) ushr 1
+            if (cumulative[mid] < target) lo = mid + 1 else hi = mid
+        }
+        return lo
+    }
+    val start = (search(lowMeters) - 1).coerceIn(0, lastSegment)
+    val end = search(highMeters).coerceIn(start, lastSegment)
+    return start to end
+}
+
+/**
+ * Nearest segment to [from] in `[start, end]`, by true minimum — no early exit.
+ *
+ * The old scan broke out at the FIRST segment closer than 5 m whose `t < 0.999`, which is not the
+ * nearest segment, only the first acceptable one. Where a route runs back alongside itself the
+ * outbound and return carriageways are both within 5 m in polyline terms, so the scan could latch
+ * onto whichever pass came first in the vertex order and stay there. Taking the real minimum costs
+ * a few hundred multiply-adds per fix now that [segmentProjection] no longer calls a geodesic.
+ *
+ * Ties go to the LATER segment when the rider is interior to it (`t` strictly inside 0..1). Two
+ * segments meeting at the vertex the rider is standing on report the same distance; picking the
+ * one the rider is on rather than the one they have finished is what keeps the polyline head
+ * moving at the chevron's pace instead of stalling on a vertex and then jumping to catch up.
+ */
+private fun scanSegments(route: List<LatLng>, from: LatLng, start: Int, end: Int): RouteLocation? {
+    if (end < start) return null
+    var best: RouteLocation? = null
     for (i in start..end) {
-        val d = distanceToSegmentMeters(from, route[i], route[i + 1])
-        if (d < minDist) minDist = d
-        if (minDist < 5) return minDist
+        val hit = segmentProjection(from, route[i], route[i + 1])
+        val current = best
+        val interior = hit.t > 0.001 && hit.t < 0.999
+        val better = when {
+            current == null -> true
+            hit.distanceMeters < current.distanceMeters - 0.01 -> true
+            hit.distanceMeters <= current.distanceMeters + 0.01 && interior -> true
+            else -> false
+        }
+        if (better) best = RouteLocation(i, hit.point, hit.t, hit.distanceMeters)
     }
-    return minDist
+    return best
+}
+
+/**
+ * The rider's distance along [route] at [location].
+ *
+ * Reads the location the caller already computed rather than re-projecting, so progress cannot
+ * disagree with the drawn polyline about which segment the rider is on.
+ */
+fun progressAlongRoute(cumulative: DoubleArray, route: List<LatLng>, location: RouteLocation): Double {
+    if (cumulative.size != route.size || route.size < 2) return 0.0
+    val i = min(location.segmentIndex, route.size - 2)
+    return cumulative[i] + metersBetween(route[i], location.point)
 }
 
 // MARK: - Trimming (marker and polyline head are the same point, by construction)
@@ -433,33 +538,34 @@ data class TrimResult(
 fun trimActiveRoute(
     route: List<LatLng>,
     from: LatLng,
-    segmentIndex: Int,
+    location: RouteLocation,
     speedMps: Double,
     courseValidSpeedMps: Double,
 ): TrimResult? {
     if (route.size < 2) return null
-    val i = min(segmentIndex, route.size - 2)
-    val next = min(i + 1, route.size - 1)
+    val next = min(location.segmentIndex + 1, route.size - 1)
 
-    val hit = segmentProjection(from, route[i], route[next])
     // A wild fix inside an on-route run must not be yanked onto the line — the off-route flag needs
     // three consecutive readings to trip, so this bound is what stops us claiming precision we
-    // don't have in between.
-    val snapped = hit.distanceMeters <= SNAP_MAX_OFFSET_METERS
-    val head = if (snapped) hit.point else from
+    // don't have in between. The leader drawn below is now bounded by the caller's off-route gate
+    // (trimming stops entirely past OFF_ROUTE_THRESHOLD_METERS) because [location] is a genuine
+    // nearest-point search; when it was a projection onto one stale segment the "short leader"
+    // could be any length at all.
+    val snapped = location.distanceMeters <= SNAP_MAX_OFFSET_METERS
+    val head = if (snapped) location.point else from
 
     // Point along the ROAD, not along the course. A GPS-derived bearing weaves with the lane and
     // with noise — the arrow sat a few degrees askew on a line it was sitting exactly on. The
     // camera takes its bearing from this same value, so the map steadies with it.
     val roadBearing = if (snapped && speedMps >= courseValidSpeedMps) {
-        routeBearingAhead(route, hit.point, segmentIndex)
+        routeBearingAhead(route, location.point, location.segmentIndex)
     } else {
         null
     }
 
     val trimmed = ArrayList<LatLng>(route.size - next + 2)
     trimmed.add(head)
-    if (!snapped) trimmed.add(hit.point)   // short leader from the marker back to the road
+    if (!snapped) trimmed.add(location.point)   // short leader from the marker back to the road
     if (next < route.size) trimmed.addAll(route.subList(next, route.size))
     return TrimResult(head, trimmed, snapped, roadBearing)
 }

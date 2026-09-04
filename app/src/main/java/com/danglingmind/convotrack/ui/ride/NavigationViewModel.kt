@@ -188,8 +188,19 @@ class NavigationViewModel : ViewModel() {
     private var navSteps: List<DirectionsStep> = emptyList()
     private var currentStepIndex = 0
 
-    /** Forward-only progress index into [navRoute]. */
+    /** Forward-only progress index into [navRoute], except when [locateAnywhereOnRoute] re-acquires. */
     private var navSegmentIndex = 0
+
+    /**
+     * Where the rider sits on [navRoute], as of the last fix — segment, foot of the perpendicular,
+     * and offset.
+     *
+     * ONE search per fix, consumed by the off-route test, the turn banner's progress, the polyline
+     * trim and distance-to-goal alike. Those four used to run their own searches over three
+     * different windows (and, in the trim's case, over a single segment with no search at all),
+     * which is how the drawn line came to disagree with everything else about where the rider was.
+     */
+    private var navLocation: RouteLocation? = null
 
     /** Perpendicular distance from the last fix to [navRoute]. The undebounced truth behind
      *  [isOffRoute], and what gates polyline trimming. */
@@ -478,6 +489,7 @@ class NavigationViewModel : ViewModel() {
         navRoute = route
         navRouteCumulative = cumulativeDistances(route)
         navSegmentIndex = 0
+        navLocation = null
         navSteps = stampAlongRouteDistances(steps, route, navRouteCumulative)
         currentStepIndex = 0
 
@@ -519,14 +531,12 @@ class NavigationViewModel : ViewModel() {
         // measures progress from. Reversed, every step decision would use the previous fix's
         // progress.
         checkOffRoute(fix, location)
-        updateCurrentStep(fix)
+        updateCurrentStep()
         refreshEtaIfNeeded(fix)
 
-        if (needsInitialRouteCheck && navRoute.isNotEmpty()) {
+        if (needsInitialRouteCheck && navRoute.size >= 2) {
             needsInitialRouteCheck = false
-            if (minDistanceToUpcomingRoute(navRoute, fix, navSegmentIndex) > OFF_ROUTE_THRESHOLD_METERS &&
-                !isRerouteInFlight
-            ) {
+            if (lastRouteOffsetMeters > OFF_ROUTE_THRESHOLD_METERS && !isRerouteInFlight) {
                 _isOffRoute.value = true
                 consecutiveOffCount = OFF_ROUTE_CONFIRM_COUNT
                 launchReroute(fix)
@@ -538,9 +548,10 @@ class NavigationViewModel : ViewModel() {
         // a jitter spike cleared — the head would stay frozen wherever it was last cut while the
         // rider drove on, detaching it from the marker for exactly as long as the debounce ran.
         // Proximity to the route we are following is the real precondition for trimming it.
-        if (lastRouteOffsetMeters <= OFF_ROUTE_THRESHOLD_METERS) {
+        val navLoc = navLocation
+        if (navLoc != null && lastRouteOffsetMeters <= OFF_ROUTE_THRESHOLD_METERS) {
             val speedMps = if (location.hasSpeed()) location.speed.toDouble() else 0.0
-            trimActiveRoute(navRoute, fix, navSegmentIndex, speedMps, COURSE_VALID_SPEED_MPS)
+            trimActiveRoute(navRoute, fix, navLoc, speedMps, COURSE_VALID_SPEED_MPS)
                 ?.let { trim ->
                     // The marker and the polyline head are now the same coordinate by construction.
                     _userLocation.value = trim.head
@@ -554,12 +565,23 @@ class NavigationViewModel : ViewModel() {
                 }
         }
 
-        // Drive DIST from the locally-trimmed remaining route rather than the server's `progress`.
-        // The server value is a nearest-point projection that reads ~full (zeroing distance to
-        // goal) whenever the rider isn't cleanly on-route.
-        val active = _activeRouteCoordinates.value
-        if (active.size >= 2) {
-            _myDistanceToGoalKm.value = remainingRouteLength(active, fix) / 1000
+        // Drive DIST from the locally-measured position on the route rather than the server's
+        // `progress`. The server value is a nearest-point projection that reads ~full (zeroing
+        // distance to goal) whenever the rider isn't cleanly on-route.
+        //
+        // Taken from the same [navLocation] the polyline was cut with — total route length minus
+        // progress — so the readout cannot disagree with the drawn line. Measuring the trimmed
+        // polyline's own length instead (the previous approach) ran a second, independent
+        // full-route nearest-point search per fix and went stale for as long as trimming was
+        // gated off.
+        val navLength = navRouteCumulative.lastOrNull() ?: 0.0
+        val located = navLocation
+        if (located != null && navLength > 0) {
+            val progress = progressAlongRoute(navRouteCumulative, navRoute, located)
+            _myDistanceToGoalKm.value = max(0.0, navLength - progress) / 1000
+        } else {
+            val active = _activeRouteCoordinates.value
+            if (active.size >= 2) _myDistanceToGoalKm.value = remainingRouteLength(active, fix) / 1000
         }
 
         if (now - cameraTickAtMs >= CAMERA_TICK_MIN_MS) {
@@ -620,9 +642,10 @@ class NavigationViewModel : ViewModel() {
      * is exactly the reported symptom. It also advanced at most one step per fix, so a cluster of
      * short steps (roundabout exits, quick doubles) left it permanently behind.
      */
-    private fun updateCurrentStep(fix: LatLng) {
+    private fun updateCurrentStep() {
         if (navSteps.isEmpty()) return
-        val progress = progressAlongRoute(navRoute, navRouteCumulative, fix, navSegmentIndex)
+        val location = navLocation ?: return
+        val progress = progressAlongRoute(navRouteCumulative, navRoute, location)
 
         // First step that still ends ahead of us. No slack: a rider parked exactly on a step
         // boundary can't flicker, because the forward-only clamp below makes it impossible — and
@@ -641,6 +664,41 @@ class NavigationViewModel : ViewModel() {
         _currentManeuver.value = banner.maneuver
     }
 
+    /**
+     * Finds the rider on [navRoute] and publishes the result into [navLocation],
+     * [navSegmentIndex] and [lastRouteOffsetMeters].
+     *
+     * Two passes. The windowed one is the normal case and keeps progress monotone, which is what
+     * stops a noisy fix from throwing the index onto the other carriageway of a divided road or
+     * the return leg of an out-and-back. The full-route pass runs only once the window has failed
+     * to put the rider on the road at all, and its result is taken only if it does — that is the
+     * recovery the old code had no equivalent of, so a single GPS gap wider than the fixed
+     * 200-segment window froze the index for the remainder of the ride and left the bright line
+     * anchored wherever it had last been cut.
+     */
+    private fun locateOnNavRoute(fix: LatLng) {
+        val windowed = locateOnRoute(navRoute, navRouteCumulative, fix, navSegmentIndex)
+        val accepted = when {
+            windowed != null && windowed.distanceMeters <= OFF_ROUTE_THRESHOLD_METERS -> windowed
+            else -> locateAnywhereOnRoute(navRoute, fix)
+                ?.takeIf { it.distanceMeters <= OFF_ROUTE_THRESHOLD_METERS }
+                ?: windowed
+        } ?: return
+
+        // Detection always sees the fresh measurement...
+        lastRouteOffsetMeters = accepted.distanceMeters
+        // ...but progress is committed only while the rider is genuinely on the road. A fix that
+        // has left the route still has a nearest point on it, and that point runs forward along
+        // the line as the rider drives away parallel to it — committing it would walk the index
+        // (and with it the turn banner and distance-to-goal) down a road nobody is on, and on a
+        // ride with no stops left to reroute through it would eventually report arrival. Holding
+        // the last on-route position is also what the frozen polyline already implies.
+        if (accepted.distanceMeters <= OFF_ROUTE_THRESHOLD_METERS) {
+            navLocation = accepted
+            navSegmentIndex = accepted.segmentIndex
+        }
+    }
+
     private fun checkOffRoute(fix: LatLng, location: Location) {
         // Pop stops we've already passed (within 80 m).
         while (remainingStops.isNotEmpty() && metersBetween(fix, remainingStops.first()) < 80) {
@@ -649,8 +707,7 @@ class NavigationViewModel : ViewModel() {
 
         if (navRoute.size < 2) return
 
-        navSegmentIndex = advanceRouteProgress(navRoute, fix, navSegmentIndex)
-        lastRouteOffsetMeters = minDistanceToUpcomingRoute(navRoute, fix, navSegmentIndex)
+        locateOnNavRoute(fix)
         val rawOffRoute = lastRouteOffsetMeters > OFF_ROUTE_THRESHOLD_METERS
 
         if (rawOffRoute) {

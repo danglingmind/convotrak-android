@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.danglingmind.convotrack.R
 import com.danglingmind.convotrack.data.maps.AvatarCache
+import com.danglingmind.convotrack.ui.ride.metersBetween
 import com.danglingmind.convotrack.ui.theme.CT
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.MapsInitializer
@@ -191,6 +192,47 @@ object NavCamera {
 /** Placeholder geometry for a hidden polyline: the SDK needs a valid path even when invisible. */
 private val EMPTY_LINE = listOf(LatLng(0.0, 0.0), LatLng(0.0, 0.0))
 
+/**
+ * Vertex ceiling for a drawn polyline — a safety net, not a budget.
+ *
+ * The comment this replaces asserted the Maps SDK "silently declines to draw a polyline" above
+ * ~33,000 vertices. Neither the Maps SDK reference nor the shapes guide documents any point limit,
+ * and the same change that introduced that claim also fixed a real maps-compose defect with the
+ * identical symptom — a route present in the composition, correct points, simply never drawn —
+ * caused by the map's child node list changing shape (see the `visible`-toggling comment on the
+ * route layers below). That defect is the likelier original culprit, and it is already fixed.
+ *
+ * Rationing points was the expensive mistake. Thinning to fit a budget forces the tolerance up
+ * until the geometry fits, and on a long ride the tolerance that fits is the tolerance that eats
+ * the corners: a 1438 km route squeezed to 3,000 points lands on a 16 m tolerance, which is 46 px
+ * of error at guidance zoom — a straight chord across every bend. The same route needs only about
+ * 10,000 points to hold 1 m, and 15,000 to hold 0.5 m, which is below the ~1.1 m quantisation of
+ * Google's own encoded polyline and so lossless in any sense the source data can express.
+ *
+ * 40,000 therefore sits above every real ride, so ordinary routes — including the 1438 km one —
+ * are handed to the SDK exactly as Google returned them, unthinned. Only a route larger than any
+ * yet seen falls through to [thinToBudget], and it does so at a tolerance that stays invisible.
+ */
+private const val MAX_DRAWN_POINTS = 40_000
+
+/**
+ * Base Douglas-Peucker tolerance, in metres.
+ *
+ * Below the ~1.1 m quantisation of an encoded polyline, so a vertex only goes when the line drawn
+ * without it is indistinguishable from the one the API sent — including when the rider pinches
+ * all the way in, which is where a 1 m tolerance starts to show.
+ */
+private const val DRAW_SIMPLIFY_TOLERANCE_METERS = 0.5
+
+/**
+ * How much of the ACTIVE route, measured from the rider, is exempt from thinning entirely.
+ *
+ * Comfortably more than the guidance camera can show, so the road under the chevron is always
+ * drawn lane-accurate, and enough to survive a pinch-out to a few kilometres before the far-field
+ * simplification becomes visible.
+ */
+private const val NAV_FULL_DETAIL_METERS = 5_000.0
+
 private const val ROUTE_CHUNKINESS = 16f
 private const val CASING_RATIO = 13f / 8f
 
@@ -234,7 +276,14 @@ fun ConvoTrackMap(
     val scale = density.density
 
     // Drawn geometry is capped; the camera and all navigation math still use the full lists.
-    val drawRoute = remember(routeCoords) { simplifyForDisplay(routeCoords) }
+    // The bright route's head is the rider while guidance is running, so its near field is what
+    // the camera is actually looking at and must never be thinned.
+    val drawRoute = remember(routeCoords, isNavigating) {
+        simplifyForDisplay(
+            routeCoords,
+            headDetailMeters = if (isNavigating) NAV_FULL_DETAIL_METERS else 0.0,
+        )
+    }
     val drawFullRoute = remember(fullRouteCoords) { simplifyForDisplay(fullRouteCoords) }
     // Alternatives are simplified once per change too, not per recomposition — the route picker
     // recomposes on every selection tap and these lists are the same size as the main route.
@@ -755,31 +804,135 @@ private fun bearingTo(from: LatLng, to: LatLng): Double {
 }
 
 /**
- * Caps a polyline's point count for DRAWING.
+ * Thins a polyline for DRAWING, without moving it off the road.
  *
- * A stored route for a long ride is enormous — a 1459 km ride decodes to ~33,000 vertices — and
+ * A stored route for a long ride is enormous — a 1438 km ride decodes to ~33,000 vertices — and
  * the Maps SDK silently declines to draw a polyline that large: the line simply never appears,
- * with no error. (It showed up in navigation only because the route being drawn there is a
- * freshly-stitched, much smaller one.)
+ * with no error. So some thinning is unavoidable.
  *
- * Uniform stride rather than Douglas-Peucker: this runs on every route change, the input is
- * already road-snapped at 2-3 m spacing, and dropping every nth vertex of such a dense line is
- * visually indistinguishable at any zoom a whole route is framed at. The first and last points are
- * always kept so the line still starts and ends exactly where the route does.
+ * Two things it must not do, both of which cost the route its shape:
+ *
+ * 1. **Drop vertices by position.** Keeping every nth point is a fine way to halve a dense
+ *    straight line and a terrible way to draw a corner: the vertices that define a turn are
+ *    exactly the ones that carry the shape, and a uniform stride is as likely to discard them as
+ *    any other. It is worse in motion than that sounds — the line is re-cut under the rider every
+ *    fix, so the sampling phase shifts each second and a different set of corners is flattened
+ *    each time. Douglas-Peucker instead, with the tolerance in metres, so a vertex goes only when
+ *    the line drawn without it passes within [toleranceMeters] of where it sat.
+ *
+ * 2. **Spend one whole-route budget on a line viewed at two scales.** This is what still drew
+ *    straight chords across bends after the switch to Douglas-Peucker. A 1438 km route thinned to
+ *    3,000 points is one vertex every 480 m; the guidance camera shows about 200 m of road. Every
+ *    vertex in the only part the rider can see had been spent on the 1437 km they cannot. The
+ *    budget is not wrong, it is just the wrong thing to ration by distance-from-the-camera.
+ *
+ * So [headDetailMeters] of the line, measured from its head, is kept at FULL resolution and any
+ * thinning applies only beyond it. During navigation the head is the rider — the trim in
+ * `NavRouteEngine` re-cuts the route to start underneath the chevron — so this is exactly the
+ * stretch on screen, and it stays lane-accurate however long the ride is and however far the
+ * rider pinches in. Passing 0 (the preview, and the dim planned layer whose head is the ride's
+ * start rather than the camera) thins uniformly instead, which is fine now that the tolerance is
+ * below what the source data can represent.
  *
  * DISPLAY ONLY. Navigation measures progress, off-route distance and step positions against the
  * full-resolution route in `NavRouteEngine` — simplifying that would move every turn.
  */
-private fun simplifyForDisplay(points: List<LatLng>, maxPoints: Int = 3000): List<LatLng> {
+private fun simplifyForDisplay(
+    points: List<LatLng>,
+    maxPoints: Int = MAX_DRAWN_POINTS,
+    toleranceMeters: Double = DRAW_SIMPLIFY_TOLERANCE_METERS,
+    headDetailMeters: Double = 0.0,
+): List<LatLng> {
     if (points.size <= maxPoints) return points
-    val stride = (points.size + maxPoints - 1) / maxPoints
-    val out = ArrayList<LatLng>(points.size / stride + 2)
-    var i = 0
-    while (i < points.size) {
-        out.add(points[i])
-        i += stride
+
+    if (headDetailMeters > 0) {
+        val split = indexAfterMeters(points, headDetailMeters, maxPoints / 2)
+        if (split > 1) {
+            val near = points.subList(0, split)
+            val far = points.subList(split - 1, points.size)   // shares a vertex, so the join is seamless
+            val farBudget = maxOf(2, maxPoints - near.size)
+            return near + thinToBudget(far, farBudget, toleranceMeters).drop(1)
+        }
     }
-    if (out.last() != points.last()) out.add(points.last())
+    return thinToBudget(points, maxPoints, toleranceMeters)
+}
+
+/** Douglas-Peucker at an escalating tolerance until the result fits [maxPoints]. */
+private fun thinToBudget(points: List<LatLng>, maxPoints: Int, toleranceMeters: Double): List<LatLng> {
+    if (points.size <= maxPoints) return points
+    var tolerance = toleranceMeters
+    // Doubling rather than a solve: each pass is fast, and reaching this path at all means the
+    // route is larger than any ride yet recorded.
+    var result = douglasPeucker(points, tolerance)
+    while (result.size > maxPoints && tolerance < 512) {
+        tolerance *= 2
+        result = douglasPeucker(points, tolerance)
+    }
+    return result
+}
+
+/** Index one past the last vertex within [meters] of the head, capped at [maxIndex]. */
+private fun indexAfterMeters(points: List<LatLng>, meters: Double, maxIndex: Int): Int {
+    var travelled = 0.0
+    var i = 1
+    while (i < points.size && i < maxIndex) {
+        travelled += metersBetween(points[i - 1], points[i])
+        if (travelled >= meters) return i + 1
+        i++
+    }
+    return i
+}
+
+/**
+ * Ramer-Douglas-Peucker in a local equirectangular frame anchored at the route's midpoint.
+ *
+ * Iterative rather than recursive: a 33,000-vertex route on a nearly straight motorway is the
+ * pathological input for the recursive form, and blowing the stack while drawing a map is not a
+ * failure mode worth keeping for the sake of six fewer lines.
+ */
+private fun douglasPeucker(points: List<LatLng>, toleranceMeters: Double): List<LatLng> {
+    if (points.size < 3) return points
+
+    val anchor = points[points.size / 2]
+    val metresPerLat = 111_132.0
+    val metresPerLng = 111_320.0 * cos(anchor.latitude * Math.PI / 180)
+    val xs = DoubleArray(points.size) { (points[it].longitude - anchor.longitude) * metresPerLng }
+    val ys = DoubleArray(points.size) { (points[it].latitude - anchor.latitude) * metresPerLat }
+
+    val keep = BooleanArray(points.size)
+    keep[0] = true
+    keep[points.size - 1] = true
+
+    val toleranceSq = toleranceMeters * toleranceMeters
+    val stack = ArrayDeque<Pair<Int, Int>>()
+    stack.addLast(0 to points.size - 1)
+    while (stack.isNotEmpty()) {
+        val (first, last) = stack.removeLast()
+        if (last <= first + 1) continue
+        val ax = xs[first]; val ay = ys[first]
+        val dx = xs[last] - ax; val dy = ys[last] - ay
+        val lenSq = dx * dx + dy * dy
+
+        var worst = -1
+        var worstSq = toleranceSq
+        for (i in (first + 1) until last) {
+            val px = xs[i] - ax; val py = ys[i] - ay
+            // Distance to the SEGMENT, clamped — an unclamped line distance understates the error
+            // for a vertex sitting beyond an endpoint, which is how a hairpin gets flattened.
+            val t = if (lenSq < 1e-9) 0.0 else ((px * dx + py * dy) / lenSq).coerceIn(0.0, 1.0)
+            val ex = px - t * dx; val ey = py - t * dy
+            val distSq = ex * ex + ey * ey
+            if (distSq > worstSq) { worstSq = distSq; worst = i }
+        }
+        if (worst >= 0) {
+            keep[worst] = true
+            stack.addLast(first to worst)
+            stack.addLast(worst to last)
+        }
+    }
+
+    val out = ArrayList<LatLng>(points.size / 2)
+    for (i in points.indices) if (keep[i]) out.add(points[i])
     return out
 }
 

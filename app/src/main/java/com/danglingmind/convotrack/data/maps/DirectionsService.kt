@@ -85,8 +85,6 @@ object DirectionsService {
             val parsed = json.decodeFromString(RoutesResponse.serializer(), text)
             val leg = parsed.routes.firstOrNull()?.legs?.firstOrNull()
                 ?: error("No route found")
-
-            val coords = leg.steps.flatMap { decodePolyline(it.polyline.encodedPolyline) }
             legResult(leg)
         }
     }

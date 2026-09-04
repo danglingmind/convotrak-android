@@ -15,9 +15,9 @@ import com.google.android.gms.maps.model.LatLng
  */
 
 /**
- * Stitches Directions routes between consecutive waypoints into one polyline. Legs that fail are
- * skipped so a bad segment doesn't blank the whole route. Returns empty if there aren't at least
- * two stops.
+ * Stitches Directions routes between consecutive waypoints into one polyline. Returns empty if
+ * there aren't at least two stops, or if any leg fails to route — see [computeRouteWithSteps] for
+ * why a partial answer is worse than none.
  */
 suspend fun computeRoute(waypoints: List<Waypoint>): List<LatLng> =
     computeRouteWithSteps(waypoints).coords
@@ -150,8 +150,9 @@ private suspend fun alternativeMatching(
  * Like [computeRoute] but also returns the stitched turn-by-turn steps, the summed drive time, and
  * the running time on arrival at each stop.
  *
- * `cumulativeStopSeconds` gets an entry every iteration — even when a leg fails to route — so its
- * index stays aligned with the remaining-stops list the ETA indexes into.
+ * All-or-nothing: `cumulativeStopSeconds` gets one entry per leg and stays index-aligned with the
+ * remaining-stops list the ETA reads, because a leg that fails aborts the whole computation rather
+ * than leaving a hole in either.
  */
 suspend fun computeRouteWithSteps(waypoints: List<Waypoint>): RouteWithSteps {
     val sorted = waypoints.sortedBy { it.order }
@@ -163,16 +164,41 @@ suspend fun computeRouteWithSteps(waypoints: List<Waypoint>): RouteWithSteps {
     for (i in 0 until sorted.size - 1) {
         val origin = LatLng(sorted[i].lat, sorted[i].lng)
         val dest = LatLng(sorted[i + 1].lat, sorted[i + 1].lng)
-        val result = runCatching { DirectionsService.route(origin, dest) }.getOrNull()
-        if (result != null) {
-            // Drop the first point of later legs to avoid duplicating the shared vertex.
-            coords += if (i == 0) result.coordinates else result.coordinates.drop(1)
-            steps += result.steps
-            totalTime += result.durationSeconds
-        }
+        // A skipped leg is not a degraded route, it is a WRONG one: the polyline then runs
+        // dead-straight from one stop to the next, across whatever happens to be in between, and
+        // that geometry goes on to back progress, off-route detection and step stamping. Failing
+        // the whole computation instead lets the caller fall back to the stored polyline, which is
+        // also the geometry the server measures everyone against.
+        val result = routeLegOrNull(origin, dest, trafficAware = true)
+            ?: return RouteWithSteps(emptyList(), emptyList())
+        // Drop the first point of later legs to avoid duplicating the shared vertex.
+        coords += if (i == 0) result.coordinates else result.coordinates.drop(1)
+        steps += result.steps
+        totalTime += result.durationSeconds
         cumulativeStopSeconds += totalTime
     }
     return RouteWithSteps(coords, steps, totalTime, cumulativeStopSeconds)
+}
+
+/**
+ * One Directions leg, retried once before giving up.
+ *
+ * The retry is what makes failing closed affordable: most leg failures are a transient 429 or a
+ * dropped connection on a moving bike, and without a second attempt a single blip would discard an
+ * otherwise good reroute.
+ */
+private suspend fun routeLegOrNull(
+    origin: LatLng,
+    destination: LatLng,
+    trafficAware: Boolean,
+): DirectionsResult? {
+    repeat(2) { attempt ->
+        runCatching { DirectionsService.route(origin, destination, trafficAware) }
+            .getOrNull()
+            ?.let { return it }
+        if (attempt == 0) kotlinx.coroutines.delay(300)
+    }
+    return null
 }
 
 /** The remaining stops a rider must still pass through: waypoints + destination, in order. */
@@ -198,9 +224,14 @@ suspend fun calculateFullReroute(origin: LatLng, stops: List<LatLng>): RouteWith
     val steps = mutableListOf<DirectionsStep>()
     var totalTime = 0.0
     for (i in 0 until chain.size - 1) {
-        val result = runCatching {
-            DirectionsService.route(chain[i], chain[i + 1], trafficAware = false)
-        }.getOrNull() ?: continue
+        // Every leg or none. Skipping one used to splice a dead-straight line between two stops
+        // into the followed route; skipping the FIRST one was worse still, because the reroute
+        // then no longer began at the rider — navigation adopted a polyline starting at some stop
+        // down the road, reset progress to its head, immediately declared the rider off-route, and
+        // re-rerouted every 200 m for the rest of the ride. An abandoned reroute simply leaves the
+        // previous route in place and lets the next fix try again.
+        val result = routeLegOrNull(chain[i], chain[i + 1], trafficAware = false)
+            ?: return RouteWithSteps(emptyList(), emptyList())
         coords += if (i == 0) result.coordinates else result.coordinates.drop(1)
         steps += result.steps
         totalTime += result.durationSeconds
