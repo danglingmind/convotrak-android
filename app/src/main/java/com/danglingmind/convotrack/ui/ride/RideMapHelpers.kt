@@ -191,9 +191,10 @@ private suspend fun routeLegOrNull(
     origin: LatLng,
     destination: LatLng,
     trafficAware: Boolean,
+    originHeading: Double? = null,
 ): DirectionsResult? {
     repeat(2) { attempt ->
-        runCatching { DirectionsService.route(origin, destination, trafficAware) }
+        runCatching { DirectionsService.route(origin, destination, trafficAware, originHeading) }
             .getOrNull()
             ?.let { return it }
         if (attempt == 0) kotlinx.coroutines.delay(300)
@@ -213,11 +214,19 @@ fun rideStops(ride: Ride): List<LatLng> {
  * Recalculates the full remaining route from [origin] through all [stops] to the destination — the
  * off-route reroute.
  *
+ * [originHeading] is the rider's direction of travel, passed through to the Routes API so the
+ * reroute starts on the side of the road they are actually riding on — the difference between a
+ * reroute that opens with a U-turn and one that assumes they can set off back the way they came.
+ *
  * Returns the reroute's OWN turn instructions alongside the geometry. Discarding them (which is
  * what Android did) leaves the banner reciting maneuvers from a route the rider has already left —
  * "turn left" at a junction that is no longer on the path.
  */
-suspend fun calculateFullReroute(origin: LatLng, stops: List<LatLng>): RouteWithSteps {
+suspend fun calculateFullReroute(
+    origin: LatLng,
+    stops: List<LatLng>,
+    originHeading: Double? = null,
+): RouteWithSteps {
     if (stops.isEmpty()) return RouteWithSteps(emptyList(), emptyList())
     val chain = listOf(origin) + stops
     val coords = mutableListOf<LatLng>()
@@ -230,8 +239,13 @@ suspend fun calculateFullReroute(origin: LatLng, stops: List<LatLng>): RouteWith
         // down the road, reset progress to its head, immediately declared the rider off-route, and
         // re-rerouted every 200 m for the rest of the ride. An abandoned reroute simply leaves the
         // previous route in place and lets the next fix try again.
-        val result = routeLegOrNull(chain[i], chain[i + 1], trafficAware = false)
-            ?: return RouteWithSteps(emptyList(), emptyList())
+        // The heading applies to the FIRST leg only — it describes where the rider is pointed now,
+        // and every later leg starts from a stop they have yet to reach.
+        val result = routeLegOrNull(
+            chain[i], chain[i + 1],
+            trafficAware = false,
+            originHeading = if (i == 0) originHeading else null,
+        ) ?: return RouteWithSteps(emptyList(), emptyList())
         coords += if (i == 0) result.coordinates else result.coordinates.drop(1)
         steps += result.steps
         totalTime += result.durationSeconds

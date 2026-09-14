@@ -28,8 +28,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.MarkEmailRead
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -52,8 +51,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,16 +76,13 @@ fun AuthScreen(
 ) {
     var busy by remember { mutableStateOf<Provider?>(null) }
     var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var showPassword by remember { mutableStateOf(false) }
     var mode by remember { mutableStateOf(EmailMode.SIGN_IN) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val auth = remember { ServiceLocator.auth }
 
     val emailValid = email.contains("@") && email.contains(".") && email.length > 4
-    val passwordValid = password.length >= 8
-    val canSubmitEmail = emailValid && passwordValid && busy == null
+    val canSubmitEmail = emailValid && busy == null
 
     fun run(provider: Provider) {
         if (busy != null) return
@@ -98,14 +92,16 @@ fun AuthScreen(
             val result = when (provider) {
                 Provider.GOOGLE -> auth.signInWithGoogle()
                 Provider.EMAIL -> when (mode) {
-                    EmailMode.SIGN_IN -> auth.signInWithEmail(email.trim(), password)
-                    EmailMode.SIGN_UP -> auth.signUpWithEmail(email.trim(), password)
+                    EmailMode.SIGN_IN -> auth.signInWithEmail(email.trim())
+                    EmailMode.SIGN_UP -> auth.signUpWithEmail(email.trim())
                 }
             }
             busy = null
             when (result) {
                 is AuthResult.Success -> onSignedIn()
                 is AuthResult.NeedsEmailCode -> onNeedsVerification(email.trim())
+                // Dismissing the account sheet is a decision, not a failure — nothing to report.
+                is AuthResult.Cancelled -> Unit
                 is AuthResult.Error -> error = result.message
             }
         }
@@ -152,17 +148,13 @@ fun AuthScreen(
 
             OrDivider()
 
-            EmailPasswordForm(
+            EmailCodeForm(
                 email = email,
-                password = password,
-                showPassword = showPassword,
                 mode = mode,
                 isLoading = busy == Provider.EMAIL,
                 enabled = busy == null,
                 canSubmit = canSubmitEmail,
                 onEmail = { email = it; error = null },
-                onPassword = { password = it; error = null },
-                onToggleVisibility = { showPassword = !showPassword },
                 onSubmit = { run(Provider.EMAIL) },
             )
 
@@ -245,18 +237,21 @@ private fun OrDivider() {
     }
 }
 
+/**
+ * Email entry for both sign-in and sign-up.
+ *
+ * No password field: this Clerk instance authenticates email with a one-time code, and a password
+ * sent to it is rejected as an unknown parameter. Both buttons therefore lead to the same place —
+ * a code in the inbox and [VerificationScreen] — which is why the form collects only an address.
+ */
 @Composable
-private fun EmailPasswordForm(
+private fun EmailCodeForm(
     email: String,
-    password: String,
-    showPassword: Boolean,
     mode: EmailMode,
     isLoading: Boolean,
     enabled: Boolean,
     canSubmit: Boolean,
     onEmail: (String) -> Unit,
-    onPassword: (String) -> Unit,
-    onToggleVisibility: () -> Unit,
     onSubmit: () -> Unit,
 ) {
     Column(
@@ -273,41 +268,14 @@ private fun EmailPasswordForm(
             textStyle = CTType.bodyMd,
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Email,
-                imeAction = ImeAction.Next,
-            ),
-            shape = RoundedCornerShape(4.dp),
-            colors = authFieldColors(),
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = onPassword,
-            enabled = enabled,
-            placeholder = { Text("••••••••", color = CT.onSurfaceVariant.copy(alpha = 0.4f)) },
-            label = { Text("PASSWORD", style = CTType.labelCaps, letterSpacing = 1.sp) },
-            singleLine = true,
-            textStyle = CTType.bodyMd,
-            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password,
                 imeAction = ImeAction.Done,
             ),
-            trailingIcon = {
-                Icon(
-                    imageVector = if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                    contentDescription = if (showPassword) "Hide password" else "Show password",
-                    tint = CT.onSurfaceVariant,
-                    modifier = Modifier
-                        .clickable(onClick = onToggleVisibility)
-                        .padding(4.dp)
-                        .size(20.dp),
-                )
-            },
             supportingText = {
-                if (mode == EmailMode.SIGN_UP) {
-                    Text("At least 8 characters", style = CTType.captionMd, color = CT.onSurfaceVariant.copy(alpha = 0.6f))
-                }
+                Text(
+                    "We'll email you a 6-digit code",
+                    style = CTType.captionMd,
+                    color = CT.onSurfaceVariant.copy(alpha = 0.6f),
+                )
             },
             shape = RoundedCornerShape(4.dp),
             colors = authFieldColors(),
@@ -322,7 +290,7 @@ private fun EmailPasswordForm(
             borderWidth = 1.dp,
             isLoading = isLoading,
             enabled = canSubmit,
-            leading = { Icon(Icons.Filled.Lock, null, tint = CT.onSurface, modifier = Modifier.size(18.dp)) },
+            leading = { Icon(Icons.Filled.MarkEmailRead, null, tint = CT.onSurface, modifier = Modifier.size(18.dp)) },
             onClick = onSubmit,
         )
     }

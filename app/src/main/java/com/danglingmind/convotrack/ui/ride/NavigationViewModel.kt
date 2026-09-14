@@ -206,6 +206,23 @@ class NavigationViewModel : ViewModel() {
      *  [isOffRoute], and what gates polyline trimming. */
     private var lastRouteOffsetMeters = Double.MAX_VALUE
 
+    /**
+     * This fix's raw verdict from [isAgainstRouteDirection] — the rider is sitting on the line but
+     * pointed back down it. Undebounced on purpose: it gates the polyline trim and the road-bearing
+     * override, both of which must stop the moment the direction disagrees. Snapping a chevron to
+     * the road's bearing while the rider drives the other way is what makes the marker flip between
+     * the way they are going and the way the route goes, once per fix.
+     */
+    private var isWrongWayFix = false
+    private var wrongWayCount = 0
+
+    /** Along-route progress at the previous fix, for the regression half of the wrong-way test. */
+    private var previousProgressMeters: Double? = null
+
+    /** [isWrongWayFix] held for [WRONG_WAY_CONFIRM_COUNT] consecutive fixes — the point at which
+     *  the route is treated as abandoned and a reroute is asked for. */
+    private var isWrongWay = false
+
     private var consecutiveOffCount = 0
     private var consecutiveOnCount = 0
     private var isRerouteInFlight = false
@@ -490,6 +507,12 @@ class NavigationViewModel : ViewModel() {
         navRouteCumulative = cumulativeDistances(route)
         navSegmentIndex = 0
         navLocation = null
+        // The verdict belonged to the route we just abandoned; the new one starts at the rider,
+        // and progress is measured in a new frame, so the previous figure means nothing here.
+        isWrongWayFix = false
+        wrongWayCount = 0
+        isWrongWay = false
+        previousProgressMeters = null
         navSteps = stampAlongRouteDistances(steps, route, navRouteCumulative)
         currentStepIndex = 0
 
@@ -539,7 +562,7 @@ class NavigationViewModel : ViewModel() {
             if (lastRouteOffsetMeters > OFF_ROUTE_THRESHOLD_METERS && !isRerouteInFlight) {
                 _isOffRoute.value = true
                 consecutiveOffCount = OFF_ROUTE_CONFIRM_COUNT
-                launchReroute(fix)
+                launchReroute(fix, validCourse(location))
             }
         }
 
@@ -548,8 +571,15 @@ class NavigationViewModel : ViewModel() {
         // a jitter spike cleared — the head would stay frozen wherever it was last cut while the
         // rider drove on, detaching it from the marker for exactly as long as the debounce ran.
         // Proximity to the route we are following is the real precondition for trimming it.
+        //
+        // Direction gates it too, not just the offset. A rider riding the route backwards is within
+        // the offset by definition, and trimming to them re-cuts the bright line backwards fix by
+        // fix while the road-bearing override spins the chevron to face the way the route goes
+        // rather than the way they are going — the two fighting over the marker once per fix.
+        // Freezing the line where it was, exactly as off-route does, leaves the marker on the
+        // honest raw fix until the reroute lands.
         val navLoc = navLocation
-        if (navLoc != null && lastRouteOffsetMeters <= OFF_ROUTE_THRESHOLD_METERS) {
+        if (navLoc != null && lastRouteOffsetMeters <= OFF_ROUTE_THRESHOLD_METERS && !isWrongWayFix) {
             val speedMps = if (location.hasSpeed()) location.speed.toDouble() else 0.0
             trimActiveRoute(navRoute, fix, navLoc, speedMps, COURSE_VALID_SPEED_MPS)
                 ?.let { trim ->
@@ -680,9 +710,7 @@ class NavigationViewModel : ViewModel() {
         val windowed = locateOnRoute(navRoute, navRouteCumulative, fix, navSegmentIndex)
         val accepted = when {
             windowed != null && windowed.distanceMeters <= OFF_ROUTE_THRESHOLD_METERS -> windowed
-            else -> locateAnywhereOnRoute(navRoute, fix)
-                ?.takeIf { it.distanceMeters <= OFF_ROUTE_THRESHOLD_METERS }
-                ?: windowed
+            else -> reacquireOnNavRoute(fix) ?: windowed
         } ?: return
 
         // Detection always sees the fresh measurement...
@@ -699,6 +727,78 @@ class NavigationViewModel : ViewModel() {
         }
     }
 
+    /**
+     * The full-route re-acquire, accepted only when it lands AHEAD of the progress already
+     * committed.
+     *
+     * The re-acquire exists for one failure: a gap in the fixes — a tunnel, a doze window, the app
+     * coming back from the background — carrying the rider past the end of the windowed search.
+     * That gap always moves them FORWARD. A match found behind the committed progress is therefore
+     * never the case this is for; it is the rider riding back down the route, and taking it is what
+     * made that invisible. The lateral offset it reports is a couple of metres — the rider is
+     * exactly on the road, just facing the other way — so [checkOffRoute] saw a rider comfortably
+     * on-route, never rerouted, and the index walked backwards down the line while the turn banner
+     * (forward-only by construction) stayed where it was.
+     *
+     * Refusing it leaves the windowed distance standing, which grows as the rider rides away from
+     * the window's tail, so the ordinary off-route test trips within a hundred-odd metres and the
+     * reroute follows. That is the second net under [isWrongWay], and the one that still works when
+     * the fixes carry no usable course at all — crawling in traffic, or a GPS with no bearing.
+     *
+     * [ROUTE_LOOKBEHIND_METERS] of slack, the same the windowed search allows, so jitter around a
+     * vertex is not mistaken for a reversal.
+     */
+    private fun reacquireOnNavRoute(fix: LatLng): RouteLocation? {
+        val candidate = locateAnywhereOnRoute(navRoute, fix) ?: return null
+        if (candidate.distanceMeters > OFF_ROUTE_THRESHOLD_METERS) return null
+        val here = navLocation ?: return candidate
+        val committed = progressAlongRoute(navRouteCumulative, navRoute, here)
+        val found = progressAlongRoute(navRouteCumulative, navRoute, candidate)
+        return if (found >= committed - ROUTE_LOOKBEHIND_METERS) candidate else null
+    }
+
+    /**
+     * Refreshes [isWrongWayFix], [wrongWayCount] and [isWrongWay] from this fix.
+     *
+     * Only asked while the rider is laterally ON the followed route: [navLocation] holds the last
+     * on-route position, so once they have left the line it describes a stretch of road they are no
+     * longer on, and the bearing there says nothing about where they are pointed now. Off the line
+     * the distance test already has them anyway — this is the case only it can see, a rider dead on
+     * the route and going the other way.
+     */
+    private fun updateWrongWay(location: Location) {
+        val here = navLocation
+        val course = validCourse(location)
+        val progress = here?.let { progressAlongRoute(navRouteCumulative, navRoute, it) }
+        val previous = previousProgressMeters
+        if (progress != null) previousProgressMeters = progress
+
+        // Corroborated by the rider's own progress falling, which is the other half of what
+        // "backwards" means and what tells this apart from a projection that has momentarily
+        // latched onto the far side of a route that doubles back on itself: such a flip jumps
+        // progress FORWARD, never back. A metre of slack absorbs the jitter of a fix that is
+        // barely moving.
+        val regressed = progress != null && previous != null && progress < previous - 1.0
+
+        val against = here != null && course != null && progress != null && regressed &&
+            lastRouteOffsetMeters <= OFF_ROUTE_THRESHOLD_METERS &&
+            !isNearUTurn(navSteps, progress) &&
+            isAgainstRouteDirection(navRoute, here, course)
+
+        isWrongWayFix = against
+        wrongWayCount = if (against) wrongWayCount + 1 else 0
+        isWrongWay = wrongWayCount >= WRONG_WAY_CONFIRM_COUNT
+    }
+
+    /** The fix's course, or null when it carries none worth believing. A bearing derived from
+     *  successive fixes wanders wildly below a walking pace. */
+    private fun validCourse(location: Location): Double? =
+        if (location.hasBearing() && location.hasSpeed() && location.speed >= COURSE_VALID_SPEED_MPS) {
+            location.bearing.toDouble()
+        } else {
+            null
+        }
+
     private fun checkOffRoute(fix: LatLng, location: Location) {
         // Pop stops we've already passed (within 80 m).
         while (remainingStops.isNotEmpty() && metersBetween(fix, remainingStops.first()) < 80) {
@@ -708,7 +808,12 @@ class NavigationViewModel : ViewModel() {
         if (navRoute.size < 2) return
 
         locateOnNavRoute(fix)
-        val rawOffRoute = lastRouteOffsetMeters > OFF_ROUTE_THRESHOLD_METERS
+        updateWrongWay(location)
+        // Two ways to have left the route, and the second is invisible to the first. Distance
+        // answers "am I on this road"; [isWrongWay] answers "am I going down it" — riding the
+        // planned road in reverse holds the offset at a few metres indefinitely, so the distance
+        // test alone waits for the rider to stray sideways before it admits anything is wrong.
+        val rawOffRoute = lastRouteOffsetMeters > OFF_ROUTE_THRESHOLD_METERS || isWrongWay
 
         if (rawOffRoute) {
             consecutiveOffCount++
@@ -718,9 +823,11 @@ class NavigationViewModel : ViewModel() {
             consecutiveOffCount = 0
         }
 
-        if (!_isOffRoute.value && consecutiveOffCount >= OFF_ROUTE_CONFIRM_COUNT) {
+        // [isWrongWay] carries its own confirmation count, so it flags immediately rather than
+        // waiting out a second three-fix debounce on top of the one it has already served.
+        if (!_isOffRoute.value && (isWrongWay || consecutiveOffCount >= OFF_ROUTE_CONFIRM_COUNT)) {
             _isOffRoute.value = true
-        } else if (_isOffRoute.value && consecutiveOnCount >= ON_ROUTE_CLEAR_COUNT) {
+        } else if (_isOffRoute.value && !isWrongWay && consecutiveOnCount >= ON_ROUTE_CLEAR_COUNT) {
             _isOffRoute.value = false
         }
 
@@ -729,7 +836,7 @@ class NavigationViewModel : ViewModel() {
             // Throttle: only recalculate every 200 m of travel while off-route.
             val last = lastRerouteOrigin
             if (last != null && metersBetween(fix, last) < REROUTE_TRAVEL_THRESHOLD_M) return
-            launchReroute(fix)
+            launchReroute(fix, validCourse(location))
         } else {
             isRerouteInFlight = false
             lastRerouteOrigin = null
@@ -746,14 +853,21 @@ class NavigationViewModel : ViewModel() {
      * the rider stays "off" the abandoned plan forever and re-reroutes every 200 m.
      *
      * The planned [_routeCoordinates] is never touched — it stays as the dim planned layer.
+     *
+     * [originHeading] is the rider's own direction of travel, handed to the Routes API so the
+     * reroute leaves from the side of the road they are actually on. Without it a reroute asked for
+     * while riding the wrong way comes back running straight back down the road the rider has just
+     * come along, as if they could reverse — an instruction nobody can follow, which puts them
+     * against the new route on the very next fix and rerouting again 200 m later. With it, Google
+     * returns the U-turn.
      */
-    private fun launchReroute(origin: LatLng) {
+    private fun launchReroute(origin: LatLng, originHeading: Double?) {
         if (remainingStops.isEmpty()) return
         isRerouteInFlight = true
         lastRerouteOrigin = origin
         rerouteJob?.cancel()
         rerouteJob = viewModelScope.launch {
-            val result = calculateFullReroute(origin, remainingStops)
+            val result = calculateFullReroute(origin, remainingStops, originHeading)
             isRerouteInFlight = false
             if (result.coords.isEmpty()) return@launch
             _activeRouteCoordinates.value = result.coords

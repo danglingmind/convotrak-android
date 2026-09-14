@@ -44,8 +44,11 @@ import com.danglingmind.convotrack.ui.theme.LimePrimaryButton
 import kotlinx.coroutines.launch
 
 /**
- * Email verification code entry. Clerk's email sign-up issues a 6-digit code that must be
- * verified before the session becomes active — this screen completes that step.
+ * Email verification code entry, for both email flows.
+ *
+ * The instance has no password: email is a first factor via a one-time code, so signing IN and
+ * signing UP both end here with a 6-digit code that must be verified before the session becomes
+ * active. The repository remembers which flow issued the code and attempts it against that one.
  */
 @Composable
 fun VerificationScreen(
@@ -71,6 +74,7 @@ fun VerificationScreen(
                     busy = false
                 }
                 is AuthResult.NeedsEmailCode -> busy = false
+                is AuthResult.Cancelled -> busy = false
             }
         }
     }

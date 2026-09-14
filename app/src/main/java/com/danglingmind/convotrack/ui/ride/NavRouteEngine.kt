@@ -193,6 +193,80 @@ fun headingDelta(a: Double, b: Double): Double {
     return min(raw, 360.0 - raw)
 }
 
+// MARK: - Direction of travel
+
+/**
+ * How far the rider's course may diverge from the direction the route RUNS before this counts as
+ * driving the wrong way down it, in degrees.
+ *
+ * Well past a right angle, so nothing a rider does while genuinely following the route can trip
+ * it: a hairpin is entered and left at a hundred-odd degrees to the road's mean bearing, and the
+ * look-ahead [routeBearingAhead] measures over smooths those anyway. Only travel that is
+ * substantially the reverse of the line clears 120 deg, and travel that is substantially the
+ * reverse of the line is precisely what nothing else here can see.
+ */
+const val WRONG_WAY_HEADING_DELTA_DEGREES = 120.0
+
+/** Consecutive wrong-way fixes before the followed route is treated as abandoned. Matches the
+ *  lateral off-route debounce: three seconds of agreement, not one noisy bearing. */
+const val WRONG_WAY_CONFIRM_COUNT = 3
+
+/**
+ * True when the rider is travelling AGAINST the direction [route] runs at [location].
+ *
+ * Every other test in this file measures distance, and distance alone cannot tell "riding along
+ * the route" from "riding back down it". Ride the planned road in reverse — the U-turn still
+ * kilometres ahead — and the perpendicular offset stays at a few metres for as long as you keep
+ * doing it, which is well inside the off-route threshold. Detection therefore never fires, the
+ * bright line is re-cut backwards fix by fix, and no reroute is ever requested; the route only
+ * updates once the rider happens to stray far enough SIDEWAYS for the distance test to notice,
+ * which is the "stale path until I reach a point where the reroute can be drawn" symptom.
+ *
+ * Compared against the road's bearing rather than the raw segment's, for the reason
+ * [routeBearingAhead] exists: a 2-3 m segment's bearing swings hard from vertex to vertex, and a
+ * single vertex pointing back at the rider must not be read as the rider pointing back at it.
+ *
+ * [courseDegrees] must be a course the caller has already vouched for (see COURSE_VALID_SPEED_MPS)
+ * — a bearing derived from successive fixes is meaningless at a standstill, and reading noise as a
+ * reversal would tear up the route of every rider waiting at a light.
+ */
+/**
+ * How far, along the route, a U-turn's own junction still counts as being performed.
+ *
+ * The one place where riding against the line is exactly what the route asked for. A U-turn's two
+ * legs run within metres of each other — on an undivided road, within nothing at all — so through
+ * the turn the nearest segment can be either of them, and half of those readings put the road's
+ * bearing 180 deg from the rider while they do precisely as instructed. Sixty metres either side of
+ * the junction covers the approach, the apex and the exit at any speed a U-turn is taken at.
+ */
+const val UTURN_SUPPRESSION_METERS = 60.0
+
+/**
+ * True when [progressMeters] falls within [UTURN_SUPPRESSION_METERS] of a U-turn junction on
+ * [steps].
+ *
+ * A step's maneuver is the one taken to ENTER it (see [upcomingBanner]), so the junction where a
+ * U-turn is performed is the END of the step before it.
+ */
+fun isNearUTurn(steps: List<DirectionsStep>, progressMeters: Double): Boolean {
+    for (j in 1 until steps.size) {
+        if (steps[j].maneuver?.startsWith("UTURN") != true) continue
+        if (abs(progressMeters - steps[j - 1].endDistanceAlongRoute) <= UTURN_SUPPRESSION_METERS) {
+            return true
+        }
+    }
+    return false
+}
+
+fun isAgainstRouteDirection(
+    route: List<LatLng>,
+    location: RouteLocation,
+    courseDegrees: Double,
+): Boolean {
+    val road = routeBearingAhead(route, location.point, location.segmentIndex) ?: return false
+    return headingDelta(courseDegrees, road) > WRONG_WAY_HEADING_DELTA_DEGREES
+}
+
 // MARK: - Step stamping
 
 /**

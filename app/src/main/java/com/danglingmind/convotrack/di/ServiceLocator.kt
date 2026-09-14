@@ -35,7 +35,7 @@ object ServiceLocator {
 
     fun init(app: Application) {
         Clerk.initialize(app, CLERK_PUBLISHABLE_KEY)
-        auth = ClerkAuthRepository()
+        auth = ClerkAuthRepository(app)
         api = ApiClient.create(auth)
         socket = SocketService(auth)
         billing = BillingManager(app, api)

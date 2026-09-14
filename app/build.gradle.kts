@@ -122,6 +122,11 @@ dependencies {
 
     // Auth
     implementation(libs.clerk.android.api)
+    // Clerk ships Credential Manager as a RUNTIME dependency, so it is on the device but not on
+    // our compile classpath. Declared here for the one call we make ourselves: clearing the
+    // credential state on sign-out, which is what stops the next Google sign-in auto-selecting
+    // the account that just left.
+    implementation(libs.androidx.credentials)
 
     // Maps
     implementation(libs.maps.compose)

@@ -17,6 +17,14 @@ sealed interface AuthResult {
     /** Sign-up created but an emailed code must be verified before the session activates. */
     data object NeedsEmailCode : AuthResult
 
+    /**
+     * The rider backed out of a system sheet — the Google account chooser, most often.
+     *
+     * Distinct from [Error] because dismissing a sheet is not a failure: showing "sign-in failed"
+     * for it puts a red message under a screen the rider closed on purpose.
+     */
+    data object Cancelled : AuthResult
+
     /** Something went wrong; [message] is user-presentable. */
     data class Error(val message: String) : AuthResult
 }
@@ -41,15 +49,26 @@ interface AuthRepository {
      */
     suspend fun getToken(forceRefresh: Boolean = false): String?
 
-    suspend fun signInWithEmail(email: String, password: String): AuthResult
+    /**
+     * Starts email sign-in. The instance authenticates email with a one-time code rather than a
+     * password, so this always emails a code and returns [AuthResult.NeedsEmailCode] — there is no
+     * path where a bare identifier signs anyone in.
+     */
+    suspend fun signInWithEmail(email: String): AuthResult
 
     /** Starts email sign-up; on success returns [AuthResult.NeedsEmailCode]. */
-    suspend fun signUpWithEmail(email: String, password: String): AuthResult
+    suspend fun signUpWithEmail(email: String): AuthResult
 
-    /** Completes the sign-up started by [signUpWithEmail] using the emailed code. */
+    /**
+     * Completes whichever email flow is in progress — [signInWithEmail] or [signUpWithEmail] —
+     * using the emailed code, and activates the session it creates.
+     */
     suspend fun verifyEmailCode(code: String): AuthResult
 
-    /** Launches the Google OAuth redirect flow. */
+    /**
+     * Signs in with Google: the device's own account chooser first, the browser redirect flow as
+     * a fallback.
+     */
     suspend fun signInWithGoogle(): AuthResult
 
     suspend fun signOut()

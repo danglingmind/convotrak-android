@@ -54,14 +54,23 @@ object DirectionsService {
             "routes.legs.steps.distanceMeters,routes.legs.steps.endLocation," +
             "routes.legs.steps.navigationInstruction,routes.legs.steps.polyline"
 
-    /** trafficAware=true for planning; false for fast reroutes. */
+    /**
+     * trafficAware=true for planning; false for fast reroutes.
+     *
+     * [originHeading] is the direction of travel at [origin], in degrees clockwise from north. The
+     * Routes API uses it to pick the side of the road the vehicle is on, which is the difference
+     * between a reroute that starts with a U-turn and one that assumes the rider can simply set off
+     * back the way they came. Omit it whenever the caller has no trustworthy course — a stale or
+     * invented heading pins the route to the wrong carriageway.
+     */
     suspend fun route(
         origin: LatLng,
         destination: LatLng,
         trafficAware: Boolean = true,
+        originHeading: Double? = null,
     ): DirectionsResult = withContext(Dispatchers.IO) {
         val bodyJson = JSONObject().apply {
-            put("origin", latLngNode(origin))
+            put("origin", latLngNode(origin, originHeading))
             put("destination", latLngNode(destination))
             put("travelMode", "DRIVE")
             put("routingPreference", if (trafficAware) "TRAFFIC_AWARE" else "TRAFFIC_UNAWARE")
@@ -220,12 +229,16 @@ object DirectionsService {
         return if (coords.size >= 2) coords else null
     }
 
-    private fun latLngNode(c: LatLng) = JSONObject().apply {
+    private fun latLngNode(c: LatLng, heading: Double? = null) = JSONObject().apply {
         put("location", JSONObject().apply {
             put("latLng", JSONObject().apply {
                 put("latitude", c.latitude)
                 put("longitude", c.longitude)
             })
+            // Routes API takes the heading as a whole number of degrees in 0..359.
+            if (heading != null && heading.isFinite()) {
+                put("heading", ((Math.round(heading) % 360 + 360) % 360).toInt())
+            }
         })
     }
 
