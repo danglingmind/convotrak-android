@@ -21,11 +21,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MarkEmailRead
@@ -63,6 +61,12 @@ import com.danglingmind.convotrack.ui.theme.CTType
 import kotlinx.coroutines.launch
 
 private const val FIELD_WIDTH = 350
+
+/**
+ * Android ships Google-only sign-in. The email code path below is fully wired and still
+ * reachable from [VerificationScreen]; only its entry points are hidden here.
+ */
+private const val EMAIL_AUTH_ENABLED = false
 
 private enum class Provider { GOOGLE, EMAIL }
 
@@ -121,77 +125,90 @@ fun AuthScreen(
                 )
         )
 
+        // Two equal-weight halves: the brand centred in the top half, and the sign-in block —
+        // button, then footer 32dp under it — centred in the bottom half.
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(top = 48.dp, bottom = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            BrandHeader()
-
-            Spacer(Modifier.height(32.dp))
-
-            // Google — the primary CTA, keeps the lime treatment from iOS.
-            SignInButton(
-                label = "Continue with Google",
-                foreground = CT.onPrimaryFixed,
-                background = CT.primaryFixed,
-                border = CT.primaryFixed,
-                borderWidth = 2.dp,
-                isLoading = busy == Provider.GOOGLE,
-                enabled = busy == null,
-                leading = { GoogleGIcon() },
-                onClick = { run(Provider.GOOGLE) },
-            )
-
-            OrDivider()
-
-            EmailCodeForm(
-                email = email,
-                mode = mode,
-                isLoading = busy == Provider.EMAIL,
-                enabled = busy == null,
-                canSubmit = canSubmitEmail,
-                onEmail = { email = it; error = null },
-                onSubmit = { run(Provider.EMAIL) },
-            )
-
-            if (error != null) {
-                Text(
-                    error!!,
-                    style = CTType.captionMd,
-                    color = CT.errorColor,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 10.dp).width(FIELD_WIDTH.dp),
-                )
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                BrandHeader()
             }
 
-            // Sign in <-> Create account
-            Row(
-                Modifier.padding(top = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    if (mode == EmailMode.SIGN_IN) "New rider?" else "Already riding?",
-                    style = CTType.captionMd,
-                    color = CT.onSurfaceVariant.copy(alpha = 0.7f),
-                )
-                Text(
-                    if (mode == EmailMode.SIGN_IN) "Create account" else "Sign in",
-                    style = CTType.captionMd.copy(fontWeight = FontWeight.Bold),
-                    color = CT.primaryFixed,
-                    modifier = Modifier.clickable(enabled = busy == null) {
-                        mode = if (mode == EmailMode.SIGN_IN) EmailMode.SIGN_UP else EmailMode.SIGN_IN
-                        error = null
-                    },
-                )
-            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    // Google — the primary CTA, keeps the lime treatment from iOS.
+                    SignInButton(
+                        label = "Continue with Google",
+                        foreground = CT.onPrimaryFixed,
+                        background = CT.primaryFixed,
+                        border = CT.primaryFixed,
+                        borderWidth = 2.dp,
+                        isLoading = busy == Provider.GOOGLE,
+                        enabled = busy == null,
+                        leading = { GoogleGIcon() },
+                        onClick = { run(Provider.GOOGLE) },
+                    )
 
-            Spacer(Modifier.height(32.dp))
-            FooterSection()
+                    if (EMAIL_AUTH_ENABLED) {
+                        OrDivider()
+
+                        EmailCodeForm(
+                            email = email,
+                            mode = mode,
+                            isLoading = busy == Provider.EMAIL,
+                            enabled = busy == null,
+                            canSubmit = canSubmitEmail,
+                            onEmail = { email = it; error = null },
+                            onSubmit = { run(Provider.EMAIL) },
+                        )
+                    }
+
+                    if (error != null) {
+                        Text(
+                            error!!,
+                            style = CTType.captionMd,
+                            color = CT.errorColor,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 10.dp).width(FIELD_WIDTH.dp),
+                        )
+                    }
+
+                    // Sign in <-> Create account — only switches the email form's mode.
+                    if (EMAIL_AUTH_ENABLED) {
+                        Row(
+                            Modifier.padding(top = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                if (mode == EmailMode.SIGN_IN) "New rider?" else "Already riding?",
+                                style = CTType.captionMd,
+                                color = CT.onSurfaceVariant.copy(alpha = 0.7f),
+                            )
+                            Text(
+                                if (mode == EmailMode.SIGN_IN) "Create account" else "Sign in",
+                                style = CTType.captionMd.copy(fontWeight = FontWeight.Bold),
+                                color = CT.primaryFixed,
+                                modifier = Modifier.clickable(enabled = busy == null) {
+                                    mode = if (mode == EmailMode.SIGN_IN) EmailMode.SIGN_UP else EmailMode.SIGN_IN
+                                    error = null
+                                },
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(32.dp))
+                    FooterSection()
+                }
+
+            }
         }
     }
 }
