@@ -56,6 +56,7 @@ import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.history.LeaderBadge
 import com.danglingmind.convotrack.ui.map.ConvoTrackMap
 import com.danglingmind.convotrack.ui.ride.rideRoute
+import com.danglingmind.convotrack.ui.theme.bottomNavClearance
 import com.google.android.gms.maps.model.LatLng
 import androidx.compose.ui.graphics.Brush
 import com.danglingmind.convotrack.ui.common.DestinationPhotoImage
@@ -120,7 +121,7 @@ fun HomeScreen(
                     val active = s.data.firstOrNull { !it.isCompleted }
                     val recent = s.data.filter { it.rideId != active?.rideId }.take(5)
                     LazyColumn(
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 120.dp),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = bottomNavClearance()),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         if (active != null) {

@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
@@ -39,6 +42,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
 
@@ -163,6 +167,18 @@ fun FloatingStatPill(
 // MARK: - Bottom Nav (FLAGGED / TRACK / PROFILE)
 
 enum class CTTab { FLAGGED, TRACK, PROFILE }
+
+/**
+ * Bottom clearance for content the floating [ConvoTrackBottomNav] is drawn over.
+ *
+ * The bar is 80dp of controls plus whatever the system navigation bar reserves underneath it —
+ * nothing under gesture navigation, but roughly 48dp once three-button navigation is on. A fixed
+ * 120dp only cleared the gesture case and left the last row of every tab half-hidden behind the
+ * buttons, so the inset is read at runtime instead.
+ */
+@Composable
+fun bottomNavClearance(): Dp =
+    120.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
 @Composable
 fun ConvoTrackBottomNav(

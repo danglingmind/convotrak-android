@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -75,7 +76,7 @@ fun RegroupSheet(
     var selected by remember { mutableStateOf<RegroupReason?>(null) }
     var distance by remember { mutableStateOf(RegroupDistance.CURRENT) }
 
-    Column(Modifier.padding(bottom = 32.dp)) {
+    Column(Modifier.navigationBarsPadding().padding(bottom = 32.dp)) {
         Row(
             Modifier.padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,

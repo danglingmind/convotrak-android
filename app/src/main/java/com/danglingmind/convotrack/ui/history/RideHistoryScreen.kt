@@ -54,6 +54,7 @@ import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
 import com.danglingmind.convotrack.ui.theme.FloatingStatPill
 import com.danglingmind.convotrack.ui.theme.ConvoTrackTopBar
+import com.danglingmind.convotrack.ui.theme.bottomNavClearance
 import kotlinx.coroutines.launch
 
 @Composable
@@ -121,7 +122,7 @@ fun RideHistoryScreen(
                         }
 
                     LazyColumn(
-                        contentPadding = PaddingValues(20.dp, 20.dp, 20.dp, 120.dp),
+                        contentPadding = PaddingValues(20.dp, 20.dp, 20.dp, bottomNavClearance()),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         item {

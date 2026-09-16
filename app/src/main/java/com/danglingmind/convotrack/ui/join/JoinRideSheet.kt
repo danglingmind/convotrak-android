@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -130,6 +131,7 @@ fun JoinRideSheet(
     Column(
         Modifier
             .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(top = 4.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),

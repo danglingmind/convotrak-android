@@ -60,6 +60,7 @@ import com.danglingmind.convotrack.ui.common.formatKm
 import com.danglingmind.convotrack.ui.theme.CT
 import com.danglingmind.convotrack.ui.theme.CTType
 import com.danglingmind.convotrack.ui.theme.ConvoTrackTopBar
+import com.danglingmind.convotrack.ui.theme.bottomNavClearance
 import kotlinx.coroutines.launch
 
 private data class ProfileData(
@@ -125,9 +126,9 @@ fun ProfileScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 // The floating bottom nav is drawn over this scroll area, so the last row has to
-                // be given room to clear it — the same 120.dp the home list reserves. Without it
+                // be given room to clear it — the same clearance the home list reserves. Without it
                 // "Delete Account", now the final row, sits half-hidden behind the nav bar.
-                .padding(top = 20.dp, bottom = 120.dp),
+                .padding(top = 20.dp, bottom = bottomNavClearance()),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             when (val s = state) {
