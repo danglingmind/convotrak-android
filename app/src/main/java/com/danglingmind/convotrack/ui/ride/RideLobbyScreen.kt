@@ -42,8 +42,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -134,7 +136,10 @@ fun RideLobbyScreen(
         // leader leave with LEADER_CANNOT_LEAVE regardless of what the UI does).
         val canLeave = !amLeader && ride != null && ride?.status != "COMPLETED"
         ConvoTrackTopBar(
-            title = ride?.title ?: "Lobby",
+            // The ride's own title now sits over the hero image — see the overlay below. This
+            // slot shares 56dp with the back arrow, the edit/leave action and the signal icon,
+            // which truncated all but the shortest ride names.
+            title = "Lobby",
             showBack = true,
             onBack = onBack,
             actions = {
@@ -307,6 +312,28 @@ fun RideLobbyScreen(
                             ),
                         ),
                     )
+                    // The ride title, over the hero rather than in the app bar. Two lines
+                    // before it truncates, and a drop shadow so it stays legible against a bright
+                    // destination photo (iOS draws the same white-on-shadow treatment).
+                    Text(
+                        loadedRide.title,
+                        style = CTType.headlineLg.copy(
+                            shadow = Shadow(
+                                color = Color.Black.copy(alpha = 0.6f),
+                                offset = Offset(0f, 2f),
+                                blurRadius = 12f,
+                            ),
+                        ),
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .fillMaxWidth(0.82f)
+                            .padding(horizontal = 20.dp)
+                            .padding(top = 16.dp),
+                    )
+
                     LazyRow(
                         Modifier.align(Alignment.BottomStart).fillMaxWidth(),
                         contentPadding = PaddingValues(horizontal = 20.dp),
