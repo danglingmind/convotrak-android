@@ -113,15 +113,19 @@ fun ConvoTrackTopBar(
             )
         }
         Spacer(Modifier.size(8.dp))
+        // One weighted child, not two: a `weight(1f, fill = false)` title beside a `weight(1f)`
+        // spacer split the free space evenly, so whatever the title left unused stayed as a gap
+        // AFTER the trailing icons — parking the antenna at a different distance from the edge on
+        // every screen (63dp out in the lobby, 20dp on home). Letting the title take all the slack
+        // pins the actions to the same right edge the home bar uses.
         Text(
             text = title,
             style = CTType.headlineLg,
             color = CT.primaryFixed,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
+            modifier = Modifier.weight(1f),
         )
-        Spacer(Modifier.weight(1f))
         actions()
         Icon(
             imageVector = Icons.Outlined.SettingsInputAntenna,
