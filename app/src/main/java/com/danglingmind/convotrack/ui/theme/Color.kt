@@ -1,52 +1,49 @@
 package com.danglingmind.convotrack.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import com.danglingmind.convotrack.ui.designsystem.DsColor
 
-// MARK: - Color Palette (ported 1:1 from iOS ConvoTrackTheme.swift)
-// Dark-only, Material You-inspired. Never use raw hex inline in composables — reference these.
+// MARK: - Legacy palette
+//
+// The original Material-style names, now pointing at Dark Glass values (design/convotrack_design_system.json,
+// `migration.colors`). Screens are moving to [DsColor] one at a time; until a screen moves, these
+// keep it in the same palette. Remove once nothing references `CT`.
 
 object CT {
-    // Primary
-    val primaryFixed = Color(0xFFCAF300)          // Lime green accent
-    val primaryFixedDim = Color(0xFFB0D500)
-    val onPrimaryFixed = Color(0xFF171E00)         // Dark text on lime
-    val onPrimaryFixedVariant = Color(0xFF3E4C00)
-    val primaryContainer = Color(0xFFCAF300)
-    val onPrimaryContainer = Color(0xFF596C00)
+    val primaryFixed = DsColor.accent
+    val primaryFixedDim = DsColor.accentSoft
+    val onPrimaryFixed = DsColor.onAccent
+    val onPrimaryFixedVariant = DsColor.accentDeep
+    val primaryContainer = DsColor.accent
+    val onPrimaryContainer = DsColor.onAccent
 
-    // Surface
-    val surfaceDim = Color(0xFF131313)
-    val surface = Color(0xFF131313)
-    val surfaceContainerLowest = Color(0xFF0E0E0E)
-    val surfaceContainerLow = Color(0xFF1B1B1B)
-    val surfaceContainer = Color(0xFF20201F)
-    val surfaceContainerHigh = Color(0xFF2A2A2A)
-    val surfaceContainerHighest = Color(0xFF353535)
-    val surfaceBright = Color(0xFF393939)
-    val surfaceVariant = Color(0xFF353535)
+    val surfaceDim = DsColor.bgBase
+    val surface = DsColor.bgBase
+    val surfaceContainerLowest = DsColor.bgDeep
+    val surfaceContainerLow = Color(0xFF0E161F)
+    val surfaceContainer = DsColor.dialog
+    val surfaceContainerHigh = DsColor.cardSolid
+    val surfaceContainerHighest = DsColor.raised
+    val surfaceBright = Color(0xFF243140)
+    val surfaceVariant = DsColor.avatar
 
-    // On Surface
-    val onSurface = Color(0xFFE5E2E1)
-    val onSurfaceVariant = Color(0xFFC5C9AC)
-    val onBackground = Color(0xFFE5E2E1)
+    val onSurface = DsColor.textPrimary
+    val onSurfaceVariant = DsColor.textSecondary
+    val onBackground = DsColor.textPrimary
 
-    // Secondary
-    val secondary = Color(0xFFC8C6C5)
-    val secondaryContainer = Color(0xFF4A4949)
-    val onSecondaryContainer = Color(0xFFBAB8B7)
-    val secondaryFixed = Color(0xFFE5E2E1)
+    val secondary = DsColor.textSecondary
+    val secondaryContainer = DsColor.neutralBadge
+    val onSecondaryContainer = DsColor.textSecondary
+    val secondaryFixed = DsColor.textPrimary
 
-    // Tertiary
-    val tertiaryFixed = Color(0xFF62FF96)
-    val tertiaryFixedDim = Color(0xFF00E475)
-    val tertiaryContainer = Color(0xFF62FF96)
-    val onTertiaryContainer = Color(0xFF007438)
+    val tertiaryFixed = DsColor.success
+    val tertiaryFixedDim = DsColor.success
+    val tertiaryContainer = DsColor.success
+    val onTertiaryContainer = DsColor.onSuccess
 
-    // Outline
-    val outline = Color(0xFF8F9378)
-    val outlineVariant = Color(0xFF444932)
+    val outline = Color(0xFF3A4552)
+    val outlineVariant = Color(0xFF232D38)
 
-    // Error
-    val errorColor = Color(0xFFFFB4AB)
-    val errorContainer = Color(0xFF93000A)
+    val errorColor = DsColor.danger
+    val errorContainer = DsColor.dangerContainer
 }

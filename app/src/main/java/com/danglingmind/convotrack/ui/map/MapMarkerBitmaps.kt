@@ -10,6 +10,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import androidx.compose.ui.graphics.toArgb
+import com.danglingmind.convotrack.ui.designsystem.DsColor
 import com.danglingmind.convotrack.ui.theme.CT
 import kotlin.math.max
 import kotlin.math.sqrt
@@ -231,7 +232,7 @@ object MapMarkerBitmaps {
             c.drawOval(circle, shaderPaint)
         } else {
             // Letter fallback while the photo loads or when there's no avatar URL.
-            c.drawOval(circle, paint().apply { color = 0xFF1F1F1F.toInt(); this.alpha = alpha })
+            c.drawOval(circle, paint().apply { color = DsColor.avatar.toArgb(); this.alpha = alpha })
             val initialPaint = textPaint(
                 size * 0.32f,
                 if (isMe) lime else android.graphics.Color.WHITE,
@@ -271,7 +272,7 @@ object MapMarkerBitmaps {
         val plate = RectF(cx - w / 2 - 4 * scale, cy - h / 2 - 2 * scale, cx + w / 2 + 4 * scale, cy + h / 2 + 2 * scale)
         c.drawRoundRect(
             plate, 6f * scale, 6f * scale,
-            paint().apply { color = 0xBF1A1A1A.toInt(); this.alpha = (alpha * 0.75f).toInt() },
+            paint().apply { color = DsColor.mapPlate.toArgb(); this.alpha = (alpha * 0.86f).toInt() },
         )
         val tp = Paint(p).apply { this.alpha = alpha }
         c.drawText(text, cx - w / 2, cy - (fm.ascent + fm.descent) / 2, tp)
@@ -354,7 +355,7 @@ object MapMarkerBitmaps {
             c.drawRoundRect(
                 RectF(cx - plateW / 2, plateTop, cx + plateW / 2, plateTop + plateH),
                 8f * scale, 8f * scale,
-                paint().apply { color = 0xEB2A2A2A.toInt() },
+                paint().apply { color = DsColor.mapPlate.toArgb() },
             )
             var y = plateTop + 3 * scale - labelPaint.fontMetrics.ascent
             for (line in lines) {

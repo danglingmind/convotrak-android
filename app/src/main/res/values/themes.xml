@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Base theme applied before Compose takes over. Dark, edge-to-edge, lime accent.
+    <!-- Base theme applied before Compose takes over. Dark, edge-to-edge, Dark Glass accent.
          Compose owns all real styling — this only controls the pre-inflation window. -->
     <style name="Theme.ConvoTrack" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowBackground">@color/surface_dim</item>
-        <item name="android:colorAccent">@color/primary_fixed</item>
+        <item name="android:windowBackground">@color/background_base</item>
+        <item name="android:colorAccent">@color/accent</item>
     </style>
 </resources>

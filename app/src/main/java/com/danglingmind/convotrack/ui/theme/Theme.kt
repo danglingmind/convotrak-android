@@ -1,53 +1,70 @@
 package com.danglingmind.convotrack.ui.theme
 
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsType
 
-// ConvoTrack is dark-only (matches the iOS `.preferredColorScheme(.dark)`).
+// ConvoTrack is dark-only. Material 3 is mapped onto the Dark Glass tokens so the stock
+// components still in use (ModalBottomSheet, AlertDialog, ripples, text selection) match.
 private val ConvoTrackColorScheme = darkColorScheme(
-    primary = CT.primaryFixed,
-    onPrimary = CT.onPrimaryFixed,
-    primaryContainer = CT.primaryContainer,
-    onPrimaryContainer = CT.onPrimaryContainer,
-    secondary = CT.secondary,
-    secondaryContainer = CT.secondaryContainer,
-    onSecondaryContainer = CT.onSecondaryContainer,
-    tertiary = CT.tertiaryFixed,
-    tertiaryContainer = CT.tertiaryContainer,
-    onTertiaryContainer = CT.onTertiaryContainer,
-    background = CT.surfaceDim,
-    onBackground = CT.onBackground,
-    surface = CT.surface,
-    onSurface = CT.onSurface,
-    surfaceVariant = CT.surfaceVariant,
-    onSurfaceVariant = CT.onSurfaceVariant,
-    surfaceContainerLowest = CT.surfaceContainerLowest,
-    surfaceContainerLow = CT.surfaceContainerLow,
-    surfaceContainer = CT.surfaceContainer,
-    surfaceContainerHigh = CT.surfaceContainerHigh,
-    surfaceContainerHighest = CT.surfaceContainerHighest,
-    outline = CT.outline,
-    outlineVariant = CT.outlineVariant,
-    error = CT.errorColor,
-    errorContainer = CT.errorContainer,
+    primary = DsColor.accent,
+    onPrimary = DsColor.onAccent,
+    primaryContainer = DsColor.accentTonal,
+    onPrimaryContainer = DsColor.accent,
+    secondary = DsColor.textSecondary,
+    secondaryContainer = DsColor.neutralBadge,
+    onSecondaryContainer = DsColor.textSecondary,
+    tertiary = DsColor.success,
+    tertiaryContainer = DsColor.successTint,
+    onTertiaryContainer = DsColor.success,
+    background = DsColor.bgBase,
+    onBackground = DsColor.textPrimary,
+    surface = DsColor.bgBase,
+    onSurface = DsColor.textPrimary,
+    surfaceVariant = DsColor.avatar,
+    onSurfaceVariant = DsColor.textSecondary,
+    surfaceContainerLowest = DsColor.bgDeep,
+    surfaceContainerLow = DsColor.sheet,
+    surfaceContainer = DsColor.dialog,
+    surfaceContainerHigh = DsColor.dialog,
+    surfaceContainerHighest = DsColor.raised,
+    outline = DsColor.borderStrong,
+    outlineVariant = DsColor.border,
+    error = DsColor.danger,
+    errorContainer = DsColor.dangerContainer,
+    scrim = DsColor.scrim,
 )
 
 private val ConvoTrackTypography = Typography(
-    displayLarge = CTType.displayMetrics,
-    headlineLarge = CTType.headlineLg,
-    headlineMedium = CTType.headlineMd,
-    bodyLarge = CTType.bodyLg,
-    bodyMedium = CTType.bodyMd,
-    labelSmall = CTType.labelCaps,
+    displayLarge = DsType.heroTitle,
+    headlineLarge = DsType.titleLarge,
+    headlineMedium = DsType.titleLarge,
+    headlineSmall = DsType.cardTitle,
+    titleLarge = DsType.titleLarge,
+    titleMedium = DsType.rowTitle,
+    bodyLarge = DsType.body,
+    bodyMedium = DsType.body,
+    bodySmall = DsType.bodySmall,
+    labelLarge = DsType.buttonPill,
+    labelMedium = DsType.statLabel,
+    labelSmall = DsType.badgeSmall,
+)
+
+private val SelectionColors = TextSelectionColors(
+    handleColor = DsColor.accent,
+    backgroundColor = DsColor.accentGlow,
 )
 
 @Composable
@@ -68,6 +85,7 @@ fun ConvoTrackTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = ConvoTrackColorScheme,
         typography = ConvoTrackTypography,
-        content = content,
-    )
+    ) {
+        CompositionLocalProvider(LocalTextSelectionColors provides SelectionColors, content = content)
+    }
 }

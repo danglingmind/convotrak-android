@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.danglingmind.convotrack.R
 import com.danglingmind.convotrack.data.maps.AvatarCache
 import com.danglingmind.convotrack.ui.ride.metersBetween
+import com.danglingmind.convotrack.ui.designsystem.DsColor
 import com.danglingmind.convotrack.ui.theme.CT
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.MapsInitializer
@@ -187,8 +188,8 @@ object NavCamera {
     const val STOP_PIN_TOP_EXTENT_DP = 92f
 }
 
-// Route thickness. `ROUTE_CHUNKINESS` is the single dial; the casing (the 3D sidewall under the
-// bright face) derives from it so the extrude looks consistent at any width.
+// Route thickness. `ROUTE_CHUNKINESS` is the single dial; the glow around the bright core derives
+// from it so the line looks consistent at any width.
 /** Placeholder geometry for a hidden polyline: the SDK needs a valid path even when invisible. */
 private val EMPTY_LINE = listOf(LatLng(0.0, 0.0), LatLng(0.0, 0.0))
 
@@ -234,7 +235,8 @@ private const val DRAW_SIMPLIFY_TOLERANCE_METERS = 0.5
 private const val NAV_FULL_DETAIL_METERS = 5_000.0
 
 private const val ROUTE_CHUNKINESS = 16f
-private const val CASING_RATIO = 13f / 8f
+/** The route is a bright core inside a soft glow of the same colour (design system: map.routeLayers). */
+private const val GLOW_RATIO = 2.3f
 
 /**
  * Reusable dark Google map — the Android analogue of iOS `GoogleMapView`.
@@ -481,7 +483,7 @@ fun ConvoTrackMap(
                 if (index != selectedRouteIndex && coords.size >= 2) {
                     Polyline(
                         points = coords,
-                        color = androidx.compose.ui.graphics.Color(0xFFC7C7C7).copy(alpha = 0.42f),
+                        color = DsColor.mapRouteAlternative,
                         width = 8f,
                         zIndex = 0f,
                         clickable = onSelectRoute != null,
@@ -509,20 +511,20 @@ fun ConvoTrackMap(
         Polyline(
             points = if (hasPlanned) drawFullRoute else EMPTY_LINE,
             visible = hasPlanned,
-            color = CT.primaryFixed.copy(alpha = 0.28f),
+            color = DsColor.mapRoutePlanned,
             width = 6f,
             zIndex = 1f,
             startCap = RoundCap(),
             endCap = RoundCap(),
             jointType = JointType.ROUND,
         )
-        // Dark-lime casing, then the bright face on top: a cheap extrude that keeps the route
-        // reading as a raised ribbon rather than a flat stripe on dark tiles.
+        // A soft glow in the route colour, then the bright core on top, so the route reads as lit
+        // rather than as a flat stripe on dark tiles.
         Polyline(
             points = if (hasRoute) drawRoute else EMPTY_LINE,
             visible = hasRoute,
-            color = androidx.compose.ui.graphics.Color(0xFF5A6C00),
-            width = ROUTE_CHUNKINESS * CASING_RATIO,
+            color = DsColor.mapRouteGlow,
+            width = ROUTE_CHUNKINESS * GLOW_RATIO,
             zIndex = 2f,
             startCap = RoundCap(),
             endCap = RoundCap(),
@@ -531,7 +533,7 @@ fun ConvoTrackMap(
         Polyline(
             points = if (hasRoute) drawRoute else EMPTY_LINE,
             visible = hasRoute,
-            color = CT.primaryFixed,
+            color = DsColor.mapRouteCore,
             width = ROUTE_CHUNKINESS,
             zIndex = 3f,
             startCap = RoundCap(),
@@ -644,9 +646,9 @@ private fun bakeMarker(marker: MapMarker, scale: Float, avatar: Bitmap?): Pair<B
             BitmapDescriptorFactory.fromBitmap(bmp) to
                 Offset(0.5f, MapMarkerBitmaps.riderAnchorY(marker.isSelected, marker.distanceText != null))
         }
-        MapMarkerKind.DESTINATION -> stopPin(scale, "⚑", CT.primaryFixed.toArgb(), 44f, marker.label)
-        MapMarkerKind.WAYPOINT -> stopPin(scale, "•", CT.tertiaryFixed.toArgb(), 32f, marker.label, filled = false)
-        MapMarkerKind.START -> stopPin(scale, "▲", CT.primaryFixed.toArgb(), 36f, marker.label, filled = false)
+        MapMarkerKind.DESTINATION -> stopPin(scale, "⚑", DsColor.mapEnd.toArgb(), 44f, marker.label)
+        MapMarkerKind.WAYPOINT -> stopPin(scale, "•", DsColor.mapStop.toArgb(), 32f, marker.label, filled = false)
+        MapMarkerKind.START -> stopPin(scale, "▲", DsColor.mapStart.toArgb(), 36f, marker.label, filled = false)
         MapMarkerKind.REGROUP -> {
             val type = marker.regroupType.orEmpty()
             stopPin(scale, regroupGlyph(type), regroupAccent(type), 40f, regroupLabel(type), filled = false)
@@ -678,10 +680,10 @@ private fun regroupGlyph(type: String) = when (type) {
 }
 
 private fun regroupAccent(type: String) = when (type) {
-    "FUEL" -> 0xFFFFA100.toInt()   // amber
-    "FOOD" -> 0xFFFF6E00.toInt()   // orange
-    "SCENIC" -> 0xFF029CE6.toInt() // sky blue
-    else -> 0xFF7A1CA3.toInt()     // purple
+    "FUEL" -> DsColor.catFuel.toArgb()
+    "FOOD" -> DsColor.catFood.toArgb()
+    "SCENIC" -> DsColor.catScenic.toArgb()
+    else -> DsColor.catOther.toArgb()
 }
 
 private fun regroupLabel(type: String) = when (type) {
