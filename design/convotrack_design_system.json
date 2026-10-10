@@ -1,0 +1,5049 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "ConvoTrack Dark Glass Ride UI",
+  "version": "2.3.0-draft",
+  "description": "Full-app design system for ConvoTrack, matched to the reference screens (Home, Lobby, Edit Ride): photographic heroes that fade into a blue-black base, quiet glass cards, a serif headline, wide-tracked uppercase labels, mono data, and one accent accent for the next action and the route.",
+  "changelog": [
+    "2.3.0-draft: Hero photos supplied by the user and added to design/assets. Recent-ride thumbnails confirmed. Bottom nav stays visible in the lobby.",
+    "2.2.0-draft: Accent changed to ice cyan #3DE8FF. Bottom nav uses the app's real tabs (History · Home · Profile). Tags and statuses come from the app, not the references (no INVITED, Last seen, MEMBER, LIVE NOW or LEADER chip in the roster).",
+    "2.1.0-draft: Rebased on the four reference screens. Colours re-sampled from them; added photographic heroes, floating circular buttons over photos, the floating bottom nav with a centre action button, solid status badges, the leader row accent bar, stat tiles, the ride-details list, meta chips, avatar stacks, ride thumbnails and the glowing route line. Replaces any 2.0 rule that disagrees.",
+    "2.0.0-draft: Extended from the single Edit Ride spec to the whole app. Android (Jetpack Compose) is implemented first; iOS is ported from the result. All v1.0.0 tokens and components are kept unless noted under 'resolvedConflicts'."
+  ],
+  "platform": {
+    "target": [
+      "Android",
+      "iOS"
+    ],
+    "implementationOrder": [
+      "Android (Jetpack Compose, minSdk 26)",
+      "iOS (SwiftUI), ported after Android sign-off"
+    ],
+    "framework_agnostic": true,
+    "base_unit": 4,
+    "units": "All '...Pt' values are density-independent: pt on iOS, dp on Android. Font sizes are pt on iOS and sp on Android, so they follow the system font scale.",
+    "layout_reference": {
+      "device_class": "modern phone, portrait first; the navigation screen also supports landscape",
+      "reference_artboard_px": {
+        "width": 832,
+        "height": 1802
+      },
+      "coordinate_note": "Reference dimensions describe the generated concept image, not required device dimensions. Use safe-area-aware responsive layout.",
+      "safe_area": {
+        "respect_top_inset": true,
+        "respect_bottom_inset": true,
+        "horizontal_content_inset_pt": 20,
+        "bottom_home_indicator_clearance_pt": 12,
+        "androidNote": "Edge-to-edge is on. Use statusBarsPadding / navigationBarsPadding. The bottom inset is about 0dp with gesture navigation and about 48dp with three-button navigation, so never hard-code it."
+      }
+    },
+    "androidSubstitutions": {
+      "fonts": "SF Pro and SF Mono cannot be bundled on Android. Use the families in tokens.typography.fontFamilies.android.",
+      "blur": "Real backdrop blur needs API 31+. On API 31+ use RenderEffect (or the Haze library). On API 26 to 30 use the opaque fallback colour each glass token names in 'fallback'.",
+      "symbols": "SF Symbols map to Material Symbols Rounded. See iconography.mapping.",
+      "dynamicType": "sp units plus the system font scale. Components with a fixed height must allow the text to shrink or wrap; see the autoShrink rules.",
+      "haptics": "Use HapticFeedbackConstants / View.performHapticFeedback. See interaction.haptics.androidConstant.",
+      "reduceMotion": "Read Settings.Global.ANIMATOR_DURATION_SCALE. When it is 0, swap animations for instant state changes."
+    }
+  },
+  "design_principles": [
+    "Photography first: every top-level screen opens on a photo (riding imagery or the ride's destination) that fades into the blue-black base",
+    "Chrome floats over the photo: circular glass buttons, no app bar",
+    "One serif headline per screen, set large in white; everything else is a clean sans",
+    "Wide-tracked uppercase for section labels and eyebrows; monospace for data, codes and status badges",
+    "Accent is for the next action (one filled button), live state and the route. Status colours stay solid and readable",
+    "Cards are dark, low-contrast glass with hairline borders; no heavy shadows except the accent glow on primary actions",
+    "Status is never colour alone: every state has a word"
+  ],
+  "accent_usage_rules": {
+    "keepsAccentFill": [
+      "PrimaryButton (one per screen)",
+      "Turn-instruction maneuver tile",
+      "Selected segment / selected route option chip",
+      "Small primary pills that are the main action of their card (RESUME, UPGRADE, REGROUP on the split alert, MARK AS ARRIVED, Retry in an empty state)",
+      "SAVE % badge on the best-value plan",
+      "YOU tag on the leaderboard"
+    ],
+    "keepsAccentStroke": [
+      "Route core line and route start/destination markers",
+      "Focused input border (border.focus)",
+      "Selected cards (LocationCard.selected, PlanCard.selected, leaderboard highlight)",
+      "Rider map markers"
+    ],
+    "keepsAccentText": [
+      "Live data that is the screen's subject: turn distance, the primary summary metric, the invite code",
+      "Trailing text actions in a SectionHeading (SEE ALL, VIEW ON MAP)",
+      "LIVE indicator and ride status on the active-ride card"
+    ],
+    "demotedFromAccent": {
+      "rule": "Everything that is accent today only for decoration becomes text.primary, text.secondary or an accent.tint disc with an accent icon.",
+      "examples": [
+        "Top-bar titles (32sp accent) become screenTitle in text.primary",
+        "The top bar's back arrow and antenna icon become IconButtons with a text.primary icon",
+        "Settings row icons become text.secondary icons",
+        "Profile stat values become text.primary (only the hero metric on Summary stays accent)",
+        "The SQUAD ROSTER label becomes a SectionHeading in text.secondary",
+        "Benefit-tile icons sit in an accent tint disc instead of being bare accent glyphs",
+        "Ready roster rows lose the solid accent border and use border.default; readiness lives in the badge",
+        "Splash and auth taglines use text.muted"
+      ]
+    }
+  },
+  "tokens": {
+    "color": {
+      "background": {
+        "base": "#060C12",
+        "deep": "#02070B",
+        "elevated": "#0B131B",
+        "topGradient": "#0E1822",
+        "pureBlack": "#000000",
+        "_sampled": "base and deep from the reference backgrounds (#050B0F, #01070C, #04070D)"
+      },
+      "surface": {
+        "card": {
+          "value": "rgba(20, 30, 41, 0.78)",
+          "fallback": "#111A24",
+          "_sampled": "stat tiles #121B24 / #131D27"
+        },
+        "cardQuiet": {
+          "value": "rgba(14, 22, 31, 0.80)",
+          "fallback": "#0B131C",
+          "_usage": "roster rows, ride-details list, recent-ride rows"
+        },
+        "field": {
+          "value": "rgba(27, 38, 49, 0.92)",
+          "fallback": "#1A2530",
+          "_sampled": "#1C2731"
+        },
+        "fieldFocused": "rgba(31, 44, 56, 0.98)",
+        "glassOnPhoto": {
+          "value": "rgba(22, 26, 30, 0.55)",
+          "blur": 16,
+          "_usage": "circular buttons and pills that sit on a photo"
+        },
+        "glassPill": "rgba(30, 40, 52, 0.62)",
+        "nav": {
+          "value": "rgba(12, 17, 21, 0.92)",
+          "fallback": "#0C1115",
+          "blur": 22
+        },
+        "neutralBadge": "#2A2F37",
+        "iconDisc": "#1A231B",
+        "raised": "#16212D",
+        "dialog": "#111B26",
+        "sheet": "#0B131B",
+        "avatar": "#1E2A38",
+        "pressed": "rgba(255, 255, 255, 0.06)",
+        "scrim": "rgba(2, 7, 12, 0.56)",
+        "codeWhite": "#FFFFFF",
+        "dangerContainer": "#3A1518",
+        "leaderRow": {
+          "value": "rgba(94, 247, 166, 0.035)",
+          "_sampled": "#101914 over #0B131C"
+        },
+        "glass": {
+          "value": "rgba(20, 30, 41, 0.78)",
+          "fallback": "#111A24",
+          "_alias": "surface.card"
+        },
+        "glassStrong": {
+          "value": "rgba(16, 24, 32, 0.92)",
+          "fallback": "#10181F",
+          "_usage": "HUD bars and the navigation preview"
+        },
+        "glassSubtle": "rgba(255, 255, 255, 0.035)",
+        "input": "rgba(27, 38, 49, 0.92)",
+        "inputFocused": "rgba(31, 44, 56, 0.98)",
+        "mapFrame": "#11191D",
+        "cameraControl": "rgba(0, 0, 0, 0.50)"
+      },
+      "text": {
+        "primary": "#F5F7FA",
+        "label": "#D5D9DF",
+        "secondary": "#B4B9C1",
+        "muted": "#868C95",
+        "subtle": "#5C636D",
+        "disabled": "#5D6670",
+        "onAccent": "#040E0F",
+        "onSuccess": "#0B2416",
+        "onPhoto": "#FFFFFF",
+        "onPhotoMuted": "rgba(255, 255, 255, 0.78)",
+        "placeholder": "#868C95",
+        "_usage": "label is the slightly dimmed white of section headings (ACTIVE RIDE, SQUAD ROSTER). subtle and disabled fail AA for body text."
+      },
+      "accent": {
+        "base": "#3DE8FF",
+        "bright": "#5AEBFF",
+        "soft": "#34C5D9",
+        "deep": "#22808C",
+        "tint": "rgba(61, 232, 255, 0.12)",
+        "tonal": "rgba(61, 232, 255, 0.17)",
+        "border": "rgba(61, 232, 255, 0.45)",
+        "glow": "rgba(61, 232, 255, 0.28)",
+        "_chosen": "Ice cyan, chosen by the user on the style-guide page (2026-10-10). Every other accent value is derived from it."
+      },
+      "status": {
+        "success": "#5EF7A6",
+        "successTint": "rgba(94, 247, 166, 0.12)",
+        "successBorder": "rgba(94, 247, 166, 0.40)",
+        "warning": "#FFCF70",
+        "warningTint": "rgba(255, 207, 112, 0.12)",
+        "danger": "#FBB0A9",
+        "dangerTint": "rgba(251, 176, 169, 0.13)",
+        "dangerBorder": "rgba(251, 176, 169, 0.40)",
+        "dangerStrong": "#E5484D",
+        "info": "#9DBEFF",
+        "_sampled": "RIDING badge #65F4A6 / #56F8AB, presence #69F9A9, remove-stop #FCB3AC"
+      },
+      "presence": {
+        "online": "color.status.success",
+        "offline": "color.text.subtle",
+        "live": "color.accent.base"
+      },
+      "category": {
+        "_note": "Regroup reasons. These are the only non-palette hues in the app, and each is always shown with its icon and label.",
+        "fuel": "#FFB547",
+        "food": "#FF8A4C",
+        "scenic": "#5AB8FF",
+        "other": "#B58CFF",
+        "emergency": "color.status.danger"
+      },
+      "border": {
+        "hairline": "rgba(160, 180, 200, 0.10)",
+        "subtle": "rgba(160, 180, 200, 0.12)",
+        "default": "rgba(160, 180, 200, 0.18)",
+        "strong": "rgba(160, 180, 200, 0.28)",
+        "focus": "#37D1E6",
+        "divider": "rgba(160, 180, 200, 0.10)",
+        "leaderRow": "rgba(94, 247, 166, 0.22)",
+        "_sampled": "tiles #1F2730, square buttons #222B36, leader row #32503F"
+      },
+      "map": {
+        "_note": "Google's dark style with muted green parks, as in the Edit Ride reference. Route and markers use the accent.",
+        "background": "#11191D",
+        "park": "#17271F",
+        "roadMinor": "#252E33",
+        "roadMajor": "#38434A",
+        "roadStroke": "#0C1215",
+        "water": "#0B1418",
+        "label": "#8D969C",
+        "labelHalo": "#11191D",
+        "routeCore": "#3DE8FF",
+        "routeGlow": "rgba(61, 232, 255, 0.3)",
+        "routePlanned": "rgba(61, 232, 255, 0.28)",
+        "routeAlternative": "rgba(180, 185, 193, 0.40)",
+        "routeConnector": "rgba(61, 232, 255, 0.75)",
+        "startMarker": "#5EF7A6",
+        "stopMarker": "#22808C",
+        "endMarker": "#3DE8FF",
+        "emergencyMarker": "color.status.dangerStrong",
+        "markerPlate": "rgba(10, 16, 20, 0.86)",
+        "riderRing": "#3DE8FF",
+        "edgeChipRing": "#5EF7A6"
+      },
+      "avatar": {
+        "_note": "Initial-only avatars get a solid colour picked from the rider id.",
+        "palette": [
+          "#E53872",
+          "#7C5CFF",
+          "#2F9BFF",
+          "#F2994A",
+          "#27AE8F",
+          "#C2410C"
+        ]
+      }
+    },
+    "gradient": {
+      "appBackground": {
+        "type": "linear",
+        "angleDeg": 180,
+        "stops": [
+          {
+            "color": "#0E1822",
+            "position": 0
+          },
+          {
+            "color": "#060C12",
+            "position": 0.45
+          },
+          {
+            "color": "#02070B",
+            "position": 1
+          }
+        ]
+      },
+      "primaryAction": {
+        "type": "flat",
+        "color": "color.accent.base",
+        "_change": "Flat accent, as in the references. No gradient."
+      },
+      "shareCardFade": {
+        "type": "linear",
+        "angleDeg": 180,
+        "stops": [
+          {
+            "color": "rgba(5, 11, 17, 0)",
+            "position": 0
+          },
+          {
+            "color": "#060C12",
+            "position": 1
+          }
+        ],
+        "usedBy": [
+          "Share poster map hero (fade runs from 50% of the hero down to 74px above its bottom, leaving Google's attribution strip clear)"
+        ]
+      },
+      "photoFade": {
+        "type": "linear",
+        "angleDeg": 180,
+        "_usage": "Every hero photo. Transparent at the top so the photo reads, then into background.base.",
+        "stops": [
+          {
+            "color": "rgba(6, 12, 18, 0.10)",
+            "position": 0
+          },
+          {
+            "color": "rgba(6, 12, 18, 0.25)",
+            "position": 0.35
+          },
+          {
+            "color": "rgba(6, 12, 18, 0.80)",
+            "position": 0.72
+          },
+          {
+            "color": "#060C12",
+            "position": 1
+          }
+        ]
+      },
+      "photoSideFade": {
+        "type": "linear",
+        "angleDeg": 90,
+        "_usage": "Home hero: keeps the left side dark under the headline",
+        "stops": [
+          {
+            "color": "rgba(6, 12, 18, 0.85)",
+            "position": 0
+          },
+          {
+            "color": "rgba(6, 12, 18, 0.35)",
+            "position": 0.55
+          },
+          {
+            "color": "rgba(6, 12, 18, 0)",
+            "position": 1
+          }
+        ]
+      },
+      "cardPhotoScrim": {
+        "type": "linear",
+        "angleDeg": 180,
+        "stops": [
+          {
+            "color": "rgba(4, 9, 14, 0.15)",
+            "position": 0
+          },
+          {
+            "color": "rgba(4, 9, 14, 0.25)",
+            "position": 0.45
+          },
+          {
+            "color": "rgba(4, 9, 14, 0.88)",
+            "position": 1
+          }
+        ]
+      },
+      "heroScrim": {
+        "_alias": "gradient.cardPhotoScrim",
+        "type": "linear",
+        "angleDeg": 180,
+        "stops": [
+          {
+            "color": "rgba(4, 9, 14, 0.15)",
+            "position": 0
+          },
+          {
+            "color": "rgba(4, 9, 14, 0.25)",
+            "position": 0.45
+          },
+          {
+            "color": "rgba(4, 9, 14, 0.88)",
+            "position": 1
+          }
+        ]
+      },
+      "glassSurface": {
+        "type": "flat",
+        "color": "color.surface.card",
+        "_change": "Cards are flat glass in the references"
+      },
+      "accentAura": {
+        "type": "radial",
+        "center": "top-center",
+        "radiusFraction": 0.9,
+        "stops": [
+          {
+            "color": "rgba(61, 232, 255, 0.12)",
+            "position": 0
+          },
+          {
+            "color": "rgba(61, 232, 255, 0)",
+            "position": 1
+          }
+        ],
+        "usedBy": [
+          "Membership",
+          "Splash"
+        ]
+      },
+      "dangerAura": {
+        "type": "radial",
+        "center": "top-center",
+        "radiusFraction": 0.8,
+        "stops": [
+          {
+            "color": "rgba(251, 176, 169, 0.10)",
+            "position": 0
+          },
+          {
+            "color": "rgba(251, 176, 169, 0)",
+            "position": 1
+          }
+        ]
+      }
+    },
+    "typography": {
+      "fontFamilies": {
+        "ui": "SF Pro Display, SF Pro Text, system-ui, -apple-system, sans-serif",
+        "display": "Georgia, Times New Roman, serif",
+        "mono": "SF Mono, Menlo, monospace",
+        "android": {
+          "ui": "Inter (bundled, res/font), falling back to Roboto",
+          "display": "Source Serif 4 Bold (bundled), falling back to FontFamily.Serif",
+          "mono": "Roboto Mono (bundled), falling back to FontFamily.Monospace. Used for badges, codes and every number.",
+          "_why": "Inter is the closest freely licensed match to SF Pro's metrics. Source Serif 4 stands in for Georgia. All three are OFL-licensed."
+        },
+        "numerals": "Live values use tabular figures: fontFeatureSettings 'tnum' on Android, .monospacedDigit() on iOS."
+      },
+      "styles": {
+        "heroTitle": {
+          "fontFamily": "display",
+          "fontSizePt": 40,
+          "fontWeight": 700,
+          "lineHeight": 40,
+          "letterSpacingPt": -1.0,
+          "color": "color.text.onPhoto",
+          "_usage": "'Discover new roads', lobby ride title, summary, membership, success"
+        },
+        "heroTitleCompact": {
+          "fontFamily": "display",
+          "fontSizePt": 30,
+          "fontWeight": 700,
+          "lineHeight": 32,
+          "letterSpacingPt": -0.6
+        },
+        "heroSubtitle": {
+          "fontFamily": "ui",
+          "fontSizePt": 15,
+          "fontWeight": 400,
+          "lineHeight": 21,
+          "letterSpacingPt": 0.2,
+          "color": "color.text.secondary"
+        },
+        "eyebrow": {
+          "fontFamily": "ui",
+          "fontSizePt": 11,
+          "fontWeight": 600,
+          "lineHeight": 14,
+          "letterSpacingPt": 4.4,
+          "textTransform": "uppercase",
+          "color": "color.text.label",
+          "_usage": "RIDE TOGETHER, RIDE"
+        },
+        "brandWordmark": {
+          "fontFamily": "ui",
+          "fontSizePt": 40,
+          "fontWeight": 800,
+          "lineHeight": 44,
+          "letterSpacingPt": 4,
+          "textTransform": "uppercase"
+        },
+        "headerTitle": {
+          "fontFamily": "ui",
+          "fontSizePt": 16,
+          "fontWeight": 600,
+          "lineHeight": 20,
+          "letterSpacingPt": 3.6,
+          "textTransform": "uppercase",
+          "_usage": "EDIT RIDE"
+        },
+        "headerSubtitle": {
+          "fontFamily": "ui",
+          "fontSizePt": 13,
+          "fontWeight": 400,
+          "lineHeight": 17,
+          "letterSpacingPt": 1.6,
+          "color": "color.text.muted",
+          "_usage": "Plan your route"
+        },
+        "sectionLabel": {
+          "fontFamily": "ui",
+          "fontSizePt": 14,
+          "fontWeight": 600,
+          "lineHeight": 18,
+          "letterSpacingPt": 4.6,
+          "textTransform": "uppercase",
+          "color": "color.text.label",
+          "_usage": "ACTIVE RIDE, RECENT RIDES, SQUAD ROSTER, ROUTE PREVIEW"
+        },
+        "sectionAction": {
+          "fontFamily": "ui",
+          "fontSizePt": 12,
+          "fontWeight": 600,
+          "lineHeight": 16,
+          "letterSpacingPt": 2.6,
+          "textTransform": "uppercase",
+          "_usage": "SEE ALL >, LIVE NOW >, VIEW ON MAP"
+        },
+        "fieldLabel": {
+          "fontFamily": "ui",
+          "fontSizePt": 12,
+          "fontWeight": 600,
+          "lineHeight": 16,
+          "letterSpacingPt": 3.0,
+          "textTransform": "uppercase",
+          "color": "color.text.secondary",
+          "_usage": "RIDE TITLE, START LOCATION, DESTINATION"
+        },
+        "titleLarge": {
+          "fontFamily": "ui",
+          "fontSizePt": 24,
+          "fontWeight": 700,
+          "lineHeight": 30,
+          "letterSpacingPt": -0.2,
+          "_usage": "Dialog and sheet titles, profile name"
+        },
+        "cardTitle": {
+          "fontFamily": "ui",
+          "fontSizePt": 22,
+          "fontWeight": 700,
+          "lineHeight": 26,
+          "letterSpacingPt": 0.2,
+          "_usage": "Active ride card title"
+        },
+        "rowTitle": {
+          "fontFamily": "ui",
+          "fontSizePt": 16,
+          "fontWeight": 600,
+          "lineHeight": 21,
+          "letterSpacingPt": 0.4,
+          "_usage": "Recent ride rows, rider names"
+        },
+        "body": {
+          "fontFamily": "ui",
+          "fontSizePt": 15,
+          "fontWeight": 400,
+          "lineHeight": 21,
+          "letterSpacingPt": 0.2
+        },
+        "bodyStrong": {
+          "fontFamily": "ui",
+          "fontSizePt": 15,
+          "fontWeight": 600,
+          "lineHeight": 21,
+          "letterSpacingPt": 0.2
+        },
+        "bodySmall": {
+          "fontFamily": "ui",
+          "fontSizePt": 13,
+          "fontWeight": 400,
+          "lineHeight": 18,
+          "letterSpacingPt": 0.3,
+          "color": "color.text.muted",
+          "_usage": "Ride leader, Last seen 2 min ago, Oct 6, 2026 · 2h 14m"
+        },
+        "input": {
+          "fontFamily": "ui",
+          "fontSizePt": 18,
+          "fontWeight": 500,
+          "lineHeight": 24,
+          "letterSpacingPt": 0.2
+        },
+        "locationTitle": {
+          "fontFamily": "ui",
+          "fontSizePt": 16,
+          "fontWeight": 500,
+          "lineHeight": 20,
+          "maxLines": 2
+        },
+        "helper": {
+          "fontFamily": "ui",
+          "fontSizePt": 12,
+          "fontWeight": 400,
+          "lineHeight": 17,
+          "letterSpacingPt": 0.2
+        },
+        "button": {
+          "fontFamily": "ui",
+          "fontSizePt": 18,
+          "fontWeight": 800,
+          "lineHeight": 22,
+          "letterSpacingPt": 1.4,
+          "textTransform": "uppercase",
+          "_usage": "Full-width primary: SAVE RIDE, RESUME NAVIGATION"
+        },
+        "buttonWide": {
+          "fontFamily": "ui",
+          "fontSizePt": 14,
+          "fontWeight": 700,
+          "lineHeight": 18,
+          "letterSpacingPt": 3.0,
+          "textTransform": "uppercase",
+          "_usage": "Half-width pair: CREATE RIDE / JOIN RIDE, ADD STOP"
+        },
+        "buttonPill": {
+          "fontFamily": "ui",
+          "fontSizePt": 13,
+          "fontWeight": 700,
+          "lineHeight": 16,
+          "letterSpacingPt": 1.2,
+          "textTransform": "uppercase",
+          "_usage": "RESUME pills"
+        },
+        "link": {
+          "fontFamily": "ui",
+          "fontSizePt": 13,
+          "fontWeight": 600,
+          "lineHeight": 18,
+          "textDecoration": "underline"
+        },
+        "statLabel": {
+          "fontFamily": "ui",
+          "fontSizePt": 11,
+          "fontWeight": 500,
+          "lineHeight": 14,
+          "letterSpacingPt": 1.4,
+          "textTransform": "uppercase",
+          "color": "color.text.muted",
+          "_usage": "Stat tile and metric labels: DISTANCE, RIDERS, EST. TIME"
+        },
+        "statValue": {
+          "fontFamily": "ui",
+          "fontSizePt": 18,
+          "fontWeight": 600,
+          "lineHeight": 22,
+          "numerals": "tabular",
+          "_usage": "Stat tile values"
+        },
+        "metricValue": {
+          "fontFamily": "ui",
+          "fontSizePt": 24,
+          "fontWeight": 600,
+          "lineHeight": 28,
+          "numerals": "tabular",
+          "_usage": "14 min, 5.6 km"
+        },
+        "metricDisplay": {
+          "fontFamily": "ui",
+          "fontSizePt": 44,
+          "fontWeight": 700,
+          "lineHeight": 48,
+          "letterSpacingPt": -0.8,
+          "numerals": "tabular",
+          "autoShrink": {
+            "minFontSizePt": 26,
+            "stepPt": 4
+          }
+        },
+        "detailLabel": {
+          "fontFamily": "ui",
+          "fontSizePt": 14,
+          "fontWeight": 400,
+          "lineHeight": 18,
+          "letterSpacingPt": 0.5,
+          "color": "color.text.muted",
+          "_usage": "Ride details: Start point"
+        },
+        "detailValue": {
+          "fontFamily": "ui",
+          "fontSizePt": 15,
+          "fontWeight": 500,
+          "lineHeight": 20,
+          "letterSpacingPt": 0.2
+        },
+        "dataMono": {
+          "fontFamily": "mono",
+          "fontSizePt": 13,
+          "fontWeight": 500,
+          "lineHeight": 17,
+          "letterSpacingPt": 0.6,
+          "textTransform": "uppercase",
+          "_usage": "51.7 KM, 1 Rider, 1h 22m"
+        },
+        "codeValue": {
+          "fontFamily": "mono",
+          "fontSizePt": 18,
+          "fontWeight": 700,
+          "lineHeight": 22,
+          "letterSpacingPt": 1.0,
+          "textTransform": "uppercase",
+          "_usage": "WR3PWR in the CODE tile"
+        },
+        "codeDisplay": {
+          "fontFamily": "mono",
+          "fontSizePt": 30,
+          "fontWeight": 700,
+          "lineHeight": 36,
+          "letterSpacingPt": 6,
+          "textTransform": "uppercase"
+        },
+        "otpDisplay": {
+          "fontFamily": "mono",
+          "fontSizePt": 26,
+          "fontWeight": 700,
+          "lineHeight": 32,
+          "letterSpacingPt": 10
+        },
+        "badge": {
+          "fontFamily": "mono",
+          "fontSizePt": 12,
+          "fontWeight": 700,
+          "lineHeight": 14,
+          "letterSpacingPt": 2.0,
+          "textTransform": "uppercase",
+          "_usage": "RIDING, WAITING, INVITED"
+        },
+        "badgeSmall": {
+          "fontFamily": "mono",
+          "fontSizePt": 10,
+          "fontWeight": 700,
+          "lineHeight": 12,
+          "letterSpacingPt": 1.4,
+          "textTransform": "uppercase",
+          "_usage": "LEADER, YOU"
+        },
+        "metaTag": {
+          "fontFamily": "ui",
+          "fontSizePt": 12,
+          "fontWeight": 600,
+          "lineHeight": 16,
+          "letterSpacingPt": 2.0,
+          "textTransform": "uppercase",
+          "_usage": "ACTIVE, LEADER, MEMBER inline after a dot"
+        },
+        "navLabel": {
+          "fontFamily": "ui",
+          "fontSizePt": 12,
+          "fontWeight": 500,
+          "lineHeight": 14,
+          "letterSpacingPt": 0.2,
+          "_usage": "Home, Profile"
+        },
+        "micro": {
+          "fontFamily": "ui",
+          "fontSizePt": 10,
+          "fontWeight": 500,
+          "lineHeight": 12,
+          "letterSpacingPt": 0.3,
+          "_usage": "Photo attribution"
+        },
+        "mapLabel": {
+          "fontFamily": "ui",
+          "fontSizePt": 11,
+          "fontWeight": 600,
+          "lineHeight": 14,
+          "letterSpacingPt": 1.6,
+          "textTransform": "uppercase",
+          "_usage": "Google renders these; listed for the map style"
+        },
+        "mapMarkerLabel": {
+          "fontFamily": "mono",
+          "fontSizePt": 8,
+          "fontWeight": 700,
+          "lineHeight": 10,
+          "letterSpacingPt": 0.4,
+          "textTransform": "uppercase"
+        },
+        "hudTurnDistance": {
+          "fontFamily": "mono",
+          "fontSizePt": 26,
+          "fontWeight": 900,
+          "lineHeight": 30,
+          "numerals": "tabular",
+          "landscapeSizePt": 22
+        },
+        "hudTurnInstruction": {
+          "fontFamily": "ui",
+          "fontSizePt": 17,
+          "fontWeight": 600,
+          "lineHeight": 22,
+          "maxLines": 2,
+          "landscapeSizePt": 15
+        },
+        "hudStatValue": {
+          "fontFamily": "mono",
+          "fontSizePt": 24,
+          "fontWeight": 900,
+          "lineHeight": 28,
+          "numerals": "tabular",
+          "landscapeSizePt": 20
+        },
+        "hudStatLabel": {
+          "fontFamily": "ui",
+          "fontSizePt": 10,
+          "fontWeight": 700,
+          "lineHeight": 12,
+          "letterSpacingPt": 1.0,
+          "textTransform": "uppercase"
+        },
+        "hudEta": {
+          "fontFamily": "mono",
+          "fontSizePt": 22,
+          "fontWeight": 900,
+          "lineHeight": 26,
+          "numerals": "tabular"
+        }
+      }
+    },
+    "spacing": {
+      "0": 0,
+      "1": 4,
+      "2": 8,
+      "3": 12,
+      "4": 16,
+      "5": 20,
+      "6": 24,
+      "7": 28,
+      "8": 32,
+      "9": 36,
+      "10": 40,
+      "12": 48,
+      "14": 56,
+      "16": 64
+    },
+    "radius": {
+      "xs": 8,
+      "sm": 12,
+      "md": 16,
+      "lg": 20,
+      "xl": 24,
+      "nav": 28,
+      "pill": 999,
+      "_sampled": "cards and tiles about 16-20pt, primary buttons 18pt, bottom nav 28pt"
+    },
+    "borderWidth": {
+      "hairline": 0.5,
+      "default": 1,
+      "emphasis": 1.5,
+      "focus": 2
+    },
+    "iconSize": {
+      "xs": 12,
+      "sm": 16,
+      "md": 20,
+      "default": 22,
+      "lg": 24,
+      "xl": 32,
+      "hero": 40
+    },
+    "avatarSize": {
+      "xs": 24,
+      "sm": 34,
+      "stack": 28,
+      "md": 40,
+      "lg": 46,
+      "xl": 72,
+      "xxl": 96
+    },
+    "opacity": {
+      "disabled": 0.42,
+      "offline": 0.5,
+      "pressed": 0.86,
+      "inputDisabled": 0.48
+    },
+    "shadow": {
+      "card": {
+        "color": "rgba(0, 0, 0, 0.20)",
+        "offsetX": 0,
+        "offsetY": 8,
+        "blur": 24,
+        "spread": 0
+      },
+      "floating": {
+        "color": "rgba(0, 0, 0, 0.30)",
+        "offsetX": 0,
+        "offsetY": 12,
+        "blur": 32,
+        "spread": 0
+      },
+      "focusGlow": {
+        "color": "rgba(61, 232, 255, 0.14)",
+        "offsetX": 0,
+        "offsetY": 0,
+        "blur": 12,
+        "spread": 1
+      },
+      "textOnPhoto": {
+        "color": "rgba(0, 0, 0, 0.60)",
+        "offsetX": 0,
+        "offsetY": 2,
+        "blur": 12,
+        "_usage": "Any text drawn directly over a destination photo or map"
+      },
+      "androidNote": "Compose's Modifier.shadow takes ambientColor/spotColor (API 28+) but not a free blur radius. Draw accentGlow and focusGlow as a blurred accent layer behind the shape; on API < 31, where blur is a no-op, drop the glow.",
+      "accentGlow": {
+        "color": "rgba(61, 232, 255, 0.28)",
+        "offsetX": 0,
+        "offsetY": 6,
+        "blur": 28,
+        "spread": 0
+      }
+    },
+    "blur": {
+      "glass": 18,
+      "hero": 3,
+      "bottomBar": 22,
+      "photoBackdrop": 24
+    },
+    "motion": {
+      "quickMs": 120,
+      "standardMs": 220,
+      "emphasizedMs": 320,
+      "spring": {
+        "damping": 0.82,
+        "stiffness": 280
+      },
+      "easingStandard": "cubic-bezier(0.2, 0, 0, 1)",
+      "easingEmphasized": "cubic-bezier(0.16, 1, 0.3, 1)",
+      "reduceMotionRespectSystemSetting": true,
+      "ambient": {
+        "_note": "Looping animations. All of them stop when reduce motion is on.",
+        "livePulse": {
+          "durationMs": 1000,
+          "fromOpacity": 1,
+          "toOpacity": 0.35,
+          "repeat": "reverse"
+        },
+        "splashRouteTrace": {
+          "durationMs": 3000,
+          "easing": "linear",
+          "repeat": "restart"
+        },
+        "splashGlowBreath": {
+          "durationMs": 2000,
+          "fromScale": 1,
+          "toScale": 1.05,
+          "repeat": "reverse"
+        }
+      }
+    }
+  },
+  "layout": {
+    "screen": {
+      "background": "gradient.appBackground, with a hero photo + gradient.photoFade on top-level screens",
+      "horizontalInsetPt": 20,
+      "contentMaxWidthPt": 560,
+      "sectionGapPt": 24,
+      "fieldGapPt": 8,
+      "listItemGapPt": 12,
+      "scrollBehavior": "vertical",
+      "keyboardAvoidance": true,
+      "bottomActionClearancePt": 24
+    },
+    "header": {
+      "variants": {
+        "photo": "No bar. Floating circular glass buttons (FloatingButton) over the hero photo: back at top-start; contextual actions at top-end. Used by Home (logo + connection), Lobby (back | edit, more).",
+        "pushed": "Edit/Create Ride: back FloatingButton | centred headerTitle + headerSubtitle | ConnectionStatusButton, over a faded landscape photo.",
+        "overlay": "Navigation and scanner: floating buttons over a full-bleed map or camera."
+      },
+      "topInsetPt": "status bar + 8",
+      "buttonSizePt": 44
+    },
+    "routeTimeline": {
+      "leftRailWidthPt": 24,
+      "railToCardGapPt": 12,
+      "markerSizePt": 14,
+      "railWidthPt": 2,
+      "railColor": "#313838",
+      "rowGapPt": 16,
+      "startMarkerColor": "color.status.success",
+      "stopMarkerColor": "color.accent.deep",
+      "destinationMarkerColor": "color.accent.base",
+      "markerStroke": {
+        "color": "color.background.base",
+        "widthPt": 3
+      },
+      "labelsIndentToCards": true
+    },
+    "map": {
+      "aspectRatio": 1.52,
+      "minimumHeightPt": 210,
+      "maximumHeightPt": 340,
+      "cornerRadius": "radius.lg",
+      "clipContent": true
+    },
+    "bottomAction": {
+      "heightPt": 64,
+      "horizontalInsetPt": 20,
+      "bottomInsetAware": true,
+      "sticky": true,
+      "background": "Fade from transparent to background.base over the 32pt above the button so scrolling content doesn't sit hard against it."
+    },
+    "bottomNav": {
+      "style": "floating",
+      "insetPt": 20,
+      "heightPt": 60,
+      "radius": "radius.nav",
+      "bottomGapPt": 8,
+      "contentClearancePt": "60 + 8 + 24 + the system navigation-bar inset"
+    },
+    "sheet": {
+      "topRadius": "radius.xl",
+      "background": "color.surface.sheet",
+      "dragHandle": {
+        "widthPt": 36,
+        "heightPt": 4,
+        "color": "color.border.strong",
+        "topMarginPt": 10
+      },
+      "horizontalInsetPt": 20,
+      "bottomPaddingPt": 28,
+      "scrim": "color.surface.scrim"
+    },
+    "dialog": {
+      "radius": "radius.xl",
+      "background": "color.surface.dialog",
+      "border": {
+        "width": 1,
+        "color": "color.border.subtle"
+      },
+      "paddingPt": 24,
+      "maxWidthPt": 400,
+      "scrim": "color.surface.scrim"
+    },
+    "landscapeNavigation": {
+      "panelFraction": 0.333,
+      "panelSide": "end",
+      "panelBackground": "color.surface.glassStrong",
+      "panelPaddingPt": {
+        "horizontal": 10,
+        "vertical": 10
+      },
+      "mapPaddingEndPt": "panel width"
+    },
+    "heroPhoto": {
+      "_usage": "Top-level screens",
+      "home": {
+        "heightPt": 300,
+        "content": "assets.heroRiders"
+      },
+      "lobby": {
+        "heightPt": 340,
+        "content": "destination Places photo (assets.destinationPhotos), else route map"
+      },
+      "editRide": {
+        "heightPt": 150,
+        "content": "assets.heroRoad at 45% opacity, fading out by 150pt"
+      },
+      "attribution": "GlassPill with micro text at the photo's bottom-end whenever a Places photo shows"
+    }
+  },
+  "components": {
+    "IconButton": {
+      "sizePt": 52,
+      "compactSizePt": 44,
+      "shape": "circle",
+      "background": "color.surface.glass",
+      "border": {
+        "width": 1,
+        "color": "color.border.default"
+      },
+      "iconSizePt": 23,
+      "compactIconSizePt": 20,
+      "iconColor": "color.text.primary",
+      "pressed": {
+        "scale": 0.96,
+        "opacity": 0.86
+      },
+      "focus": {
+        "borderColor": "color.border.focus",
+        "shadow": "shadow.focusGlow"
+      },
+      "variants": {
+        "default": {},
+        "accent": {
+          "iconColor": "color.accent.base",
+          "_usage": "Edit ride in the lobby header"
+        },
+        "danger": {
+          "background": "color.status.dangerTint",
+          "borderColor": "color.status.dangerBorder",
+          "iconColor": "color.status.danger"
+        },
+        "onCamera": {
+          "background": "color.surface.cameraControl",
+          "border": "none",
+          "iconColor": "color.text.onPhoto"
+        }
+      },
+      "accessibility": "contentDescription is required",
+      "_change": "Superseded by FloatingButton for anything on a photo or map."
+    },
+    "ConnectionStatusButton": {
+      "base": "FloatingButton.accentIcon",
+      "icon": "connectionStatus",
+      "states": {
+        "connected": {
+          "iconColor": "color.text.primary",
+          "dot": "color.presence.online"
+        },
+        "reconnecting": {
+          "iconColor": "color.status.warning",
+          "dot": "color.status.warning",
+          "dotAnimation": "motion.ambient.livePulse"
+        },
+        "offline": {
+          "iconColor": "color.text.muted",
+          "dot": "color.text.subtle"
+        }
+      },
+      "dot": {
+        "sizePt": 8,
+        "placement": "top-end, inset 10pt",
+        "stroke": {
+          "color": "color.background.base",
+          "widthPt": 2
+        }
+      },
+      "outsideARide": "Reflects network reachability.",
+      "tap": "Shows a small tooltip with the state in words ('Live · connected to ride', 'Reconnecting…', 'Offline')."
+    },
+    "ScreenHeader": {
+      "layout": "back button | centered title/subtitle | connection button",
+      "titleStyle": "typography.styles.headerTitle",
+      "titleColor": "color.text.primary",
+      "subtitleStyle": "typography.styles.helper",
+      "subtitleColor": "color.text.muted",
+      "verticalPaddingPt": 12,
+      "titleMaxLines": 1,
+      "trailingSlot": "Holds one control: ConnectionStatusButton by default, or a contextual action (Edit, Leave) that replaces it."
+    },
+    "TabHeader": {
+      "layout": "logo | centered title (optional) | ConnectionStatusButton",
+      "logoSizePt": 40,
+      "titleStyle": "typography.styles.headerTitle",
+      "verticalPaddingPt": 12
+    },
+    "BottomNav": {
+      "heightPt": 72,
+      "background": "color.surface.glassStrong",
+      "blur": "blur.bottomBar",
+      "topBorder": {
+        "width": "borderWidth.hairline",
+        "color": "color.border.divider"
+      },
+      "extendsUnderSystemNavBar": true,
+      "items": [
+        {
+          "id": "flagged",
+          "icon": "history",
+          "label": "History"
+        },
+        {
+          "id": "track",
+          "icon": "home",
+          "label": "Rides"
+        },
+        {
+          "id": "profile",
+          "icon": "profile",
+          "label": "Profile"
+        }
+      ],
+      "item": {
+        "iconSizePt": 24,
+        "indicator": {
+          "widthPt": 56,
+          "heightPt": 30,
+          "radius": "radius.pill"
+        },
+        "showsLabel": true,
+        "states": {
+          "active": {
+            "indicator": "color.accent.tint",
+            "indicatorBorder": "color.accent.border",
+            "iconColor": "color.accent.base"
+          },
+          "inactive": {
+            "indicator": "transparent",
+            "iconColor": "color.text.muted"
+          },
+          "pressed": {
+            "indicator": "color.surface.pressed"
+          }
+        },
+        "transition": "motion.spring",
+        "label": {
+          "style": "typography.styles.badge",
+          "sizeOverridePt": 11,
+          "activeColor": "color.accent.base",
+          "inactiveColor": "color.text.muted",
+          "gapToIconPt": 4
+        }
+      },
+      "_change": "Replaced by BottomNavFloating."
+    },
+    "TextFieldCard": {
+      "minHeightPt": 52,
+      "paddingHorizontalPt": 16,
+      "paddingVerticalPt": 14,
+      "radius": "radius.md",
+      "background": "color.surface.field",
+      "border": {
+        "width": 1,
+        "color": "color.border.default"
+      },
+      "textStyle": "typography.styles.input",
+      "textColor": "color.text.primary",
+      "placeholderColor": "color.text.placeholder",
+      "cursorColor": "color.accent.base",
+      "leadingIconSizePt": 20,
+      "leadingIconColor": "color.text.muted",
+      "trailingIconSizePt": 20,
+      "trailingIconColor": "color.text.muted",
+      "loadingIndicator": {
+        "sizePt": 18,
+        "strokePt": 2,
+        "color": "color.accent.base",
+        "replaces": "trailing icon"
+      },
+      "states": {
+        "default": {
+          "borderColor": "color.border.default"
+        },
+        "focused": {
+          "borderColor": "color.border.focus",
+          "background": "color.surface.inputFocused",
+          "shadow": "shadow.focusGlow"
+        },
+        "error": {
+          "borderColor": "color.status.danger",
+          "helperColor": "color.status.danger"
+        },
+        "disabled": {
+          "opacity": 0.48
+        }
+      },
+      "label": {
+        "placement": "above the card, 8pt gap",
+        "style": "typography.styles.fieldLabel",
+        "color": "color.text.muted"
+      },
+      "helper": {
+        "placement": "below the card, 6pt gap",
+        "style": "typography.styles.helper",
+        "color": "color.text.muted"
+      },
+      "trailingAction": {
+        "_example": "pencil on Ride title",
+        "sizePt": 32,
+        "shape": "circle",
+        "background": "rgba(255,255,255,0.10)",
+        "iconSizePt": 18,
+        "iconColor": "color.text.primary"
+      }
+    },
+    "PlaceSearchField": {
+      "base": "TextFieldCard",
+      "leadingIcon": "search",
+      "debounceMs": 300,
+      "minQueryLength": 3,
+      "suggestionList": {
+        "placement": "directly below the field, 6pt gap",
+        "background": "color.surface.raised",
+        "border": {
+          "width": 1,
+          "color": "color.border.default"
+        },
+        "radius": "radius.md",
+        "shadow": "shadow.floating",
+        "maxItems": 4,
+        "row": {
+          "paddingPt": {
+            "horizontal": 16,
+            "vertical": 12
+          },
+          "leadingIcon": {
+            "name": "place",
+            "sizePt": 18,
+            "color": "color.text.muted"
+          },
+          "titleStyle": "typography.styles.bodyStrong",
+          "titleWraps": true,
+          "subtitleStyle": "typography.styles.helper",
+          "subtitleColor": "color.text.muted",
+          "subtitleMaxLines": 2,
+          "divider": "color.border.divider",
+          "pressed": {
+            "background": "color.surface.pressed"
+          }
+        }
+      },
+      "onSelect": "The field is replaced by a LocationCard for the chosen place."
+    },
+    "CodeInput": {
+      "base": "TextFieldCard",
+      "variants": {
+        "inviteCode": {
+          "length": 6,
+          "charset": "A-Z0-9, upper-cased while typing",
+          "textStyle": "typography.styles.codeDisplay",
+          "placeholder": "A1B2C3",
+          "minHeightPt": 72
+        },
+        "emailOtp": {
+          "length": 6,
+          "charset": "0-9",
+          "keyboard": "number password",
+          "textStyle": "typography.styles.otpDisplay",
+          "placeholder": "000000",
+          "minHeightPt": 68
+        }
+      },
+      "textAlign": "center",
+      "textColor": "color.text.primary",
+      "trailingStatus": {
+        "incomplete": {
+          "icon": "circleOutline",
+          "color": "color.text.subtle"
+        },
+        "complete": {
+          "icon": "checkCircle",
+          "color": "color.accent.base"
+        },
+        "verifying": "loading indicator"
+      },
+      "states": {
+        "complete": {
+          "borderColor": "color.accent.border"
+        }
+      }
+    },
+    "LocationCard": {
+      "minHeightPt": 64,
+      "radius": "radius.md",
+      "background": "color.surface.card",
+      "border": {
+        "width": 1,
+        "color": "color.border.default"
+      },
+      "horizontalPaddingPt": 12,
+      "verticalPaddingPt": 10,
+      "leadingIconContainer": {
+        "sizePt": 40,
+        "radius": "radius.pill",
+        "background": "color.surface.iconDisc",
+        "iconColor": "color.accent.base",
+        "iconSizePt": 22,
+        "icons": {
+          "start": "navigation (filled)",
+          "destination": "sports_score"
+        }
+      },
+      "titleStyle": "typography.styles.locationTitle",
+      "titleMaxLines": 2,
+      "subtitleStyle": "typography.styles.helper",
+      "subtitleColor": "color.text.muted",
+      "removeButton": {
+        "sizePt": 26,
+        "background": "rgba(255,255,255,0.14)",
+        "iconColor": "color.text.primary",
+        "iconSizePt": 16
+      },
+      "selected": {
+        "borderColor": "color.accent.border"
+      },
+      "tap": "Turns the card back into a PlaceSearchField pre-filled with the place name.",
+      "remove": "Clears the place for start and destination; removes the row for an intermediate stop."
+    },
+    "AddStopButton": {
+      "heightPt": 34,
+      "alignment": "centred under the stops, hugging content",
+      "background": "rgba(255,255,255,0.025)",
+      "border": {
+        "width": 1,
+        "color": "color.border.strong"
+      },
+      "radius": "radius.pill",
+      "iconColor": "color.accent.base",
+      "labelStyle": "typography.styles.buttonWide",
+      "labelColor": "color.accent.base",
+      "pressed": {
+        "scale": 0.98,
+        "background": "color.accent.tint"
+      },
+      "paddingHorizontalPt": 14,
+      "icon": "add_circle (outlined), 18pt"
+    },
+    "RouteTimeline": {
+      "uses": "layout.routeTimeline",
+      "rows": [
+        "start: LocationCard or PlaceSearchField",
+        "stops: LocationCard or PlaceSearchField, each with a remove action",
+        "AddStopButton",
+        "destination: LocationCard or PlaceSearchField"
+      ],
+      "rowLabel": {
+        "style": "typography.styles.fieldLabel",
+        "color": "color.text.muted",
+        "gapToCardPt": 6,
+        "_usage": "START LOCATION / DESTINATION above their cards; stops have no label"
+      },
+      "markerAlignment": "Vertically centred on the card, not the label.",
+      "railRule": "The rail joins every marker. It is solid from start to destination and dashed (4 on, 4 off) next to the AddStopButton.",
+      "removeStopButton": {
+        "sizePt": 26,
+        "shape": "circle",
+        "background": "color.status.danger",
+        "icon": "remove",
+        "iconColor": "#3A1518",
+        "placement": "right of the stop field, outside the card"
+      }
+    },
+    "SectionHeading": {
+      "style": "typography.styles.sectionLabel",
+      "color": "color.text.label",
+      "bottomSpacingPt": 14,
+      "trailing": {
+        "action": {
+          "style": "typography.styles.sectionAction",
+          "color": "color.text.label",
+          "chevron": true,
+          "_example": "SEE ALL >"
+        },
+        "live": {
+          "dot": {
+            "sizePt": 8,
+            "color": "color.accent.base"
+          },
+          "style": "typography.styles.sectionAction",
+          "color": "color.accent.base",
+          "_example": "● RIDING"
+        },
+        "liveCount": {
+          "style": "typography.styles.badge",
+          "color": "color.accent.base",
+          "_example": "● LIVE  ALL READY"
+        },
+        "outlinedPill": {
+          "_example": "VIEW ON MAP ↗",
+          "heightPt": 32,
+          "border": "color.border.default",
+          "radius": "radius.pill",
+          "style": "typography.styles.sectionAction",
+          "color": "color.text.secondary"
+        },
+        "squareButtons": {
+          "_example": "link, QR",
+          "component": "SquareIconButton"
+        }
+      }
+    },
+    "RouteMapCard": {
+      "radius": "radius.md",
+      "border": {
+        "width": 1,
+        "color": "color.border.default"
+      },
+      "background": "color.surface.mapFrame",
+      "heightRule": "layout.map",
+      "overlayControls": {
+        "recenter": {
+          "placement": "bottomRight",
+          "style": "FloatingButton"
+        },
+        "viewOnMap": "in the SectionHeading as outlinedPill, not on the map"
+      },
+      "routeLine": {
+        "coreWidthPt": 6,
+        "glowWidthPt": 14,
+        "coreColor": "color.map.routeCore",
+        "glowColor": "color.map.routeGlow",
+        "lineCap": "round",
+        "lineJoin": "round",
+        "_change": "Accent core with a soft accent glow, no dark casing"
+      },
+      "alternativeRoutes": {
+        "color": "color.map.routeAlternative",
+        "widthPt": 6,
+        "tappable": true
+      },
+      "markers": {
+        "start": {
+          "outerRadiusPt": 10,
+          "fill": "color.background.base",
+          "ring": "color.map.startMarker",
+          "ringWidthPt": 3,
+          "halo": "rgba(94,247,166,0.25), 16pt"
+        },
+        "destination": {
+          "outerRadiusPt": 16,
+          "fill": "color.background.base",
+          "ring": "color.map.endMarker",
+          "ringWidthPt": 3,
+          "glyph": "sports_score, accent",
+          "halo": "color.map.routeGlow"
+        },
+        "stop": {
+          "outerRadiusPt": 8,
+          "fill": "color.map.stopMarker",
+          "stroke": "color.background.base",
+          "strokeWidthPt": 2
+        }
+      },
+      "mapStyle": "dark",
+      "labels": {
+        "color": "color.map.label",
+        "style": "typography.styles.mapLabel",
+        "opacity": 0.9
+      },
+      "emptyState": {
+        "background": "color.surface.mapFrame",
+        "content": "map icon (32pt, text.subtle) above helper text 'Pick a start and destination' in text.muted",
+        "border": {
+          "width": 1,
+          "color": "color.border.subtle",
+          "style": "dashed 6/6"
+        }
+      },
+      "heightPt": 200
+    },
+    "RouteOptionChip": {
+      "_usage": "Alternative routes under the preview map. Shown only for a direct start → destination with 2+ alternatives.",
+      "layout": "horizontal scroll, 10pt gap",
+      "paddingPt": {
+        "horizontal": 14,
+        "vertical": 10
+      },
+      "radius": "radius.sm",
+      "lines": [
+        {
+          "content": "FASTEST or +N MIN",
+          "style": "typography.styles.badge"
+        },
+        {
+          "content": "duration",
+          "style": "typography.styles.metricValue",
+          "sizeOverridePt": 17
+        },
+        {
+          "content": "distance",
+          "style": "typography.styles.statLabel"
+        }
+      ],
+      "states": {
+        "default": {
+          "background": "color.surface.glass",
+          "border": "color.border.default",
+          "badgeColor": "color.status.success",
+          "valueColor": "color.text.primary",
+          "metaColor": "color.text.muted"
+        },
+        "selected": {
+          "background": "color.accent.tint",
+          "border": "color.accent.border",
+          "borderWidth": 1.5,
+          "badgeColor": "color.accent.base",
+          "valueColor": "color.text.primary",
+          "metaColor": "color.text.secondary"
+        }
+      },
+      "_change": "The selected chip was solid accent. It becomes accent tint plus an accent border so the save button stays the only accent fill on the screen."
+    },
+    "MetricCard": {
+      "minHeightPt": 48,
+      "radius": "radius.md",
+      "background": "color.surface.card",
+      "border": {
+        "width": 1,
+        "color": "color.border.subtle"
+      },
+      "paddingPt": 14,
+      "layout": "leading icon disc + label/value stack",
+      "iconDisc": {
+        "sizePt": 36,
+        "radius": "radius.pill",
+        "background": "color.surface.iconDisc",
+        "iconColor": "color.accent.base",
+        "iconSizePt": 20,
+        "icons": {
+          "estimatedTime": "schedule",
+          "distance": "directions"
+        }
+      },
+      "labelStyle": "typography.styles.statLabel",
+      "labelColor": "color.text.muted",
+      "valueStyle": "typography.styles.metricValue",
+      "valueColor": "color.text.primary",
+      "emptyValue": "--"
+    },
+    "SummaryMetricCard": {
+      "_usage": "The 2x2 headline grid on the ride summary",
+      "heightPt": 112,
+      "radius": "radius.lg",
+      "background": "color.surface.glass",
+      "border": {
+        "width": 1,
+        "color": "color.border.subtle"
+      },
+      "paddingPt": 16,
+      "layout": "label at top, value + unit on a shared baseline at the bottom",
+      "labelStyle": "typography.styles.statLabel",
+      "labelColor": "color.text.muted",
+      "valueStyle": "typography.styles.metricDisplay",
+      "unitStyle": "typography.styles.statLabel",
+      "unitColor": "color.text.muted",
+      "variants": {
+        "default": {
+          "valueColor": "color.text.primary"
+        },
+        "primary": {
+          "valueColor": "color.accent.base",
+          "border": "color.accent.border"
+        },
+        "alert": {
+          "valueColor": "color.status.danger",
+          "border": "color.status.dangerBorder",
+          "trailingIcon": "warning",
+          "_rule": "Max group split over 2 km"
+        }
+      }
+    },
+    "StatTile": {
+      "_usage": "Lobby: DISTANCE / RIDERS / STATUS / CODE",
+      "layout": "row of 4, widths follow content (flex), 8pt gap; horizontal scroll if they don't fit",
+      "minHeightPt": 56,
+      "radius": "radius.md",
+      "background": "color.surface.card",
+      "border": {
+        "width": 1,
+        "color": "color.border.subtle"
+      },
+      "paddingPt": {
+        "horizontal": 12,
+        "vertical": 10
+      },
+      "header": {
+        "icon": {
+          "sizePt": 20,
+          "color": "color.text.secondary"
+        },
+        "label": "statLabel",
+        "gapPt": 8
+      },
+      "value": {
+        "style": "typography.styles.statValue",
+        "color": "color.text.primary",
+        "indentToLabel": true
+      },
+      "variants": {
+        "status": {
+          "iconColor": "color.status.success",
+          "valueColor": "color.status.success",
+          "valueDot": "8pt success dot",
+          "_values": "Ready (success) / Waiting (warning), from canStart"
+        },
+        "code": {
+          "valueStyle": "typography.styles.codeValue"
+        }
+      }
+    },
+    "StatPill": {
+      "_usage": "Floating stats over a hero (lobby) and the history totals strip. Replaces FloatingStatPill.",
+      "base": "GlassPill",
+      "radius": "radius.md",
+      "heightPt": "hugs content",
+      "paddingPt": {
+        "horizontal": 12,
+        "vertical": 10
+      },
+      "labelStyle": "typography.styles.statLabel",
+      "labelColor": "color.text.muted",
+      "valueStyle": "typography.styles.metricValue",
+      "valueSizeOverridePt": 17,
+      "valueColor": "color.text.primary",
+      "unitStyle": "typography.styles.helper",
+      "unitColor": "color.text.muted",
+      "optionalStatusDot": {
+        "sizePt": 7,
+        "colors": {
+          "ready": "color.accent.base",
+          "waiting": "color.status.warning"
+        }
+      },
+      "gapPt": 4
+    },
+    "PrimaryButton": {
+      "heightPt": 56,
+      "radius": "radius.lg",
+      "background": "color.accent.base",
+      "textColor": "color.text.onAccent",
+      "labelStyle": "typography.styles.button",
+      "leadingGlyph": {
+        "_usage": "Primary buttons carry a dark glyph left of the label",
+        "examples": [
+          "directions (diamond turn) for SAVE RIDE and RESUME NAVIGATION",
+          "play_arrow for RESUME"
+        ],
+        "sizePt": 28,
+        "color": "color.text.onAccent"
+      },
+      "iconLabelGapPt": 16,
+      "shadow": "shadow.accentGlow",
+      "states": {
+        "pressed": {
+          "scale": 0.985
+        },
+        "disabled": {
+          "opacity": 0.42,
+          "shadow": null
+        },
+        "loading": {
+          "showsProgressIndicator": true,
+          "keepsLabel": false
+        }
+      },
+      "_sampled": "SAVE RIDE / RESUME NAVIGATION: 46-50pt tall in the reference; 56pt used for touch comfort, radius 18-20",
+      "rule": "One per screen."
+    },
+    "SecondaryButton": {
+      "heightPt": 52,
+      "radius": "radius.lg",
+      "background": "rgba(255,255,255,0.07)",
+      "border": {
+        "width": 1,
+        "color": "rgba(255,255,255,0.14)"
+      },
+      "textColor": "color.text.primary",
+      "labelStyle": "typography.styles.button",
+      "iconSizePt": 22,
+      "iconLabelGapPt": 10,
+      "states": {
+        "pressed": {
+          "scale": 0.985,
+          "background": "color.surface.raised"
+        },
+        "disabled": {
+          "opacity": 0.42
+        },
+        "loading": {
+          "showsProgressIndicator": true,
+          "keepsLabel": false,
+          "indicatorColor": "color.text.primary"
+        },
+        "confirmed": {
+          "background": "color.status.successTint",
+          "border": "color.status.successBorder",
+          "textColor": "color.status.success",
+          "leadingIcon": "check",
+          "_usage": "MARK READY after tapping becomes YOU'RE READY"
+        }
+      }
+    },
+    "DestructiveButton": {
+      "heightPt": 56,
+      "radius": "radius.lg",
+      "background": "color.status.dangerTint",
+      "border": {
+        "width": 1,
+        "color": "color.status.dangerBorder"
+      },
+      "textColor": "color.status.danger",
+      "labelStyle": "typography.styles.button",
+      "states": {
+        "pressed": {
+          "scale": 0.985,
+          "background": "color.surface.dangerContainer"
+        },
+        "disabled": {
+          "opacity": 0.42
+        },
+        "loading": {
+          "keepsLabel": true,
+          "labelSuffix": "…"
+        }
+      },
+      "rule": "Always behind a ConfirmDialog."
+    },
+    "GhostButton": {
+      "_usage": "Low-emphasis full-width action, e.g. CANCEL REQUEST on the regroup sheet",
+      "heightPt": 48,
+      "background": "transparent",
+      "textColor": "color.text.secondary",
+      "labelStyle": "typography.styles.buttonPill",
+      "pressed": {
+        "background": "color.surface.pressed"
+      }
+    },
+    "PillButton": {
+      "_usage": "Compact inline actions: RESUME, UPGRADE / ACTIVE, Retry, REGROUP on the split alert, MARK AS ARRIVED",
+      "heightPt": 36,
+      "minHitTargetPt": 44,
+      "paddingHorizontalPt": 16,
+      "radius": "radius.pill",
+      "labelStyle": "typography.styles.buttonPill",
+      "iconSizePt": 16,
+      "iconLabelGapPt": 6,
+      "variants": {
+        "primary": {
+          "background": "color.accent.base",
+          "textColor": "color.text.onAccent"
+        },
+        "tonal": {
+          "background": "color.accent.tint",
+          "border": "color.accent.border",
+          "textColor": "color.accent.base"
+        },
+        "neutral": {
+          "background": "color.surface.glass",
+          "border": "color.border.default",
+          "textColor": "color.text.secondary"
+        },
+        "danger": {
+          "background": "color.status.dangerTint",
+          "border": "color.status.dangerBorder",
+          "textColor": "color.status.danger"
+        }
+      },
+      "sizes": {
+        "default": 36,
+        "large": 44
+      }
+    },
+    "TextButton": {
+      "_usage": "Dialog actions and inline links such as 'Create account'",
+      "labelStyle": "typography.styles.buttonPill",
+      "minHitTargetPt": 44,
+      "paddingHorizontalPt": 12,
+      "variants": {
+        "confirm": {
+          "textColor": "color.accent.base"
+        },
+        "dismiss": {
+          "textColor": "color.text.secondary"
+        },
+        "destructive": {
+          "textColor": "color.status.danger"
+        }
+      }
+    },
+    "GoogleSignInButton": {
+      "base": "PrimaryButton",
+      "leading": {
+        "type": "Google 'G' mark on a 32pt white circle",
+        "background": "#FFFFFF",
+        "markSizePt": 20
+      },
+      "label": "Continue with Google",
+      "labelAlignment": "centre of the button; the G sits 16pt from the leading edge",
+      "_why": "Google's branding guidelines require the G on a white field. A white disc keeps the accent primary treatment and stays compliant."
+    },
+    "SquareIconButton": {
+      "_usage": "Share and QR in the roster header; regroup and end-ride on the navigation bar",
+      "sizePt": 36,
+      "hudSizePt": 52,
+      "hudLandscapeSizePt": 48,
+      "radius": "radius.sm",
+      "background": "color.surface.card",
+      "border": {
+        "width": 1,
+        "color": "color.border.default"
+      },
+      "iconSizePt": 22,
+      "hudIconSizePt": 22,
+      "iconColor": "color.text.primary",
+      "variants": {
+        "danger": {
+          "background": "color.status.dangerTint",
+          "border": "color.status.dangerBorder",
+          "iconColor": "color.status.danger"
+        }
+      },
+      "states": {
+        "pressed": {
+          "scale": 0.96
+        },
+        "busy": {
+          "indicatorSizePt": 18,
+          "indicatorColor": "icon colour"
+        }
+      }
+    },
+    "Stepper": {
+      "_usage": "Max riders (2 to 25)",
+      "container": {
+        "minHeightPt": 64,
+        "radius": "radius.md",
+        "background": "color.surface.input",
+        "border": {
+          "width": 1,
+          "color": "color.border.default"
+        },
+        "paddingPt": {
+          "horizontal": 16,
+          "vertical": 10
+        }
+      },
+      "valueStyle": "typography.styles.metricValue",
+      "valueSuffix": {
+        "text": "riders",
+        "style": "typography.styles.body",
+        "color": "color.text.muted"
+      },
+      "button": {
+        "sizePt": 44,
+        "radius": "radius.pill",
+        "background": "color.surface.glass",
+        "border": "color.border.strong",
+        "iconColor": "color.text.primary",
+        "icons": [
+          "minus",
+          "plus"
+        ],
+        "disabledOpacity": 0.42
+      },
+      "buttonGapPt": 12,
+      "atLimit": "The button at the limit is disabled, not hidden."
+    },
+    "SegmentedControl": {
+      "_usage": "Regroup meet point (Current / 100 m / 500 m)",
+      "heightPt": 44,
+      "radius": "radius.pill",
+      "background": "color.surface.input",
+      "border": {
+        "width": 1,
+        "color": "color.border.default"
+      },
+      "paddingPt": 4,
+      "segment": {
+        "radius": "radius.pill",
+        "labelStyle": "typography.styles.buttonPill",
+        "states": {
+          "selected": {
+            "background": "color.accent.base",
+            "textColor": "color.text.onAccent"
+          },
+          "default": {
+            "background": "transparent",
+            "textColor": "color.text.secondary"
+          }
+        },
+        "transition": "Selected thumb slides (motion.spring)"
+      }
+    },
+    "PlanCard": {
+      "_usage": "Membership plan picker (radio group)",
+      "radius": "radius.lg",
+      "paddingPt": 18,
+      "layout": "radio | title + subtitle | price column (end-aligned)",
+      "radio": {
+        "sizePt": 22,
+        "ringWidthPt": 1.5,
+        "ringColor": "color.border.strong",
+        "selectedRingWidthPt": 2,
+        "selectedRingColor": "color.accent.base",
+        "selectedDotSizePt": 11,
+        "selectedDotColor": "color.accent.base"
+      },
+      "titleStyle": "typography.styles.fieldLabel",
+      "subtitleStyle": "typography.styles.helper",
+      "subtitleColor": "color.text.muted",
+      "priceStyle": "typography.styles.metricValue",
+      "perMonthStyle": "typography.styles.helper",
+      "perMonthColor": "color.text.muted",
+      "states": {
+        "default": {
+          "background": "color.surface.glass",
+          "border": "color.border.subtle",
+          "titleColor": "color.text.secondary",
+          "priceColor": "color.text.primary"
+        },
+        "selected": {
+          "background": "color.accent.tint",
+          "border": "color.accent.border",
+          "borderWidth": 1.5,
+          "titleColor": "color.text.primary",
+          "priceColor": "color.text.primary"
+        }
+      },
+      "saveBadge": {
+        "placement": "Straddles the top edge, 14pt from the end. A card carrying it is inset 12pt from the card above.",
+        "background": "color.accent.base",
+        "textColor": "color.text.onAccent",
+        "style": "typography.styles.badge",
+        "radius": "radius.xs",
+        "paddingPt": {
+          "horizontal": 9,
+          "vertical": 5
+        }
+      },
+      "rule": "The billed price is always the largest text on the card; the per-month figure stays smaller."
+    },
+    "BenefitTile": {
+      "_usage": "Membership benefits, 2x2 grid",
+      "radius": "radius.lg",
+      "background": "color.surface.glass",
+      "border": {
+        "width": 1,
+        "color": "color.border.subtle"
+      },
+      "paddingPt": 14,
+      "iconDisc": {
+        "sizePt": 36,
+        "radius": "radius.pill",
+        "background": "color.accent.tint",
+        "iconColor": "color.accent.base",
+        "iconSizePt": 18
+      },
+      "titleStyle": "typography.styles.fieldLabel",
+      "titleColor": "color.text.primary",
+      "detailStyle": "typography.styles.helper",
+      "detailColor": "color.text.muted",
+      "gapPt": 10
+    },
+    "PromoBanner": {
+      "_usage": "Profile → ConvoTrack Pro",
+      "radius": "radius.lg",
+      "background": "color.accent.tint",
+      "border": {
+        "width": 1,
+        "color": "color.accent.border"
+      },
+      "paddingPt": 16,
+      "layout": "icon disc | eyebrow + body | PillButton",
+      "iconDisc": {
+        "sizePt": 40,
+        "background": "rgba(213,255,0,0.18)",
+        "icon": "premium",
+        "iconColor": "color.accent.base"
+      },
+      "eyebrowStyle": "typography.styles.fieldLabel",
+      "eyebrowColor": "color.accent.base",
+      "bodyStyle": "typography.styles.bodySmall",
+      "bodyColor": "color.text.primary",
+      "action": {
+        "component": "PillButton",
+        "variant": "primary when not subscribed; tonal ('ACTIVE') when subscribed"
+      }
+    },
+    "RideRowCard": {
+      "_usage": "Home → Recent rides, History",
+      "minHeightPt": 66,
+      "radius": "radius.md",
+      "background": "color.surface.cardQuiet",
+      "border": {
+        "width": 1,
+        "color": "color.border.hairline"
+      },
+      "paddingPt": 10,
+      "gapPt": 14,
+      "thumbnail": {
+        "widthPt": 75,
+        "heightPt": 50,
+        "radius": "radius.xs",
+        "content": "destination Places photo (cached per ride), else a route-map snapshot"
+      },
+      "lines": [
+        "title: rowTitle",
+        "road icon + distance in dataMono, then LeaderBadge when the user led",
+        "date · duration in bodySmall (duration on completed rides only)"
+      ],
+      "trailing": {
+        "inProgress": "TonalPill RESUME, then chevron",
+        "completed": "chevron"
+      },
+      "chevronColor": "color.text.muted"
+    },
+    "ActiveRideCard": {
+      "heightPt": 190,
+      "radius": "radius.lg",
+      "border": {
+        "width": 1,
+        "color": "color.border.default"
+      },
+      "background": "destination photo (crop) else route map",
+      "scrim": "gradient.cardPhotoScrim",
+      "topStart": {
+        "component": "DestinationPill"
+      },
+      "topEnd": {
+        "component": "AvatarStack",
+        "visibleWhen": "the ride's participants are loaded"
+      },
+      "bottomStart": [
+        "title in cardTitle, white",
+        "MetaChip row: distance, estimated time"
+      ],
+      "bottomEnd": {
+        "component": "ResumePill"
+      },
+      "paddingPt": 16,
+      "glow": "A faint accent glow bleeds from the bottom-end corner (shadow.accentGlow on the pill)",
+      "header": "SectionHeading 'ACTIVE RIDE' with a LiveIndicator showing appVocabulary.rideStatusLabel (IN LOBBY / RIDING)"
+    },
+    "HeroMedia": {
+      "_usage": "Lobby destination hero (near-square)",
+      "heightPt": 360,
+      "photoMode": "Whole photo (fit) over a zoomed, blurred copy of itself (blur.photoBackdrop) darkened by 35% black. On API < 31 the blurred copy is skipped and the plain darkened layer remains.",
+      "fallback": "Route map (non-interactive) with camera padding: top 100, sides 40, bottom 84",
+      "resolving": "color.surface.raised, empty. Never flash the map before the photo.",
+      "scrim": "gradient.heroScrim, blended into background.base at the bottom edge",
+      "title": {
+        "style": "typography.styles.heroTitleCompact",
+        "color": "color.text.onPhoto",
+        "maxLines": 2,
+        "maxWidthFraction": 0.82,
+        "shadow": "shadow.textOnPhoto",
+        "placement": "top-start, 20pt / 16pt inset"
+      },
+      "statPills": {
+        "component": "StatPill",
+        "placement": "bottom, horizontal scroll, 20pt content inset, 8pt gap"
+      },
+      "attribution": {
+        "placement": "bottom-end above the pills",
+        "style": "typography.styles.micro",
+        "color": "color.text.onPhotoMuted"
+      }
+    },
+    "RosterRow": {
+      "minHeightPt": 56,
+      "radius": "radius.md",
+      "background": "color.surface.cardQuiet",
+      "border": {
+        "width": 1,
+        "color": "color.border.hairline"
+      },
+      "paddingPt": {
+        "horizontal": 12,
+        "vertical": 8
+      },
+      "gapPt": 12,
+      "rowGapPt": 4,
+      "avatar": {
+        "sizePt": 36,
+        "photoOrInitial": "photo; else initial on avatar.palette colour",
+        "presenceDot": {
+          "sizePt": 9,
+          "online": "color.status.success",
+          "offline": "color.text.subtle",
+          "ring": "2pt background.base"
+        }
+      },
+      "name": {
+        "style": "typography.styles.rowTitle",
+        "suffixForMe": " (You)"
+      },
+      "subtitle": {
+        "style": "typography.styles.badgeSmall",
+        "values": "appVocabulary.rosterRole",
+        "leaderColor": "color.accent.base",
+        "riderColor": "color.text.muted"
+      },
+      "trailing": "StatusBadge (READY / WAITING / RIDING) + chevron when the leader can manage the row",
+      "leaderVariant": {
+        "background": "color.surface.leaderRow",
+        "border": "color.border.leaderRow",
+        "accentBar": {
+          "side": "start",
+          "widthPt": 3,
+          "color": "color.accent.base",
+          "insetPt": 0
+        },
+        "avatarSizePt": 46,
+        "minHeightPt": 64
+      }
+    },
+    "AwardRow": {
+      "gapPt": 12,
+      "avatar": {
+        "size": "avatarSize.md",
+        "ring": {
+          "color": "color.accent.border",
+          "widthPt": 2
+        }
+      },
+      "nameStyle": "typography.styles.bodyStrong",
+      "titleStyle": "typography.styles.badge",
+      "titleColor": "color.accent.base",
+      "score": {
+        "valueStyle": "typography.styles.metricValue",
+        "valueColor": "color.status.success",
+        "labelStyle": "typography.styles.badge",
+        "labelColor": "color.text.muted",
+        "label": "SYNC"
+      }
+    },
+    "ReasonTile": {
+      "_usage": "Regroup reasons, 2x2. A tap broadcasts immediately.",
+      "minHeightPt": 112,
+      "radius": "radius.lg",
+      "background": "color.surface.glass",
+      "border": {
+        "width": 1,
+        "color": "color.border.subtle"
+      },
+      "paddingPt": 20,
+      "iconDisc": {
+        "sizePt": 48,
+        "radius": "radius.pill",
+        "background": "category colour at 14%",
+        "iconSizePt": 26,
+        "iconColor": "category colour"
+      },
+      "labelStyle": "typography.styles.buttonPill",
+      "labelColor": "color.text.primary",
+      "items": [
+        {
+          "reason": "FUEL",
+          "label": "Fuel Stop",
+          "icon": "fuel",
+          "color": "color.category.fuel"
+        },
+        {
+          "reason": "FOOD",
+          "label": "Food Stop",
+          "icon": "food",
+          "color": "color.category.food"
+        },
+        {
+          "reason": "SCENIC",
+          "label": "Scenic Stop",
+          "icon": "scenic",
+          "color": "color.category.scenic"
+        },
+        {
+          "reason": "EMERGENCY",
+          "label": "Emergency",
+          "icon": "warning",
+          "color": "color.category.emergency",
+          "background": "color.status.dangerTint",
+          "border": "color.status.dangerBorder"
+        }
+      ],
+      "states": {
+        "pressed": {
+          "scale": 0.97
+        },
+        "sending": {
+          "border": "category colour",
+          "borderWidth": 2,
+          "showsProgress": "small spinner replaces the icon"
+        },
+        "disabled": {
+          "opacity": 0.42
+        }
+      },
+      "haptic": "interaction.haptics.primaryAction (emergency: interaction.haptics.destructive)"
+    },
+    "Avatar": {
+      "shape": "circle",
+      "background": "color.surface.avatar",
+      "initialStyle": "bodyStrong scaled to 40% of the diameter",
+      "initialColor": "color.text.primary",
+      "image": "Photo when available, cropped to fill",
+      "presenceDot": {
+        "sizeFraction": 0.29,
+        "placement": "bottom-end",
+        "stroke": {
+          "color": "color.background.base",
+          "widthPt": 2
+        },
+        "online": "color.presence.online",
+        "offline": "color.presence.offline"
+      },
+      "highlightRing": {
+        "color": "color.accent.base",
+        "widthPt": 2
+      }
+    },
+    "StatusBadge": {
+      "heightPt": 22,
+      "paddingHorizontalPt": 12,
+      "radius": "radius.pill",
+      "style": "typography.styles.badge",
+      "variants": {
+        "ready": {
+          "background": "color.accent.base",
+          "textColor": "color.text.onAccent"
+        },
+        "waiting": {
+          "background": "color.surface.neutralBadge",
+          "textColor": "color.text.muted"
+        },
+        "riding": {
+          "background": "color.status.success",
+          "textColor": "color.text.onSuccess"
+        }
+      },
+      "_change": "Solid fills, as in the references (was tinted)."
+    },
+    "LeaderBadge": {
+      "text": "LEADER",
+      "style": "typography.styles.badgeSmall",
+      "background": "color.accent.base",
+      "textColor": "color.text.onAccent",
+      "radius": "radius.pill",
+      "paddingPt": {
+        "horizontal": 7,
+        "vertical": 2
+      }
+    },
+    "Chip": {
+      "_usage": "Join sheet hero state: CODE VERIFIED / SYSTEM: STANDBY",
+      "style": "typography.styles.badge",
+      "radius": "radius.xs",
+      "paddingPt": {
+        "horizontal": 8,
+        "vertical": 4
+      },
+      "variants": {
+        "positive": {
+          "background": "color.accent.base",
+          "textColor": "color.text.onAccent"
+        },
+        "neutral": {
+          "background": "color.surface.glassSubtle",
+          "border": "color.border.default",
+          "textColor": "color.text.secondary"
+        }
+      }
+    },
+    "LiveIndicator": {
+      "dot": {
+        "sizePt": 6,
+        "color": "color.presence.live",
+        "animation": "motion.ambient.livePulse"
+      },
+      "label": {
+        "text": "LIVE (or a status such as RIDING / IN LOBBY)",
+        "style": "typography.styles.badge",
+        "color": "color.accent.base"
+      },
+      "gapPt": 6
+    },
+    "StatusPill": {
+      "_usage": "Auth footer trust markers (SERVER ONLINE, SSL ENCRYPTED)",
+      "radius": "radius.pill",
+      "background": "color.surface.glassSubtle",
+      "border": {
+        "width": 1,
+        "color": "color.border.subtle"
+      },
+      "paddingPt": {
+        "horizontal": 12,
+        "vertical": 6
+      },
+      "style": "typography.styles.badge",
+      "textColor": "color.text.muted",
+      "leading": "Status dot (presence.online, livePulse) or a 11pt icon"
+    },
+    "GlassPill": {
+      "heightPt": 34,
+      "paddingHorizontalPt": 12,
+      "radius": "radius.pill",
+      "background": "rgba(11, 18, 27, 0.78)",
+      "border": {
+        "width": 1,
+        "color": "color.border.subtle"
+      },
+      "blur": "blur.glass"
+    },
+    "GlassCard": {
+      "_usage": "Generic container. Replaces Modifier.glassCard().",
+      "radius": "radius.lg",
+      "background": "color.surface.glass",
+      "border": {
+        "width": 1,
+        "color": "color.border.subtle"
+      },
+      "blur": "blur.glass",
+      "paddingPt": 16
+    },
+    "SettingsGroup": {
+      "radius": "radius.lg",
+      "background": "color.surface.glass",
+      "border": {
+        "width": 1,
+        "color": "color.border.subtle"
+      },
+      "divider": {
+        "color": "color.border.divider",
+        "widthPt": 0.5,
+        "insetStartPt": 52
+      },
+      "row": {
+        "minHeightPt": 56,
+        "paddingPt": {
+          "horizontal": 16,
+          "vertical": 14
+        },
+        "leadingIcon": {
+          "sizePt": 20,
+          "color": "color.text.secondary"
+        },
+        "gapPt": 16,
+        "labelStyle": "typography.styles.body",
+        "labelColor": "color.text.primary",
+        "trailing": {
+          "icon": "chevronRight or externalLink",
+          "sizePt": 16,
+          "color": "color.text.subtle"
+        },
+        "pressed": {
+          "background": "color.surface.pressed"
+        },
+        "variants": {
+          "destructive": {
+            "labelColor": "color.status.danger",
+            "iconColor": "color.status.danger",
+            "trailing": "none"
+          }
+        }
+      },
+      "rule": "Group destructive rows (Sign Out, Delete Account) in their own SettingsGroup below the others, with a 24pt gap."
+    },
+    "Divider": {
+      "color": "color.border.divider",
+      "thicknessPt": 0.5
+    },
+    "OrDivider": {
+      "layout": "rule | OR | rule",
+      "rule": {
+        "color": "color.border.divider",
+        "thicknessPt": 1
+      },
+      "labelStyle": "typography.styles.badge",
+      "labelColor": "color.text.muted",
+      "gapPt": 16,
+      "verticalPaddingPt": 8
+    },
+    "EmptyState": {
+      "radius": "radius.lg",
+      "background": "color.surface.glass",
+      "border": {
+        "width": 1,
+        "color": "color.border.subtle",
+        "style": "dashed 6/6"
+      },
+      "paddingPt": {
+        "vertical": 40,
+        "horizontal": 20
+      },
+      "iconDisc": {
+        "sizePt": 56,
+        "background": "color.accent.tint",
+        "iconColor": "color.accent.base",
+        "iconSizePt": 26
+      },
+      "titleStyle": "typography.styles.cardTitle",
+      "titleColor": "color.text.primary",
+      "bodyStyle": "typography.styles.bodySmall",
+      "bodyColor": "color.text.muted",
+      "action": {
+        "component": "PillButton",
+        "variant": "primary",
+        "size": "large"
+      },
+      "gapPt": 16,
+      "alignment": "center"
+    },
+    "ErrorState": {
+      "base": "EmptyState",
+      "border": {
+        "style": "solid",
+        "color": "color.status.dangerBorder"
+      },
+      "iconDisc": {
+        "background": "color.status.dangerTint",
+        "icon": "error",
+        "iconColor": "color.status.danger"
+      },
+      "title": "Something went wrong",
+      "action": {
+        "component": "PillButton",
+        "variant": "neutral",
+        "label": "RETRY",
+        "icon": "refresh"
+      }
+    },
+    "LoadingState": {
+      "indicator": {
+        "type": "circular",
+        "sizePt": 32,
+        "strokePt": 3,
+        "color": "color.accent.base",
+        "trackColor": "color.border.subtle"
+      },
+      "verticalPaddingPt": 40,
+      "skeleton": {
+        "_usage": "Preferred for lists and cards whose layout is known (Home, History, Profile)",
+        "color": "color.surface.glassSubtle",
+        "shimmer": "rgba(255,255,255,0.06), 1200ms sweep; static when reduce motion is on",
+        "radius": "same as the component it stands in for"
+      }
+    },
+    "InlineError": {
+      "style": "typography.styles.bodySmall",
+      "color": "color.status.danger",
+      "leadingIcon": {
+        "name": "error",
+        "sizePt": 16
+      },
+      "alignment": "center under the field or above the action it belongs to",
+      "rule": "Must include text, never colour alone."
+    },
+    "BottomSheet": {
+      "uses": "layout.sheet",
+      "titleRow": {
+        "icon": {
+          "sizePt": 28,
+          "color": "color.accent.base"
+        },
+        "titleStyle": "typography.styles.titleLarge",
+        "titleColor": "color.text.primary",
+        "gapPt": 12
+      },
+      "descriptionStyle": "typography.styles.body",
+      "descriptionColor": "color.text.secondary",
+      "skipPartiallyExpanded": true
+    },
+    "ConfirmDialog": {
+      "uses": "layout.dialog",
+      "titleStyle": "typography.styles.titleLarge",
+      "titleColor": "color.text.primary",
+      "bodyStyle": "typography.styles.body",
+      "bodyColor": "color.text.secondary",
+      "paragraphGapPt": 10,
+      "errorStyle": "InlineError",
+      "actions": {
+        "alignment": "end",
+        "order": "dismiss then confirm",
+        "components": "TextButton",
+        "gapPt": 8
+      },
+      "variants": {
+        "standard": {
+          "confirm": "TextButton.confirm"
+        },
+        "destructive": {
+          "confirm": "TextButton.destructive",
+          "optionalIconDisc": {
+            "background": "color.status.dangerTint",
+            "icon": "warning",
+            "iconColor": "color.status.danger"
+          }
+        },
+        "acknowledge": {
+          "actions": "single TextButton.confirm 'OK'"
+        }
+      },
+      "busyLabel": "Confirm label becomes '<VERB>ING…' and both actions disable"
+    },
+    "QrDialog": {
+      "uses": "layout.dialog",
+      "radius": "radius.xl",
+      "paddingPt": 28,
+      "gapPt": 24,
+      "title": {
+        "text": "JOIN CONVOTRACK",
+        "style": "typography.styles.headerTitle",
+        "color": "color.text.primary"
+      },
+      "codeFrame": {
+        "sizePt": 240,
+        "radius": "radius.md",
+        "background": "color.surface.codeWhite",
+        "qrSizePt": 208
+      },
+      "codeLabel": {
+        "text": "INVITE CODE",
+        "style": "typography.styles.fieldLabel",
+        "color": "color.text.muted"
+      },
+      "code": {
+        "style": "typography.styles.codeDisplay",
+        "color": "color.accent.base"
+      },
+      "closeButton": "IconButton (compact), top-end"
+    },
+    "QrScanTarget": {
+      "_usage": "Join sheet tap-to-scan box",
+      "maxWidthPt": 260,
+      "aspectRatio": 1,
+      "radius": "radius.lg",
+      "background": "color.surface.glass",
+      "border": {
+        "width": 1,
+        "color": "color.border.default"
+      },
+      "brackets": {
+        "color": "color.accent.base",
+        "strokePt": 4,
+        "lengthPt": 32,
+        "insetPt": 16,
+        "cap": "round"
+      },
+      "content": {
+        "iconDisc": {
+          "sizePt": 64,
+          "background": "color.accent.tint",
+          "icon": "camera",
+          "iconColor": "color.accent.base",
+          "iconSizePt": 30
+        },
+        "label": {
+          "text": "TAP TO SCAN",
+          "style": "typography.styles.buttonPill",
+          "color": "color.accent.base"
+        }
+      },
+      "pressed": {
+        "scale": 0.98,
+        "background": "color.surface.raised"
+      }
+    },
+    "DotGridTexture": {
+      "_usage": "Decorative background inside the join hero",
+      "dot": {
+        "radiusPt": 1.2,
+        "color": "rgba(255,255,255,0.05)"
+      },
+      "stepPt": 24
+    },
+    "TurnInstructionCard": {
+      "radius": "radius.lg",
+      "background": "color.surface.glassStrong",
+      "blur": "blur.glass",
+      "border": {
+        "width": 1,
+        "color": "color.accent.border"
+      },
+      "shadow": "shadow.floating",
+      "paddingPt": {
+        "horizontal": 12,
+        "vertical": 10
+      },
+      "gapPt": 12,
+      "maneuverTile": {
+        "sizePt": 56,
+        "landscapeSizePt": 48,
+        "radius": "radius.md",
+        "background": "gradient.primaryAction",
+        "iconColor": "color.text.onAccent",
+        "iconSizePt": 28,
+        "landscapeIconSizePt": 24
+      },
+      "distance": {
+        "style": "typography.styles.hudTurnDistance",
+        "color": "color.accent.base"
+      },
+      "instruction": {
+        "style": "typography.styles.hudTurnInstruction",
+        "color": "color.text.primary",
+        "fallback": "Follow route"
+      }
+    },
+    "LeaderboardStrip": {
+      "layout": "horizontal LazyRow of LeaderboardCard | LiveRiderCountPill",
+      "gapPt": 10,
+      "compactGapPt": 6,
+      "autoScrollToSelected": true
+    },
+    "LeaderboardCard": {
+      "radius": "radius.sm",
+      "background": "color.surface.glassStrong",
+      "border": {
+        "width": 1,
+        "color": "color.border.default"
+      },
+      "paddingPt": {
+        "horizontal": 10,
+        "vertical": 8,
+        "compactVertical": 6
+      },
+      "gapPt": 8,
+      "avatar": {
+        "size": "avatarSize.xs",
+        "offlineDot": {
+          "sizePt": 8,
+          "color": "color.presence.offline"
+        }
+      },
+      "firstNameStyle": "typography.styles.bodySmall (700, 12pt)",
+      "lastNameStyle": "typography.styles.helper",
+      "lastNameColor": "color.text.muted",
+      "lastNameHiddenWhenCompact": true,
+      "youTag": {
+        "text": "YOU",
+        "style": "typography.styles.badge (8pt)",
+        "background": "color.accent.base",
+        "textColor": "color.text.onAccent",
+        "radius": "radius.pill",
+        "paddingPt": {
+          "horizontal": 5,
+          "vertical": 1
+        }
+      },
+      "states": {
+        "highlighted": {
+          "_when": "rank 1, selected, or me",
+          "background": "color.accent.tint",
+          "border": "color.accent.border",
+          "borderWidth": 1.5,
+          "avatarRing": "color.accent.base"
+        },
+        "offline": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "LiveRiderCountPill": {
+      "base": "GlassPill",
+      "content": "LiveIndicator dot + count",
+      "countStyle": "typography.styles.dataMono (12pt, 700)",
+      "countColor": "color.accent.base",
+      "emptyCount": "--"
+    },
+    "NavBottomBar": {
+      "background": "color.surface.glassStrong",
+      "blur": "blur.bottomBar",
+      "topBorder": {
+        "width": "borderWidth.hairline",
+        "color": "color.border.divider"
+      },
+      "paddingPt": {
+        "horizontal": 20,
+        "vertical": 12
+      },
+      "bottomInsetAware": true,
+      "layout": "BarStat | BarDivider | BarStat | BarDivider | BarStat | (spacer) | SquareIconButton regroup | SquareIconButton.danger end",
+      "stats": [
+        "SPEED (KM/H)",
+        "ETA",
+        "DIST (KM)"
+      ],
+      "unitsShownFromWidthPt": 430,
+      "itemGapPt": {
+        "narrow": 8,
+        "wide": 12,
+        "wideFromWidthPt": 400
+      }
+    },
+    "BarStat": {
+      "labelStyle": "typography.styles.hudStatLabel",
+      "labelColor": "color.text.muted",
+      "valueStyle": "typography.styles.hudStatValue",
+      "valueColor": "color.text.primary",
+      "unitStyle": "typography.styles.hudStatLabel",
+      "unitColor": "color.text.muted",
+      "gapPt": 2,
+      "emptyValue": "--"
+    },
+    "BarDivider": {
+      "widthPt": 1,
+      "heightPt": 30,
+      "landscapeHeightPt": 26,
+      "color": "color.border.divider"
+    },
+    "NavigationPreviewBar": {
+      "_usage": "Before guidance starts",
+      "background": "color.surface.glassStrong",
+      "topBorder": {
+        "width": "borderWidth.hairline",
+        "color": "color.border.divider"
+      },
+      "radius": {
+        "top": "radius.xl"
+      },
+      "paddingPt": {
+        "horizontal": 20,
+        "top": 18,
+        "bottom": 24
+      },
+      "destination": {
+        "eyebrow": {
+          "text": "DESTINATION",
+          "style": "typography.styles.fieldLabel",
+          "color": "color.text.muted"
+        },
+        "name": {
+          "style": "typography.styles.cardTitle",
+          "color": "color.text.primary",
+          "maxLines": 1
+        },
+        "distance": {
+          "style": "typography.styles.bodySmall",
+          "color": "color.text.muted",
+          "loading": "Calculating route…"
+        }
+      },
+      "eta": {
+        "valueStyle": "typography.styles.hudEta",
+        "labelStyle": "typography.styles.hudStatLabel",
+        "label": "ETA",
+        "alignment": "end"
+      },
+      "action": {
+        "component": "PrimaryButton",
+        "label": "START NAVIGATION",
+        "icon": "navigation",
+        "topMarginPt": 16
+      }
+    },
+    "DestinationPill": {
+      "heightPt": 30,
+      "paddingHorizontalPt": 12,
+      "radius": "radius.pill",
+      "background": "color.surface.glassPill",
+      "blur": 16,
+      "border": "rgba(255,255,255,0.10)",
+      "leading": {
+        "icon": "location_on (filled)",
+        "color": "color.accent.base",
+        "sizePt": 18
+      },
+      "text": {
+        "style": "typography.styles.bodyStrong (500)",
+        "color": "color.text.primary"
+      },
+      "trailing": "chevron_right, text.secondary"
+    },
+    "Banner": {
+      "_usage": "Transient HUD alerts, stacked 8pt apart under the leaderboard",
+      "radius": "radius.md",
+      "paddingPt": {
+        "horizontal": 14,
+        "vertical": 12
+      },
+      "borderWidth": 1.5,
+      "blur": "blur.glass",
+      "layout": "icon disc (36pt, radius.sm) | eyebrow + message | optional actions",
+      "eyebrowStyle": "typography.styles.badge",
+      "messageStyle": "typography.styles.bodySmall (600)",
+      "messageColor": "color.text.primary",
+      "detailStyle": "typography.styles.helper",
+      "detailColor": "color.text.secondary",
+      "entry": "Slide down + fade, motion.emphasizedMs. Instant when reduce motion is on.",
+      "variants": {
+        "connection": {
+          "eyebrow": "RECONNECTING…",
+          "tone": "warning",
+          "background": "color.status.warningTint",
+          "border": "rgba(255,207,112,0.40)",
+          "accent": "color.status.warning",
+          "leading": "progress indicator 14pt",
+          "layout": "single line, centred"
+        },
+        "emergency": {
+          "eyebrow": "EMERGENCY",
+          "tone": "danger",
+          "background": "color.surface.dangerContainer",
+          "border": "color.status.danger",
+          "accent": "color.status.danger",
+          "icon": "warning",
+          "message": "{name} needs help — head to their location",
+          "dismiss": "Compact IconButton (28pt) for the reporter or the leader only",
+          "haptic": "interaction.haptics.destructive"
+        },
+        "groupSplit": {
+          "eyebrow": "GROUP SPLIT",
+          "tone": "danger",
+          "background": "color.status.dangerTint",
+          "border": "color.status.dangerBorder",
+          "accent": "color.status.danger",
+          "icon": "warning",
+          "message": "Riders are {n} m apart",
+          "actions": [
+            "PillButton.primary REGROUP",
+            "TextButton.dismiss DISMISS"
+          ]
+        },
+        "regroupCalled": {
+          "eyebrow": "REGROUP CALLED",
+          "tone": "category",
+          "background": "category colour at 10%",
+          "border": "category colour at 50%",
+          "accent": "category colour",
+          "icon": "regroup",
+          "message": "Head to the {reason}"
+        },
+        "regroupResolved": {
+          "eyebrow": "REGROUP COMPLETE",
+          "tone": "success",
+          "background": "color.status.successTint",
+          "border": "color.status.successBorder",
+          "accent": "color.status.success",
+          "icon": "checkCircle",
+          "message": "Everyone arrived"
+        }
+      }
+    },
+    "OffRouteChip": {
+      "radius": "radius.pill",
+      "background": "color.surface.dangerContainer",
+      "border": {
+        "width": 1,
+        "color": "color.status.dangerBorder"
+      },
+      "paddingPt": {
+        "horizontal": 10,
+        "vertical": 5
+      },
+      "icon": {
+        "name": "warning",
+        "sizePt": 12,
+        "color": "color.status.danger"
+      },
+      "label": {
+        "text": "OFF ROUTE",
+        "style": "typography.styles.badge",
+        "color": "color.status.danger"
+      }
+    },
+    "RegroupArrivalControl": {
+      "notArrived": {
+        "component": "PillButton",
+        "variant": "primary",
+        "size": "large",
+        "icon": "checkCircle",
+        "label": "MARK AS ARRIVED"
+      },
+      "arrived": {
+        "component": "PillButton",
+        "variant": "neutral",
+        "icon": "clock",
+        "label": "WAITING FOR OTHERS",
+        "interactive": false
+      },
+      "placement": "centred under the banners"
+    },
+    "ResumePill": {
+      "_usage": "Active ride card",
+      "heightPt": 34,
+      "paddingHorizontalPt": 16,
+      "radius": "radius.pill",
+      "background": "color.accent.base",
+      "textColor": "color.text.onAccent",
+      "icon": "play_arrow (filled)",
+      "labelStyle": "typography.styles.buttonPill",
+      "shadow": "shadow.accentGlow"
+    },
+    "EdgeChip": {
+      "_usage": "Off-screen rider indicator at the map edge",
+      "cardless": true,
+      "avatar": {
+        "size": "avatarSize.sm",
+        "ring": {
+          "color": "color.map.edgeChipRing",
+          "widthPt": 2
+        }
+      },
+      "distance": {
+        "style": "typography.styles.dataMono",
+        "color": "color.text.primary",
+        "shadow": "shadow.textOnPhoto"
+      },
+      "gapPt": 3,
+      "offlineOpacity": 0.55,
+      "cluster": {
+        "content": "rider count in the avatar circle",
+        "countStyle": "typography.styles.dataMono (15pt)"
+      },
+      "fanStepPt": 46
+    },
+    "SplashRouteLine": {
+      "path": "M10,80 Q50,10 120,50 T250,20 T390,70 (viewBox 0 -20 400 120)",
+      "track": {
+        "color": "color.border.subtle",
+        "widthPt": 4,
+        "cap": "round"
+      },
+      "trace": {
+        "color": "color.accent.base",
+        "widthPt": 4,
+        "cap": "round",
+        "glow": "shadow.accentGlow",
+        "animation": "motion.ambient.splashRouteTrace"
+      },
+      "maxWidthPt": 360,
+      "heightPt": 120
+    },
+    "FloatingButton": {
+      "_usage": "Every circular control that sits on a photo or map: back, edit, more, connection, recenter",
+      "sizePt": 44,
+      "shape": "circle",
+      "background": "color.surface.glassOnPhoto",
+      "blur": 16,
+      "border": {
+        "width": 1,
+        "color": "rgba(255,255,255,0.10)"
+      },
+      "iconSizePt": 22,
+      "iconColor": "color.text.primary",
+      "variants": {
+        "accentIcon": {
+          "iconColor": "color.accent.base",
+          "_usage": "connection antenna"
+        },
+        "onDark": {
+          "background": "color.surface.card",
+          "border": "color.border.default",
+          "_usage": "off-photo, e.g. Edit Ride back"
+        }
+      },
+      "pressed": {
+        "scale": 0.95
+      }
+    },
+    "LogoBadge": {
+      "sizePt": 44,
+      "content": "App logo (black disc with the accent S-road mark)",
+      "placement": "top-start on Home"
+    },
+    "HomeHero": {
+      "layout": "eyebrow → heroTitle (two lines) → heroSubtitle, left-aligned, 20pt inset",
+      "eyebrow": "RIDE TOGETHER",
+      "title": "Discover new roads",
+      "subtitle": "Plan, join and track rides with your tribe.",
+      "gaps": {
+        "eyebrowToTitle": 6,
+        "titleToSubtitle": 10,
+        "subtitleToActions": 22
+      },
+      "background": "layout.heroPhoto.home"
+    },
+    "ActionButtonPair": {
+      "_usage": "Home: CREATE RIDE / JOIN RIDE",
+      "layout": "two equal columns, 10pt gap",
+      "heightPt": 46,
+      "radius": "radius.md",
+      "labelStyle": "typography.styles.buttonWide",
+      "create": {
+        "background": "color.accent.base",
+        "textColor": "color.text.onAccent",
+        "leading": {
+          "type": "disc",
+          "sizePt": 24,
+          "background": "color.text.onAccent",
+          "icon": "add",
+          "iconColor": "color.accent.base"
+        },
+        "shadow": "shadow.accentGlow"
+      },
+      "join": {
+        "background": "rgba(255,255,255,0.07)",
+        "border": "rgba(255,255,255,0.14)",
+        "blur": 16,
+        "textColor": "color.text.primary",
+        "leading": {
+          "icon": "person_add",
+          "sizePt": 22,
+          "color": "color.text.primary"
+        }
+      }
+    },
+    "TonalPill": {
+      "_usage": "RESUME on a recent-ride row",
+      "heightPt": 26,
+      "paddingHorizontalPt": 14,
+      "radius": "radius.pill",
+      "background": "color.accent.tonal",
+      "textColor": "color.accent.base",
+      "labelStyle": "typography.styles.buttonPill",
+      "_sampled": "bg #2E371B, text accent"
+    },
+    "AvatarStack": {
+      "avatarSizePt": 28,
+      "overlapPt": 8,
+      "ring": {
+        "width": 2,
+        "color": "color.background.base"
+      },
+      "maxShown": 2,
+      "overflow": {
+        "text": "+N",
+        "background": "color.surface.glassOnPhoto",
+        "style": "typography.styles.helper (600)"
+      }
+    },
+    "MetaChip": {
+      "_usage": "Distance and duration on the active ride card",
+      "heightPt": 24,
+      "paddingHorizontalPt": 10,
+      "radius": "radius.pill",
+      "background": "rgba(10,16,22,0.55)",
+      "border": "rgba(255,255,255,0.16)",
+      "icon": {
+        "sizePt": 15,
+        "color": "color.text.primary"
+      },
+      "text": {
+        "style": "typography.styles.dataMono",
+        "color": "color.text.primary"
+      }
+    },
+    "BottomNavFloating": {
+      "insetPt": 20,
+      "heightPt": 60,
+      "radius": "radius.nav",
+      "background": "color.surface.nav",
+      "blur": 22,
+      "border": "rgba(255,255,255,0.08)",
+      "items": [
+        {
+          "id": "history",
+          "icon": "flag",
+          "label": "History",
+          "_was": "FLAGGED tab"
+        },
+        {
+          "id": "home",
+          "icon": "near_me",
+          "label": "Home",
+          "_was": "TRACK tab",
+          "default": true
+        },
+        {
+          "id": "profile",
+          "icon": "person",
+          "label": "Profile"
+        }
+      ],
+      "item": {
+        "iconSizePt": 24,
+        "labelStyle": "typography.styles.navLabel",
+        "gapPt": 3,
+        "inactive": {
+          "iconColor": "color.text.muted",
+          "labelColor": "color.text.muted",
+          "showsLabel": true
+        },
+        "active": {
+          "container": {
+            "sizePt": 50,
+            "shape": "circle",
+            "background": "color.accent.base",
+            "shadow": "shadow.accentGlow"
+          },
+          "iconColor": "color.text.onAccent",
+          "iconFilled": true,
+          "showsLabel": false,
+          "_why": "The reference's raised centre circle becomes the active-tab treatment, so Home (the default, middle tab) looks exactly like the reference."
+        },
+        "transition": "The circle moves between tabs with motion.spring"
+      },
+      "visibleOn": [
+        "History",
+        "Home",
+        "Profile",
+        "Lobby"
+      ],
+      "hiddenOn": [
+        "Edit/Create Ride",
+        "Navigation (full-screen map HUD)",
+        "Summary",
+        "Membership",
+        "Auth"
+      ],
+      "inRide": "Stays visible in the lobby, below the sticky action (user decision). The lobby is outside the three tabs, so no tab shows as active there."
+    },
+    "HeroTitleBlock": {
+      "_usage": "Lobby: over the destination photo",
+      "eyebrow": "RIDE",
+      "title": "heroTitle, white, max 2 lines",
+      "liveLine": {
+        "dot": "8pt accent",
+        "text": "appVocabulary.rideStatusLabel in title case: 'In lobby' / 'Riding'",
+        "chevron": false
+      },
+      "placeLine": {
+        "icon": "location_on, text.secondary, 18pt",
+        "text": "body, text.secondary"
+      },
+      "gaps": {
+        "eyebrowToTitle": 2,
+        "titleToLive": 8,
+        "liveToPlace": 8
+      }
+    },
+    "DetailsList": {
+      "_usage": "Lobby → RIDE DETAILS",
+      "radius": "radius.md",
+      "background": "color.surface.cardQuiet",
+      "border": {
+        "width": 1,
+        "color": "color.border.hairline"
+      },
+      "row": {
+        "minHeightPt": 44,
+        "paddingPt": {
+          "horizontal": 14
+        },
+        "icon": {
+          "sizePt": 20,
+          "color": "color.text.secondary"
+        },
+        "label": {
+          "style": "typography.styles.detailLabel",
+          "widthPt": 108
+        },
+        "value": "typography.styles.detailValue",
+        "divider": {
+          "color": "color.border.divider",
+          "insetStartPt": 44
+        }
+      },
+      "rows": [
+        "Start point",
+        "Destination (trailing SquareIconButton 'navigation' to open in maps)",
+        "Distance",
+        "Estimated time"
+      ]
+    }
+  },
+  "map": {
+    "_note": "Google Maps JSON style (res/raw/map_style_dark.json) rewritten in this palette. Replaces the neutral grey style.",
+    "styleRules": [
+      {
+        "featureType": "all",
+        "elementType": "geometry",
+        "color": "color.map.background"
+      },
+      {
+        "featureType": "all",
+        "elementType": "labels.text.fill",
+        "color": "color.map.label"
+      },
+      {
+        "featureType": "all",
+        "elementType": "labels.text.stroke",
+        "color": "color.map.labelHalo"
+      },
+      {
+        "featureType": "poi",
+        "elementType": "labels",
+        "visibility": "off"
+      },
+      {
+        "featureType": "poi.park",
+        "elementType": "geometry",
+        "color": "color.map.park"
+      },
+      {
+        "featureType": "landscape.natural",
+        "elementType": "geometry",
+        "color": "color.map.park",
+        "_note": "muted green patches as in the reference"
+      },
+      {
+        "featureType": "road",
+        "elementType": "geometry",
+        "color": "color.map.roadMinor"
+      },
+      {
+        "featureType": "road",
+        "elementType": "geometry.stroke",
+        "color": "color.map.roadStroke"
+      },
+      {
+        "featureType": "road.highway",
+        "elementType": "geometry",
+        "color": "color.map.roadMajor"
+      },
+      {
+        "featureType": "road.highway",
+        "elementType": "labels.icon",
+        "visibility": "on",
+        "_note": "route shields stay, as in the reference (44)"
+      },
+      {
+        "featureType": "transit",
+        "visibility": "off"
+      },
+      {
+        "featureType": "water",
+        "elementType": "geometry",
+        "color": "color.map.water"
+      }
+    ],
+    "routeLayers": {
+      "_order": "Bottom to top. Widths are in screen pixels as Google Maps takes them; 'Pt' widths are converted with the display density.",
+      "alternatives": {
+        "color": "color.map.routeAlternative",
+        "widthPt": 6,
+        "cap": "round",
+        "join": "round",
+        "z": 0,
+        "tappable": true
+      },
+      "planned": {
+        "color": "color.map.routePlanned",
+        "widthPt": 4,
+        "cap": "round",
+        "join": "round",
+        "z": 1,
+        "_usage": "The whole route, under the active leg during navigation"
+      },
+      "connector": {
+        "color": "color.map.routeConnector",
+        "widthPt": 2,
+        "pattern": "dash 6 / gap 6",
+        "z": 1.2,
+        "_usage": "From the rider to the route when they are off it"
+      },
+      "casing": {
+        "_change": "Replaced by a glow",
+        "color": "color.map.routeGlow",
+        "widthPt": {
+          "preview": 14,
+          "navigation": 20
+        },
+        "z": 2
+      },
+      "core": {
+        "color": "color.map.routeCore",
+        "widthPt": {
+          "preview": 6,
+          "navigation": 9
+        },
+        "cap": "round",
+        "join": "round",
+        "z": 3
+      },
+      "endCap": {
+        "_usage": "Round accent dot at the end of the active leg",
+        "color": "color.map.routeCore"
+      }
+    },
+    "markers": {
+      "_note": "Marker bitmaps are drawn once per density and do not follow font scale (typography.styles.mapMarkerLabel).",
+      "userPuck": {
+        "shape": "rounded chevron, points along heading",
+        "fill": "color.accent.base",
+        "stroke": {
+          "color": "color.background.base",
+          "widthPt": 2
+        },
+        "glow": "shadow.accentGlow",
+        "flat": true,
+        "z": 10
+      },
+      "rider": {
+        "circlePt": {
+          "default": 32,
+          "selected": 40
+        },
+        "fill": "avatar photo, else color.surface.avatar with initial",
+        "initialColor": {
+          "me": "color.accent.base",
+          "others": "color.text.primary"
+        },
+        "ring": {
+          "color": "color.map.riderRing",
+          "widthPt": {
+            "default": 1.5,
+            "selected": 2.5
+          }
+        },
+        "nameLabel": {
+          "content": "FIRST NAME",
+          "style": "typography.styles.mapMarkerLabel",
+          "color": "color.text.primary",
+          "plate": {
+            "color": "color.map.markerPlate",
+            "radiusPt": 6,
+            "paddingPt": {
+              "horizontal": 4,
+              "vertical": 2
+            }
+          },
+          "placement": "above the circle"
+        },
+        "distanceLabel": {
+          "style": "typography.styles.mapMarkerLabel (9pt)",
+          "color": "color.accent.base",
+          "placement": "below the circle",
+          "plate": "same as name"
+        },
+        "offlineOpacity": 0.5
+      },
+      "stopPin": {
+        "anatomy": "circle head + 6pt tip pointing at the coordinate + optional label plate under it",
+        "variants": {
+          "start": {
+            "headPt": 36,
+            "fill": "color.surface.raised",
+            "ringColor": "color.map.startMarker",
+            "ringWidthPt": 2.5,
+            "glyph": "startLocation icon",
+            "glyphColor": "color.map.startMarker"
+          },
+          "waypoint": {
+            "headPt": 30,
+            "fill": "color.surface.raised",
+            "ringColor": "color.map.stopMarker",
+            "ringWidthPt": 2.5,
+            "glyph": "dot",
+            "glyphColor": "color.map.stopMarker"
+          },
+          "destination": {
+            "headPt": 44,
+            "fill": "color.map.endMarker",
+            "glyph": "destination icon",
+            "glyphColor": "color.text.onAccent",
+            "glow": "shadow.accentGlow"
+          },
+          "emergency": {
+            "headPt": 40,
+            "fill": "color.map.emergencyMarker",
+            "glyph": "!",
+            "glyphColor": "color.text.onPhoto",
+            "label": "EMERGENCY",
+            "pulseRing": "danger at 40%, 1200ms, off when reduce motion is on"
+          },
+          "regroup": {
+            "headPt": 40,
+            "fill": "category colour",
+            "glyph": "reason icon",
+            "glyphColor": "color.text.onAccent"
+          }
+        },
+        "label": {
+          "style": "typography.styles.mapMarkerLabel",
+          "color": "color.text.primary",
+          "plate": {
+            "color": "color.map.markerPlate",
+            "radiusPt": 8
+          },
+          "maxWidthPt": 112,
+          "maxLines": 2
+        }
+      }
+    },
+    "attribution": "Never cover or fade Google's logo and data attribution, on live maps or on static snapshots."
+  },
+  "screenSpecs": {
+    "splash": {
+      "screenId": "splash",
+      "background": "background.base with gradient.accentAura behind the logo",
+      "sections": [
+        {
+          "id": "logo",
+          "content": "App logo 160pt at 15% from the top, on a breathing accent glow (240pt, blurred 40, motion.ambient.splashGlowBreath)"
+        },
+        {
+          "id": "routeLine",
+          "component": "SplashRouteLine",
+          "placement": "vertically centred"
+        },
+        {
+          "id": "wordmark",
+          "text": "CONVOTRACK",
+          "style": "typography.styles.brandWordmark (48)",
+          "color": "color.accent.base",
+          "placement": "20% from the bottom"
+        },
+        {
+          "id": "tagline",
+          "text": "MULTIPLAYER NAVIGATION",
+          "style": "typography.styles.eyebrow",
+          "color": "color.text.muted",
+          "spacingBeforePt": 8
+        },
+        {
+          "id": "stage",
+          "content": "LiveIndicator dot + cycling stage text (INITIALIZING GPS… / SYNCING SQUAD… / CACHING MAPS… / PREPARING HUD…)",
+          "style": "typography.styles.badge",
+          "color": "color.accent.soft",
+          "spacingBeforePt": 16
+        },
+        {
+          "id": "footer",
+          "text": "EST. 2024 — CONVOTRACK PROTOCOL V4.2",
+          "style": "typography.styles.badge",
+          "color": "color.text.subtle",
+          "placement": "bottom, 16pt above the nav-bar inset"
+        }
+      ],
+      "systemSplash": "Android 12+ system splash and windowBackground use background.base so there is no flash of a different colour before this screen."
+    },
+    "auth": {
+      "screenId": "auth",
+      "background": "assets.heroRoad + gradient.photoFade",
+      "layout": "Two equal halves: brand centred in the top half, sign-in block centred in the bottom half",
+      "sections": [
+        {
+          "id": "brand",
+          "content": [
+            "logo 100pt",
+            "CONVOTRACK in brandWordmark, color.text.primary",
+            "RIDE TOGETHER IN REAL TIME in eyebrow, color.text.muted"
+          ]
+        },
+        {
+          "id": "google",
+          "component": "GoogleSignInButton",
+          "maxWidthPt": 400
+        },
+        {
+          "id": "emailPath",
+          "hiddenOnAndroid": true,
+          "components": [
+            "OrDivider",
+            "TextFieldCard (EMAIL, helper 'We'll email you a 6-digit code')",
+            "SecondaryButton 'Sign in with Email' / 'Create account'",
+            "mode switch: helper text + TextButton.confirm"
+          ]
+        },
+        {
+          "id": "error",
+          "component": "InlineError"
+        },
+        {
+          "id": "footer",
+          "spacingBeforePt": 32,
+          "content": [
+            "TERMS · PRIVACY as TextButton.dismiss links with a 5pt accent-soft dot between them",
+            "StatusPill row: SERVER ONLINE (pulsing success dot), SSL ENCRYPTED (lock icon)"
+          ]
+        }
+      ]
+    },
+    "verifyEmail": {
+      "screenId": "verifyEmail",
+      "header": {
+        "variant": "pushed",
+        "title": "VERIFY EMAIL",
+        "trailing": "none"
+      },
+      "sections": [
+        {
+          "id": "icon",
+          "content": "88pt accent tint disc with the email icon (40pt, accent)"
+        },
+        {
+          "id": "title",
+          "text": "Check your email",
+          "style": "typography.styles.heroTitleCompact",
+          "color": "color.text.primary",
+          "spacingBeforePt": 24
+        },
+        {
+          "id": "body",
+          "text": "Enter the 6-digit code we sent to {email}",
+          "style": "typography.styles.body",
+          "color": "color.text.secondary",
+          "emailStyle": "bodyStrong, text.primary"
+        },
+        {
+          "id": "code",
+          "component": "CodeInput.emailOtp",
+          "spacingBeforePt": 28
+        },
+        {
+          "id": "error",
+          "component": "InlineError"
+        },
+        {
+          "id": "verify",
+          "component": "PrimaryButton",
+          "label": "VERIFY",
+          "loadingLabel": "spinner",
+          "enabledWhen": "6 digits"
+        },
+        {
+          "id": "hint",
+          "text": "Wrong email? Go back to change it.",
+          "style": "typography.styles.helper",
+          "color": "color.text.muted"
+        }
+      ]
+    },
+    "home": {
+      "screenId": "home",
+      "reference": "references.home",
+      "background": "layout.heroPhoto.home over gradient.appBackground",
+      "sections": [
+        {
+          "id": "topButtons",
+          "start": "LogoBadge",
+          "end": "ConnectionStatusButton",
+          "topPt": "status bar + 8"
+        },
+        {
+          "id": "hero",
+          "component": "HomeHero",
+          "spacingBeforePt": 40
+        },
+        {
+          "id": "actions",
+          "component": "ActionButtonPair",
+          "spacingBeforePt": 22
+        },
+        {
+          "id": "activeHeading",
+          "component": "SectionHeading",
+          "text": "ACTIVE RIDE",
+          "trailing": "live: ● IN LOBBY / ● RIDING",
+          "spacingBeforePt": 28,
+          "visibleWhen": "a ride is in progress"
+        },
+        {
+          "id": "activeRide",
+          "component": "ActiveRideCard"
+        },
+        {
+          "id": "recentHeading",
+          "component": "SectionHeading",
+          "text": "RECENT RIDES",
+          "trailing": "action: SEE ALL > (opens History)",
+          "spacingBeforePt": 24
+        },
+        {
+          "id": "recent",
+          "component": "RideRowCard",
+          "gapPt": 8,
+          "max": 5
+        },
+        {
+          "id": "empty",
+          "component": "EmptyState",
+          "visibleWhen": "no rides"
+        },
+        {
+          "id": "nav",
+          "component": "BottomNavFloating",
+          "active": "home"
+        }
+      ]
+    },
+    "history": {
+      "screenId": "history",
+      "entry": "History tab (first tab)",
+      "header": "photo variant: heroTitleCompact 'Ride history' over assets.heroRoad (layout.heroPhoto.editRide), ConnectionStatusButton top-end",
+      "sections": [
+        {
+          "id": "totals",
+          "component": "StatTile",
+          "items": [
+            "DISTANCE · LAST n",
+            "RIDES SHOWN",
+            "AVG SPEED"
+          ]
+        },
+        {
+          "id": "list",
+          "component": "RideRowCard",
+          "gapPt": 8
+        },
+        {
+          "id": "nav",
+          "component": "BottomNavFloating",
+          "active": "history"
+        }
+      ]
+    },
+    "profile": {
+      "screenId": "profile (tab: PROFILE)",
+      "header": {
+        "variant": "tab",
+        "title": "PROFILE"
+      },
+      "sections": [
+        {
+          "id": "identity",
+          "alignment": "center",
+          "content": [
+            "Avatar xxl with an accent highlight ring",
+            "name in titleLarge",
+            "subtitle 'CONVOTRACK PRO · N RIDES' / 'FREE PLAN · N RIDES' in metricLabel, text.muted"
+          ]
+        },
+        {
+          "id": "stats",
+          "component": "StatTile",
+          "columns": 3,
+          "gapPt": 12,
+          "items": [
+            "RIDES",
+            "TOTAL KM",
+            "RIDES LED"
+          ]
+        },
+        {
+          "id": "pro",
+          "component": "PromoBanner",
+          "copy": {
+            "eyebrow": "CONVOTRACK PRO",
+            "free": "Unlimited rides & advanced telemetry",
+            "pro": "Your membership is active"
+          }
+        },
+        {
+          "id": "settings",
+          "component": "SettingsGroup",
+          "rows": [
+            {
+              "icon": "notifications",
+              "label": "Notifications",
+              "trailing": "externalLink"
+            },
+            {
+              "icon": "billing",
+              "label": "Membership & Billing"
+            },
+            {
+              "icon": "privacy",
+              "label": "Privacy Policy",
+              "trailing": "externalLink"
+            },
+            {
+              "icon": "terms",
+              "label": "Terms of Service",
+              "trailing": "externalLink"
+            }
+          ]
+        },
+        {
+          "id": "account",
+          "component": "SettingsGroup",
+          "rows": [
+            {
+              "icon": "signOut",
+              "label": "Sign Out",
+              "variant": "destructive"
+            },
+            {
+              "icon": "deleteAccount",
+              "label": "Delete Account",
+              "variant": "destructive"
+            }
+          ]
+        },
+        {
+          "id": "nav",
+          "component": "BottomNavFloating",
+          "active": "profile"
+        }
+      ],
+      "dialogs": [
+        "deleteAccountDialog"
+      ],
+      "sectionGapPt": 24
+    },
+    "membership": {
+      "screenId": "membership",
+      "background": "gradient.appBackground + gradient.accentAura",
+      "header": {
+        "variant": "overlay",
+        "trailing": "IconButton (compact) close"
+      },
+      "sections": [
+        {
+          "id": "hero",
+          "alignment": "center",
+          "content": [
+            "72pt accent tint disc with the premium icon (32pt, accent)",
+            "ConvoTrack Pro in heroTitleCompact, text.primary",
+            "Your rides. No limits. in body, text.secondary"
+          ]
+        },
+        {
+          "id": "benefits",
+          "component": "BenefitTile",
+          "columns": 2,
+          "gapPt": 10,
+          "items": [
+            {
+              "icon": "riders",
+              "title": "25 RIDERS",
+              "detail": "Fill every seat in the pack"
+            },
+            {
+              "icon": "unlimited",
+              "title": "UNLIMITED",
+              "detail": "No monthly ride cap, ever"
+            },
+            {
+              "icon": "analytics",
+              "title": "ANALYTICS",
+              "detail": "Live stats & sync scores"
+            },
+            {
+              "icon": "archive",
+              "title": "365 DAYS",
+              "detail": "Full ride history archive"
+            }
+          ]
+        },
+        {
+          "id": "plans",
+          "component": "PlanCard",
+          "gapPt": 8,
+          "loading": "'Loading plans…' in body, text.muted, 96pt tall. Never placeholder prices."
+        },
+        {
+          "id": "error",
+          "component": "InlineError"
+        },
+        {
+          "id": "cta",
+          "component": "PrimaryButton",
+          "label": "GET PRO · {price}/{period}",
+          "enabledWhen": "a plan is loaded and selected"
+        },
+        {
+          "id": "trust",
+          "content": "shield icon (14pt) + 'Secured by Google Play · Cancel anytime'",
+          "style": "typography.styles.helper",
+          "color": "color.text.muted"
+        },
+        {
+          "id": "disclosure",
+          "content": "Auto-renewal disclosure built from Play's reported price and period",
+          "style": "typography.styles.helper",
+          "color": "color.text.muted",
+          "alignment": "center"
+        },
+        {
+          "id": "links",
+          "content": "Restore purchases · Terms · Privacy",
+          "style": "typography.styles.link",
+          "color": "color.text.secondary",
+          "separatorColor": "color.text.subtle"
+        }
+      ],
+      "success": {
+        "content": [
+          "88pt successTint disc with check (44pt, success)",
+          "You're in in heroTitle, color.accent.base",
+          "Welcome to ConvoTrack Pro. in bodyStrong",
+          "Your rides, no limits. in body, text.secondary"
+        ],
+        "action": {
+          "component": "PrimaryButton",
+          "label": "LET'S RIDE",
+          "sticky": true
+        },
+        "entry": "Fade + scale from 0.96, motion.emphasizedMs"
+      }
+    },
+    "joinRideSheet": {
+      "screenId": "joinRide",
+      "container": "BottomSheet",
+      "sections": [
+        {
+          "id": "hero",
+          "heightPt": 150,
+          "radius": "radius.lg",
+          "texture": "DotGridTexture",
+          "states": {
+            "standby": {
+              "background": "color.surface.glass",
+              "border": "color.border.subtle",
+              "chip": "Chip.neutral 'SYSTEM: STANDBY'",
+              "title": "Ready to Connect (title)",
+              "body": "Enter the 6-character code from your Ride Leader (bodySmall, text.muted)",
+              "verifying": "16pt spinner + 'Verifying code…'"
+            },
+            "verified": {
+              "background": "color.accent.tint",
+              "border": "color.accent.border",
+              "borderWidth": 1.5,
+              "chip": "Chip.positive 'CODE VERIFIED'",
+              "title": "ride title (title)",
+              "meta": "leader icon + name · riders icon + {n}/{max} (bodySmall, text.secondary)"
+            }
+          }
+        },
+        {
+          "id": "join",
+          "component": "PrimaryButton",
+          "label": "JOIN RIDE",
+          "visibleWhen": "verified",
+          "placement": "directly under the hero"
+        },
+        {
+          "id": "error",
+          "component": "InlineError"
+        },
+        {
+          "id": "codeHeading",
+          "component": "SectionHeading",
+          "text": "ENTER INVITE CODE",
+          "leadingIcon": "key"
+        },
+        {
+          "id": "code",
+          "component": "CodeInput.inviteCode",
+          "helper": "6-character code shared by the Ride Leader. Case-insensitive."
+        },
+        {
+          "id": "or",
+          "component": "OrDivider"
+        },
+        {
+          "id": "scanHeading",
+          "component": "SectionHeading",
+          "text": "SCAN QR CODE",
+          "leadingIcon": "camera"
+        },
+        {
+          "id": "scan",
+          "component": "QrScanTarget"
+        }
+      ],
+      "sectionGapPt": 24
+    },
+    "qrScanner": {
+      "screenId": "qrScanner",
+      "background": "color.background.pureBlack (camera feed)",
+      "header": {
+        "variant": "overlay",
+        "trailing": "IconButton.onCamera close"
+      },
+      "sections": [
+        {
+          "id": "viewfinder",
+          "content": "Accent corner brackets (QrScanTarget.brackets) framing a 260pt square in the centre; outside it a 56% scrim (surface.scrim)"
+        },
+        {
+          "id": "hint",
+          "text": "Point at a ConvoTrack QR code",
+          "style": "typography.styles.buttonPill",
+          "color": "color.text.onPhoto",
+          "placement": "bottom, 48pt above the nav-bar inset",
+          "background": "GlassPill"
+        }
+      ],
+      "permissionStates": {
+        "request": {
+          "background": "gradient.appBackground",
+          "iconDisc": "64pt accent tint, camera icon",
+          "title": "Camera Access Required (titleLarge)",
+          "body": "ConvoTrack needs camera access to scan QR codes.",
+          "action": "PrimaryButton 'CONTINUE'"
+        },
+        "denied": {
+          "background": "gradient.appBackground + gradient.dangerAura",
+          "iconDisc": "64pt dangerTint, no-camera icon",
+          "title": "Camera Access Denied",
+          "body": "Enable camera access in Settings to scan QR codes.",
+          "action": "SecondaryButton 'CLOSE'"
+        }
+      },
+      "onScan": "haptics.selection, then the brackets flash accent-bright for 120ms"
+    },
+    "createRide": {
+      "screenId": "createRide",
+      "header": {
+        "variant": "pushed",
+        "title": "NEW RIDE",
+        "subtitle": "Plan your route",
+        "trailing": "ConnectionStatusButton"
+      },
+      "sameAs": "editRide (title NEW RIDE), minus delete",
+      "primaryAction": {
+        "label": "CREATE RIDE",
+        "loadingLabel": "spinner",
+        "icon": "turnRoute"
+      }
+    },
+    "editRide": {
+      "screenId": "editRide",
+      "reference": "references.editRide",
+      "screenTitle": "EDIT RIDE",
+      "subtitle": "Plan your route",
+      "background": "layout.heroPhoto.editRide over gradient.appBackground",
+      "sections": [
+        {
+          "id": "header",
+          "variant": "pushed",
+          "start": "FloatingButton.onDark back",
+          "title": "EDIT RIDE",
+          "subtitle": "Plan your route",
+          "end": "ConnectionStatusButton"
+        },
+        {
+          "id": "rideTitle",
+          "label": "RIDE TITLE",
+          "component": "TextFieldCard",
+          "trailingAction": "pencil",
+          "spacingAfterPt": 20
+        },
+        {
+          "id": "route",
+          "label": "ROUTE",
+          "component": "RouteTimeline",
+          "items": [
+            {
+              "type": "start",
+              "label": "START LOCATION",
+              "component": "LocationCard",
+              "icon": "navigation",
+              "example": "Amazon Development Centre, Taurus 1 / Bengaluru, Karnataka"
+            },
+            {
+              "type": "stop",
+              "component": "TextFieldCard (search icon, 'Search stop...')",
+              "remove": "RouteTimeline.removeStopButton"
+            },
+            {
+              "type": "addStop",
+              "component": "AddStopButton"
+            },
+            {
+              "type": "destination",
+              "label": "DESTINATION",
+              "component": "LocationCard",
+              "icon": "sports_score",
+              "example": "Prestige Kew Gardens / Bengaluru, Karnataka"
+            }
+          ],
+          "spacingAfterPt": 24
+        },
+        {
+          "id": "preview",
+          "component": "RouteMapCard",
+          "heading": "SectionHeading 'ROUTE PREVIEW' + outlinedPill 'VIEW ON MAP'"
+        },
+        {
+          "id": "metrics",
+          "component": "MetricCard",
+          "columns": 2,
+          "gapPt": 12,
+          "items": [
+            "EST. TIME (schedule)",
+            "DISTANCE (directions)"
+          ]
+        },
+        {
+          "id": "maxRiders",
+          "component": "Stepper",
+          "_note": "Not in the reference, kept because the screen edits it"
+        },
+        {
+          "id": "save",
+          "component": "PrimaryButton",
+          "label": "SAVE RIDE",
+          "glyph": "directions"
+        },
+        {
+          "id": "delete",
+          "component": "DestructiveButton",
+          "visibleWhen": "leader"
+        }
+      ],
+      "noBottomNav": true
+    },
+    "rideLobby": {
+      "screenId": "rideLobby",
+      "reference": "references.lobbySolo, references.lobbyCrew",
+      "background": "layout.heroPhoto.lobby over gradient.appBackground",
+      "sections": [
+        {
+          "id": "topButtons",
+          "start": "FloatingButton back",
+          "end": "Leader: FloatingButton edit + FloatingButton more_horiz (share, QR, delete). Rider: FloatingButton more_horiz (share, QR, leave).",
+          "topPt": "status bar + 8"
+        },
+        {
+          "id": "title",
+          "component": "HeroTitleBlock",
+          "placement": "lower part of the photo, 20pt inset",
+          "attribution": "GlassPill at the photo's bottom-end"
+        },
+        {
+          "id": "stats",
+          "component": "StatTile",
+          "items": [
+            "DISTANCE (road icon)",
+            "RIDERS (group)",
+            "STATUS (sensors, success)",
+            "CODE (link, mono)"
+          ],
+          "spacingBeforePt": 16
+        },
+        {
+          "id": "rosterHeading",
+          "component": "SectionHeading",
+          "text": "SQUAD ROSTER",
+          "trailing": [
+            "LiveIndicator ● LIVE",
+            "readyTally",
+            "SquareIconButton link (share invite)",
+            "SquareIconButton qr_code_2"
+          ],
+          "spacingBeforePt": 20
+        },
+        {
+          "id": "roster",
+          "component": "RosterRow",
+          "leaderFirst": true
+        },
+        {
+          "id": "details",
+          "component": "DetailsList",
+          "heading": "SectionHeading 'RIDE DETAILS'",
+          "visibleWhen": "always; scrolls under the action"
+        },
+        {
+          "id": "action",
+          "component": "PrimaryButton",
+          "sticky": true,
+          "states": {
+            "active": "RESUME NAVIGATION (directions glyph)",
+            "lobbyLeader": "START RIDE / WAITING FOR RIDERS",
+            "lobbyRider": "SecondaryButton MARK READY → YOU'RE READY"
+          }
+        },
+        {
+          "id": "nav",
+          "component": "BottomNavFloating",
+          "active": "none",
+          "_note": "Visible by user decision; sits under the sticky PrimaryButton"
+        }
+      ],
+      "dataNeeds": [
+        "Rider photos for avatars (initials until then)",
+        "Ride details rows from the ride's waypoints"
+      ]
+    },
+    "removeRiderSheet": {
+      "container": "BottomSheet",
+      "alignment": "center",
+      "content": [
+        "Avatar xl",
+        "name in titleLarge",
+        "role in fieldLabel, text.muted",
+        "InlineError",
+        "DestructiveButton 'REMOVE FROM RIDE' (loading 'REMOVING…')",
+        "SecondaryButton 'CANCEL'"
+      ],
+      "gapPt": 20
+    },
+    "rideNavigation": {
+      "screenId": "rideNavigation",
+      "background": "full-bleed map (map.styleRules). Map padding follows the measured HUD chrome so the camera never frames the route under it.",
+      "states": {
+        "preview": {
+          "top": "IconButton back ('Leave navigation (the ride keeps running)') + DestinationPill, 20pt inset, 8pt below the status bar",
+          "bottom": "NavigationPreviewBar"
+        },
+        "activePortrait": {
+          "top": [
+            "TurnInstructionCard (20pt inset)",
+            "LeaderboardStrip (20pt content inset)",
+            "Banner stack + OffRouteChip + RegroupArrivalControl (20pt inset, 8pt gap)"
+          ],
+          "overMap": [
+            "EdgeChips at the map edges",
+            "ResumePill when free-looking"
+          ],
+          "bottom": "NavBottomBar"
+        },
+        "activeLandscape": {
+          "panel": "layout.landscapeNavigation, top to bottom: TurnInstructionCard (landscape sizes), LeaderboardStrip (compact), banners, spacer, BarStat row, then a row of two SquareIconButtons (regroup, end) that share the width",
+          "overMap": [
+            "EdgeChips",
+            "ResumePill centred on the map area"
+          ]
+        }
+      },
+      "sheets": [
+        "regroupSheet"
+      ],
+      "dialogs": [
+        "endRideDialog",
+        "endRideErrorDialog",
+        "locationDisclosureDialog",
+        "locationDeniedDialog"
+      ],
+      "keepScreenOn": true
+    },
+    "regroupSheet": {
+      "container": "BottomSheet",
+      "sections": [
+        {
+          "id": "title",
+          "icon": "regroup",
+          "text": "Regroup",
+          "style": "BottomSheet.titleRow"
+        },
+        {
+          "id": "description",
+          "text": "Tap a reason to broadcast instantly",
+          "style": "BottomSheet.description",
+          "spacingAfterPt": 24
+        },
+        {
+          "id": "meetPointHeading",
+          "component": "SectionHeading",
+          "text": "MEET POINT"
+        },
+        {
+          "id": "meetPoint",
+          "component": "SegmentedControl",
+          "options": [
+            "Current",
+            "100 m",
+            "500 m"
+          ],
+          "spacingAfterPt": 24
+        },
+        {
+          "id": "reasons",
+          "component": "ReasonTile",
+          "columns": 2,
+          "gapPt": 12,
+          "spacingAfterPt": 24
+        },
+        {
+          "id": "cancel",
+          "component": "GhostButton",
+          "label": "CANCEL REQUEST"
+        }
+      ]
+    },
+    "rideSummary": {
+      "screenId": "rideSummary",
+      "header": {
+        "variant": "pushed",
+        "title": "RIDE SUMMARY",
+        "backAction": "none (DONE leaves)",
+        "trailing": "none"
+      },
+      "sections": [
+        {
+          "id": "hero",
+          "alignment": "center",
+          "content": [
+            "destination photo hero (else assets.heroRoad) with gradient.photoFade",
+            "eyebrow 'RIDE COMPLETE' in color.accent.base",
+            "ride title in heroTitle"
+          ]
+        },
+        {
+          "id": "metrics",
+          "component": "SummaryMetricCard",
+          "grid": "2x2, 12pt gap",
+          "items": [
+            {
+              "label": "TOTAL DISTANCE",
+              "unit": "KM",
+              "variant": "primary"
+            },
+            {
+              "label": "DURATION",
+              "unit": "from RideDuration"
+            },
+            {
+              "label": "AVG SPEED",
+              "unit": "KM/H"
+            },
+            {
+              "label": "MAX GROUP SPLIT",
+              "unit": "KM",
+              "variant": "alert when > 2 km"
+            }
+          ]
+        },
+        {
+          "id": "awards",
+          "component": "GlassCard",
+          "heading": "SectionHeading 'AWARDS'",
+          "rows": "AwardRow",
+          "gapPt": 12
+        },
+        {
+          "id": "share",
+          "component": "SecondaryButton",
+          "label": "SHARE SUMMARY",
+          "icon": "share",
+          "loadingLabel": "GENERATING…"
+        },
+        {
+          "id": "done",
+          "component": "PrimaryButton",
+          "label": "DONE",
+          "sticky": true
+        }
+      ],
+      "states": {
+        "loading": "LoadingState",
+        "error": "ErrorState"
+      }
+    },
+    "shareSummaryCard": {
+      "_note": "A 1080 x 1920 px PNG drawn on a Canvas. Fixed pixel sizes, independent of font scale. Uses the same fonts as the app (bundled Inter / Roboto Mono).",
+      "background": "gradient.appBackground",
+      "layers": [
+        {
+          "id": "mapHero",
+          "rectPx": [
+            0,
+            0,
+            1080,
+            820
+          ],
+          "content": "Static map snapshot styled with map.styleRules",
+          "fade": "gradient.shareCardFade",
+          "attribution": "Google strip at the bottom left stays fully visible"
+        },
+        {
+          "id": "brand",
+          "text": "CONVOTRACK",
+          "positionPx": [
+            72,
+            130
+          ],
+          "sizePx": 46,
+          "weight": 800,
+          "trackingEm": 0.18,
+          "color": "color.accent.base"
+        },
+        {
+          "id": "distance",
+          "positionPx": [
+            72,
+            "contentTop + 40"
+          ],
+          "sizePx": 190,
+          "weight": 700,
+          "color": "color.accent.base",
+          "unit": {
+            "text": "KM",
+            "sizePx": 52,
+            "font": "mono",
+            "color": "color.text.muted"
+          }
+        },
+        {
+          "id": "title",
+          "positionPx": [
+            72,
+            "contentTop + 140"
+          ],
+          "sizePx": 62,
+          "weight": 700,
+          "color": "color.text.primary",
+          "transform": "uppercase",
+          "ellipsize": true
+        },
+        {
+          "id": "meta",
+          "content": "RIDE COMPLETED · {date} · {n} RIDERS",
+          "sizePx": 30,
+          "font": "mono",
+          "color": "color.text.muted"
+        },
+        {
+          "id": "metrics",
+          "columns": 3,
+          "items": [
+            "DURATION",
+            "AVG SPEED (KM/H)",
+            "MAX SPLIT (KM)"
+          ],
+          "labelSizePx": 30,
+          "valueSizePx": 76,
+          "valueMinSizePx": 34,
+          "valueColor": "color.text.primary",
+          "labelColor": "color.text.muted"
+        },
+        {
+          "id": "awards",
+          "max": 3,
+          "nameSizePx": 40,
+          "titleSizePx": 30,
+          "titleColor": "color.accent.base",
+          "rowStepPx": 64
+        },
+        {
+          "id": "qr",
+          "sizePx": 220,
+          "positionPx": "bottom-right, 72 inset",
+          "frame": "color.surface.codeWhite, radius 20, 16px padding",
+          "label": "SCAN TO / DOWNLOAD, mono 28px, text.muted"
+        }
+      ],
+      "contentTopPx": 920,
+      "marginPx": 72
+    },
+    "dialogs": {
+      "_component": "ConfirmDialog. Copy stays exactly as in the app today.",
+      "locationDisclosureDialog": {
+        "variant": "standard",
+        "title": "Sharing your location",
+        "paragraphs": 3,
+        "confirm": "SHARE MY LOCATION",
+        "dismiss": "NOT NOW",
+        "rule": "Declining must look like a real option: the dismiss action has the same size and weight as confirm."
+      },
+      "locationDeniedDialog": {
+        "variant": "standard",
+        "title": "You're riding dark",
+        "confirm": "OPEN SETTINGS",
+        "dismiss": "CARRY ON"
+      },
+      "deleteAccountDialog": {
+        "variant": "destructive",
+        "title": "Delete your account?",
+        "paragraphs": 2,
+        "confirm": "DELETE / DELETING…",
+        "dismiss": "CANCEL",
+        "showsInlineError": true
+      },
+      "deleteRideDialog": {
+        "variant": "destructive",
+        "title": "Delete this ride?",
+        "body": "This permanently deletes the ride for everyone. This can't be undone.",
+        "confirm": "DELETE RIDE",
+        "dismiss": "CANCEL"
+      },
+      "leaveRideDialog": {
+        "variant": "destructive",
+        "title": "Leave this ride?",
+        "body": "You'll stop sharing your location and drop off the roster. You can re-join later with the invite code.",
+        "confirm": "LEAVE RIDE",
+        "dismiss": "CANCEL"
+      },
+      "leaveRideErrorDialog": {
+        "variant": "acknowledge",
+        "title": "Couldn't Leave Ride"
+      },
+      "removedFromRideDialog": {
+        "variant": "acknowledge",
+        "title": "Removed From Ride",
+        "body": "The ride leader removed you from this ride."
+      },
+      "rideCancelledDialog": {
+        "variant": "acknowledge",
+        "title": "Ride Cancelled",
+        "body": "The ride leader cancelled this ride."
+      },
+      "endRideDialog": {
+        "variant": "destructive",
+        "title": "Leave navigation or end the ride?",
+        "actions": [
+          "TextButton.confirm 'EXIT NAVIGATION'",
+          "TextButton.destructive 'END RIDE'"
+        ]
+      },
+      "endRideErrorDialog": {
+        "variant": "acknowledge",
+        "title": "Couldn't End Ride"
+      }
+    }
+  },
+  "iconography": {
+    "style": "SF Symbols on iOS; Material Symbols Rounded (outlined, weight 500, grade 0, optical size 24) on Android, giving one consistent rounded outline set",
+    "strokeWeight": "medium",
+    "defaultSizePt": 22,
+    "defaultColor": "color.text.secondary",
+    "accentColor": "color.accent.base",
+    "filledWhen": "The icon is in an active or selected state (active tab, selected segment, destination pin)",
+    "mapping": {
+      "back": {
+        "ios": "arrow.left",
+        "android": "arrow_back"
+      },
+      "close": {
+        "ios": "xmark",
+        "android": "close"
+      },
+      "connectionStatus": {
+        "ios": "antenna.radiowaves.left.and.right",
+        "android": "settings_input_antenna"
+      },
+      "edit": {
+        "ios": "pencil",
+        "android": "edit"
+      },
+      "startLocation": {
+        "ios": "location.north.fill",
+        "android": "navigation"
+      },
+      "search": {
+        "ios": "magnifyingglass",
+        "android": "search"
+      },
+      "place": {
+        "ios": "mappin",
+        "android": "location_on"
+      },
+      "remove": {
+        "ios": "xmark",
+        "android": "close"
+      },
+      "removeStop": {
+        "ios": "minus",
+        "android": "remove"
+      },
+      "addStop": {
+        "ios": "plus.circle",
+        "android": "add_circle"
+      },
+      "destination": {
+        "ios": "flag.fill",
+        "android": "flag"
+      },
+      "viewOnMap": {
+        "ios": "arrow.up.right.square",
+        "android": "open_in_new"
+      },
+      "recenter": {
+        "ios": "scope",
+        "android": "my_location"
+      },
+      "estimatedTime": {
+        "ios": "clock",
+        "android": "schedule"
+      },
+      "clock": {
+        "ios": "clock",
+        "android": "schedule"
+      },
+      "distance": {
+        "ios": "point.topleft.down.to.point.bottomright.curvepath",
+        "android": "route"
+      },
+      "saveRide": {
+        "ios": "arrow.turn.up.right",
+        "android": "turn_right"
+      },
+      "turnRoute": {
+        "ios": "arrow.turn.up.right",
+        "android": "turn_right"
+      },
+      "home": {
+        "ios": "location.north.line",
+        "android": "near_me"
+      },
+      "history": {
+        "ios": "flag",
+        "android": "flag"
+      },
+      "profile": {
+        "ios": "person",
+        "android": "person"
+      },
+      "rideFlag": {
+        "ios": "flag",
+        "android": "flag"
+      },
+      "addRide": {
+        "ios": "plus.circle.fill",
+        "android": "add_circle"
+      },
+      "joinRide": {
+        "ios": "person.badge.plus",
+        "android": "person_add"
+      },
+      "chevronRight": {
+        "ios": "chevron.right",
+        "android": "chevron_right"
+      },
+      "externalLink": {
+        "ios": "arrow.up.right",
+        "android": "north_east"
+      },
+      "share": {
+        "ios": "square.and.arrow.up",
+        "android": "share"
+      },
+      "qr": {
+        "ios": "qrcode",
+        "android": "qr_code_2"
+      },
+      "camera": {
+        "ios": "camera",
+        "android": "photo_camera"
+      },
+      "noCamera": {
+        "ios": "camera.badge.ellipsis",
+        "android": "no_photography"
+      },
+      "key": {
+        "ios": "key",
+        "android": "key"
+      },
+      "check": {
+        "ios": "checkmark",
+        "android": "check"
+      },
+      "checkCircle": {
+        "ios": "checkmark.circle.fill",
+        "android": "check_circle"
+      },
+      "circleOutline": {
+        "ios": "circle",
+        "android": "radio_button_unchecked"
+      },
+      "email": {
+        "ios": "envelope.badge",
+        "android": "mark_email_read"
+      },
+      "lock": {
+        "ios": "lock.fill",
+        "android": "lock"
+      },
+      "premium": {
+        "ios": "rosette",
+        "android": "workspace_premium"
+      },
+      "riders": {
+        "ios": "person.3",
+        "android": "groups"
+      },
+      "unlimited": {
+        "ios": "infinity",
+        "android": "all_inclusive"
+      },
+      "analytics": {
+        "ios": "chart.bar",
+        "android": "bar_chart"
+      },
+      "archive": {
+        "ios": "calendar",
+        "android": "calendar_month"
+      },
+      "shield": {
+        "ios": "checkmark.shield",
+        "android": "verified_user"
+      },
+      "notifications": {
+        "ios": "bell",
+        "android": "notifications"
+      },
+      "billing": {
+        "ios": "creditcard",
+        "android": "credit_card"
+      },
+      "privacy": {
+        "ios": "hand.raised",
+        "android": "shield"
+      },
+      "terms": {
+        "ios": "doc.text",
+        "android": "description"
+      },
+      "signOut": {
+        "ios": "rectangle.portrait.and.arrow.right",
+        "android": "logout"
+      },
+      "deleteAccount": {
+        "ios": "trash",
+        "android": "delete_forever"
+      },
+      "trophy": {
+        "ios": "trophy",
+        "android": "emoji_events"
+      },
+      "navigation": {
+        "ios": "location.north.fill",
+        "android": "navigation"
+      },
+      "regroup": {
+        "ios": "person.3.fill",
+        "android": "groups"
+      },
+      "endRide": {
+        "ios": "stop.fill",
+        "android": "stop"
+      },
+      "warning": {
+        "ios": "exclamationmark.triangle.fill",
+        "android": "warning"
+      },
+      "error": {
+        "ios": "exclamationmark.circle",
+        "android": "error"
+      },
+      "refresh": {
+        "ios": "arrow.clockwise",
+        "android": "refresh"
+      },
+      "fuel": {
+        "ios": "fuelpump",
+        "android": "local_gas_station"
+      },
+      "food": {
+        "ios": "fork.knife",
+        "android": "restaurant"
+      },
+      "scenic": {
+        "ios": "camera",
+        "android": "photo_camera"
+      },
+      "minus": {
+        "ios": "minus",
+        "android": "remove"
+      },
+      "plus": {
+        "ios": "plus",
+        "android": "add"
+      },
+      "leader": {
+        "ios": "person.fill",
+        "android": "person"
+      },
+      "maneuvers": {
+        "_note": "From the Routes API 'maneuver' enum",
+        "TURN_LEFT": {
+          "ios": "arrow.turn.up.left",
+          "android": "turn_left"
+        },
+        "TURN_RIGHT": {
+          "ios": "arrow.turn.up.right",
+          "android": "turn_right"
+        },
+        "TURN_SLIGHT_LEFT": {
+          "ios": "arrow.up.left",
+          "android": "turn_slight_left"
+        },
+        "TURN_SLIGHT_RIGHT": {
+          "ios": "arrow.up.right",
+          "android": "turn_slight_right"
+        },
+        "UTURN_LEFT": {
+          "ios": "arrow.uturn.left",
+          "android": "u_turn_left"
+        },
+        "UTURN_RIGHT": {
+          "ios": "arrow.uturn.right",
+          "android": "u_turn_right"
+        },
+        "MERGE": {
+          "ios": "arrow.merge",
+          "android": "merge"
+        },
+        "FORK_LEFT": {
+          "ios": "arrow.up.left",
+          "android": "fork_left"
+        },
+        "FORK_RIGHT": {
+          "ios": "arrow.up.right",
+          "android": "fork_right"
+        },
+        "ROUNDABOUT": {
+          "ios": "arrow.triangle.turn.up.right.circle",
+          "android": "roundabout_right"
+        },
+        "FERRY": {
+          "ios": "ferry",
+          "android": "directions_boat"
+        },
+        "STRAIGHT": {
+          "ios": "arrow.up",
+          "android": "straight"
+        },
+        "ARRIVE": {
+          "ios": "flag.checkered",
+          "android": "sports_score"
+        }
+      }
+    }
+  },
+  "interaction": {
+    "tapTargetMinimumPt": 44,
+    "hudTapTargetMinimumPt": 48,
+    "focusRing": {
+      "color": "color.border.focus",
+      "width": 2
+    },
+    "pressedFeedback": "Scale values per component. Android also shows a bounded ripple in color.surface.pressed; never Material's default grey ripple.",
+    "haptics": {
+      "primaryAction": {
+        "ios": "medium",
+        "androidConstant": "CONFIRM (API 30+), else VIRTUAL_KEY"
+      },
+      "selection": {
+        "ios": "light",
+        "androidConstant": "CLOCK_TICK"
+      },
+      "destructive": {
+        "ios": "warning",
+        "androidConstant": "REJECT (API 30+), else LONG_PRESS"
+      },
+      "alertIncoming": {
+        "ios": "notificationWarning",
+        "androidConstant": "LONG_PRESS",
+        "_usage": "Emergency banner and group split"
+      }
+    },
+    "behaviors": {
+      "addStop": "Append a new stop input and connect it to the route timeline.",
+      "removeStop": "Remove the selected intermediate stop and recalculate route geometry, ETA, and distance.",
+      "selectLocation": "Show autocomplete results; selecting a result updates the route and metrics.",
+      "saveRide": "Validate title and route, show loading state, persist changes, then confirm success.",
+      "routeRecalculation": "Animate route geometry subtly; avoid blocking the UI while fetching route data.",
+      "markReady": "Optimistic: the button and tally update on tap and roll back if the server never acknowledges.",
+      "regroupBroadcast": "Tapping a reason sends immediately. No confirm step.",
+      "liveValues": "Speed, ETA and distance update in place without animating between values."
+    },
+    "accessibility": {
+      "minimumContrastTarget": "WCAG 2.2 AA where applicable",
+      "contrastNotes": {
+        "verified": "On background.base: text.primary 18.4:1, secondary 11.6:1, muted 6.3:1, accent 17.1:1, success 14.2:1, danger 10.0:1. onAccent on accent 16.0:1. Muted on the glass fallback 5.5:1.",
+        "restricted": "text.subtle (4.0:1) and text.disabled (3.4:1) fail AA for normal text. Use them only for separators, disabled controls, and text 18pt or larger."
+      },
+      "dynamicType": true,
+      "fontScaleRules": "Fixed-height components (SummaryMetricCard, NavBottomBar, PlanCard price) step their text down (autoShrink) and never clip or truncate digits. Everything else grows.",
+      "voiceOverLabelsRequired": true,
+      "talkBackLabelsRequired": true,
+      "doNotUseColorAsOnlyStatusIndicator": true,
+      "respectReduceMotion": true,
+      "mapAlternativeSummary": "Provide a text summary of start, stops, destination, distance, and estimated time.",
+      "liveRegions": "HUD banners (emergency, split, regroup, reconnecting) are announced as polite live regions; emergency is assertive."
+    }
+  },
+  "migration": {
+    "_note": "How the current Android tokens (ui/theme/Color.kt, Type.kt) map to this system. Use it during implementation, then delete the old names.",
+    "colors": {
+      "CT.surfaceDim / CT.surface": "color.background.base (screens use gradient.appBackground)",
+      "CT.surfaceContainerLowest": "color.background.base",
+      "CT.surfaceContainerLow": "color.surface.glass",
+      "CT.surfaceContainer": "color.surface.dialog (dialogs) / color.surface.sheet (sheets)",
+      "CT.surfaceContainerHigh": "color.surface.glass (cards), color.surface.glassStrong (HUD)",
+      "CT.surfaceContainerHighest / CT.surfaceVariant": "color.surface.raised (solids), color.surface.avatar (avatars)",
+      "CT.primaryFixed / CT.primaryContainer": "color.accent.base, used under accent_usage_rules",
+      "CT.primaryFixedDim": "color.accent.soft",
+      "CT.onPrimaryFixed": "color.text.onAccent",
+      "CT.onSurface / CT.onBackground / CT.secondaryFixed": "color.text.primary",
+      "CT.onSurfaceVariant": "color.text.muted (labels, meta) or color.text.secondary (body)",
+      "CT.secondary / CT.onSecondaryContainer": "color.text.secondary",
+      "CT.tertiaryFixed / CT.tertiaryContainer / CT.tertiaryFixedDim": "color.status.success",
+      "CT.outline": "color.border.strong",
+      "CT.outlineVariant": "color.border.default (or border.subtle / border.divider at low alpha)",
+      "CT.errorColor": "color.status.danger",
+      "CT.errorContainer": "color.surface.dangerContainer (solid) / color.status.dangerTint (tinted)",
+      "Color(0xFF1C1C1C) in RegroupSheet": "color.surface.glass",
+      "Color(0xFFFFA100) / 0xFFFF6E00 / 0xFF029CE6 / 0xFF7A1CA3": "color.category.fuel / food / scenic / other",
+      "Color(0xFFC7C7C7) alt routes": "color.map.routeAlternative",
+      "Color(0xFF5A6C00) route casing": "color.map.routeGlow",
+      "Color.White over photos": "color.text.onPhoto",
+      "Color.Black scrims": "gradient.heroScrim / color.surface.scrim",
+      "Google G colours (4285F4, 34A853, FBBC05, EA4335)": "Unchanged. Brand asset, not themeable."
+    },
+    "typography": {
+      "CTType.displayMetrics": "metricDisplay (summary) or brandWordmark (splash)",
+      "CTType.headlineLg": "titleLarge, statValue, or heroTitleCompact (lobby title)",
+      "CTType.headlineMd": "title (cards), titleLarge (dialogs)",
+      "CTType.bodyLg": "bodyStrong / input",
+      "CTType.bodyMd": "body / bodySmall",
+      "CTType.labelCaps": "sectionLabel, fieldLabel, metricLabel, badge or buttonSmall, by role",
+      "CTType.dataMono": "dataMono, or the hud* styles in the HUD",
+      "CTType.toggleLabel": "buttonSmall",
+      "CTType.captionMd": "helper",
+      "CTType.captionSm": "helper (10pt and below is only allowed for badge and micro)"
+    },
+    "components": {
+      "Modifier.glassCard()": "GlassCard",
+      "LimePrimaryButton": "PrimaryButton",
+      "ConvoTrackTopBar": "FloatingButton header over the hero photo (photo variant) / pushed header (Edit, Create)",
+      "FloatingStatPill": "StatTile (lobby) / MetaChip (cards)",
+      "ConvoTrackBottomNav": "BottomNavFloating + CentreActionButton",
+      "SectionLabel": "SectionHeading",
+      "StopRow + PlacesField": "RouteTimeline + PlaceSearchField / LocationCard",
+      "PlainField": "TextFieldCard",
+      "RouteStatCard": "MetricCard",
+      "StepperButton": "Stepper",
+      "RouteSelectorChips": "RouteOptionChip",
+      "LobbyActionButton / NavControlButton": "SquareIconButton",
+      "SecondaryButton (lobby)": "SecondaryButton",
+      "RiderRow": "RosterRow + StatusBadge",
+      "EmptyCard / ErrorBlock / LoadingBlock": "EmptyState / ErrorState / LoadingState",
+      "SettingsRow + Divider": "SettingsGroup",
+      "StatTile (profile)": "StatTile",
+      "MetricCard (summary)": "SummaryMetricCard",
+      "ConnectionBanner / EmergencyBanner / GroupSplitAlert / RegroupToastBanner / RegroupResolvedBanner": "Banner variants",
+      "OffRouteBanner": "OffRouteChip",
+      "ArrivedButton / WaitingForOthersPill": "RegroupArrivalControl",
+      "ResumeNavigationPill": "ResumePill",
+      "EdgeChip / ClusterChip": "EdgeChip",
+      "AlertDialog (all)": "ConfirmDialog",
+      "ModalBottomSheet (all)": "BottomSheet"
+    }
+  },
+  "resolvedConflicts": [
+    {
+      "issue": "v1.0.0 put an accent start marker and a green destination marker on the map, but a green start and accent destination on the timeline.",
+      "resolution": "Start is green and destination is accent everywhere (timeline, map, pins). This matches the timeline spec and today's app, where the destination flag is accent."
+    },
+    {
+      "issue": "v1.0.0 kept the bottom-nav look from its reference image but recommended a single focused action for Edit Ride.",
+      "resolution": "Create Ride and Edit Ride are pushed screens with no bottom nav, as they are today."
+    },
+    {
+      "issue": "The route line width in v1.0.0 (5/9pt) is too thin for turn-by-turn at road speed.",
+      "resolution": "Keep 5/9 for preview maps; use 8/13 during navigation (map.routeLayers)."
+    }
+  ],
+  "implementationNotes": [
+    "Values are design-token starting points inferred from the reference image; validate against actual device screenshots.",
+    "Use native blur/material APIs where available, with opaque fallbacks for performance and accessibility.",
+    "Do not use the reference screenshot as a flattened background; build the interface from reusable native components.",
+    "Use real map SDK rendering for route preview, including route geometry and labels.",
+    "Scale spacing and typography with Dynamic Type while preserving the visual hierarchy.",
+    "Keep high-frequency map updates and route calculations off the main UI thread where possible.",
+    "Android: expose tokens as a CompositionLocal theme (ConvoTrackTheme.colors / .type / .spacing / .radius) and map them into Material 3's ColorScheme too, so stock components (ModalBottomSheet, AlertDialog, ripple, text selection) pick them up.",
+    "Android: keep every component in ui/designsystem/, one file per family (Buttons.kt, Inputs.kt, Cards.kt, Hud.kt, Map.kt, Feedback.kt). Screens may not use raw hex, raw sp or raw RoundedCornerShape values.",
+    "Implementation order: tokens and theme, then components, then Edit Ride and Create Ride (the reference screens), then the rest of the app screen by screen, then the map style, markers and share card."
+  ],
+  "decisions": [
+    {
+      "topic": "Fonts",
+      "decision": "Bundle Inter, Source Serif 4 and Roboto Mono in res/font (subset to Latin)."
+    },
+    {
+      "topic": "Serif headline",
+      "decision": "Use heroTitle / heroTitleCompact (Source Serif 4) where placed: lobby ride title, summary, membership hero, success screen, verify-email title. Re-evaluate on device."
+    },
+    {
+      "topic": "Connection button",
+      "decision": "Becomes a live status indicator (ConnectionStatusButton)."
+    },
+    {
+      "topic": "Ride summary header",
+      "decision": "Add a 'RIDE SUMMARY' ScreenHeader with no back button."
+    },
+    {
+      "topic": "Visual source of truth",
+      "decision": "The four reference screens. Colours in this file were sampled from them."
+    },
+    {
+      "topic": "Accent colour",
+      "decision": "#3DE8FF (ice cyan). Token names are now accent.* instead of accent*."
+    },
+    {
+      "topic": "Bottom nav",
+      "decision": "History · Home · Profile with the app's icons (flag, near_me, person). The active tab sits in a raised accent circle; Home is the middle and default tab."
+    },
+    {
+      "topic": "Tags and statuses",
+      "decision": "Only the app's existing vocabulary (appVocabulary). The references' tags are ignored."
+    },
+    {
+      "topic": "Hero photos",
+      "decision": "User supplied two: riders at sunset (Home) and an empty road at sunset (backdrops). See assets."
+    },
+    {
+      "topic": "Ride thumbnails",
+      "decision": "Destination photo per ride, cached; map snapshot when there is none."
+    },
+    {
+      "topic": "Bottom nav in a ride",
+      "decision": "Keep it visible in the lobby. Still hidden on the full-screen navigation map."
+    }
+  ],
+  "references": {
+    "_note": "The reference screens define the look: layout, photography, type, surfaces, spacing. They do NOT define navigation tabs, icons, tags or statuses; those come from the app as it is today (see appVocabulary).",
+    "home": "Home: hero photo, 'Discover new roads', create/join, active ride card, recent rides, floating nav",
+    "lobbySolo": "Lobby (solo, live): destination photo hero, stat tiles, roster, ride details, resume navigation, floating nav",
+    "lobbyCrew": "Lobby (7 riders): roster states RIDING / WAITING / INVITED",
+    "editRide": "Edit Ride: route timeline, preview map, metrics, save"
+  },
+  "appVocabulary": {
+    "_note": "The only tags, statuses and labels the UI may show. Taken from the current app.",
+    "rideStatusLabel": {
+      "LOBBY": "IN LOBBY",
+      "ACTIVE / IN_PROGRESS": "RIDING",
+      "_where": "Home ACTIVE RIDE heading, lobby hero line"
+    },
+    "rosterBadge": {
+      "READY": "rider marked ready, or the leader before the ride starts",
+      "WAITING": "rider not ready yet",
+      "RIDING": "everyone, once the ride is ACTIVE",
+      "_rule": "Tri-state. The leader never shows WAITING."
+    },
+    "rosterRole": [
+      "RIDE LEADER",
+      "FORMATION RIDER"
+    ],
+    "readyTally": [
+      "SOLO",
+      "ALL READY",
+      "n/m READY"
+    ],
+    "liveIndicator": "LIVE, shown while the realtime connection is up",
+    "lobbyStatusTile": [
+      "Ready",
+      "Waiting"
+    ],
+    "rideRowTags": {
+      "leader": "LeaderBadge 'LEADER' when the user led the ride",
+      "inProgress": "RESUME pill",
+      "_noOtherTags": true
+    },
+    "navigationHud": [
+      "YOU",
+      "OFF ROUTE",
+      "RECONNECTING…",
+      "EMERGENCY",
+      "GROUP SPLIT",
+      "REGROUP CALLED",
+      "REGROUP COMPLETE",
+      "MARK AS ARRIVED",
+      "WAITING FOR OTHERS",
+      "RESUME"
+    ],
+    "summary": [
+      "RIDE COMPLETE",
+      "award titles from the server",
+      "SYNC"
+    ],
+    "notUsed": [
+      "INVITED",
+      "Last seen N min ago",
+      "MEMBER",
+      "LIVE NOW",
+      "ACTIVE (as a ride tag)",
+      "LEADER chip in the roster"
+    ]
+  },
+  "assets": {
+    "_note": "Photos supplied by the user for the app. 852 x 1846, portrait. Bundle as WebP in res/drawable-nodpi.",
+    "heroRiders": {
+      "file": "design/assets/hero_riders_sunset_mirrored.jpg",
+      "source": "design/assets/hero_riders_sunset.webp (mirrored so the riders sit on the right, leaving the left quiet under the headline)",
+      "usedBy": [
+        "Home hero"
+      ],
+      "crop": "object-position 50% 83%: the horizon and the riders",
+      "fades": "gradient.photoSideFade + gradient.photoFade"
+    },
+    "heroRoad": {
+      "file": "design/assets/hero_road_sunset.webp",
+      "usedBy": [
+        "Edit / Create Ride backdrop (crop 50% 52%, 45% opacity)",
+        "History header",
+        "Ride Summary hero when the ride has no destination photo (crop 50% 62%)",
+        "Auth background"
+      ],
+      "fades": "gradient.photoFade"
+    },
+    "destinationPhotos": {
+      "source": "Google Places photo for the ride's destination, cached per ride",
+      "usedBy": [
+        "Lobby hero",
+        "Active ride card",
+        "Recent-ride thumbnails",
+        "Ride Summary hero"
+      ],
+      "fallback": "Route-map snapshot; heroRoad for the Summary hero",
+      "attribution": "Required wherever a Places photo shows"
+    }
+  }
+}
