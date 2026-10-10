@@ -2,32 +2,28 @@ package com.danglingmind.convotrack.ui.main
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.di.ServiceLocator
+import com.danglingmind.convotrack.ui.designsystem.BottomNavFloating
+import com.danglingmind.convotrack.ui.designsystem.DsBottomSheet
+import com.danglingmind.convotrack.ui.designsystem.DsTab
 import com.danglingmind.convotrack.ui.history.RideHistoryScreen
 import com.danglingmind.convotrack.ui.home.HomeScreen
 import com.danglingmind.convotrack.ui.join.JoinRideSheet
 import com.danglingmind.convotrack.ui.profile.ProfileScreen
 import com.danglingmind.convotrack.ui.scan.QRScannerScreen
-import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTTab
-import com.danglingmind.convotrack.ui.theme.ConvoTrackBottomNav
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     onCreateRide: () -> Unit,
@@ -37,12 +33,14 @@ fun MainScreen(
     onSignOut: () -> Unit,
     initialInviteCode: String? = null,
     onInviteConsumed: () -> Unit = {},
+    /** A tab picked from the bottom nav on a screen outside the tabs (the lobby). */
+    requestedTab: DsTab? = null,
+    onRequestedTabConsumed: () -> Unit = {},
 ) {
-    var activeTab by remember { mutableStateOf(CTTab.TRACK) }
+    var activeTab by rememberSaveable { mutableStateOf(DsTab.Home) }
     var showJoin by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
     var prefillCode by remember { mutableStateOf("") }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
 
@@ -58,32 +56,36 @@ fun MainScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
-        when (activeTab) {
-            CTTab.FLAGGED -> RideHistoryScreen(onOpenSummary = onOpenSummary, onOpenRide = onOpenLobby)
-            CTTab.TRACK -> HomeScreen(
-                onCreateRide = onCreateRide,
-                onJoinRide = { showJoin = true },
-                onOpenRide = onOpenLobby,
-                onSeeAllHistory = { activeTab = CTTab.FLAGGED },
-                onOpenSummary = onOpenSummary,
-            )
-            CTTab.PROFILE -> ProfileScreen(onOpenMembership = onOpenMembership, onSignedOut = onSignOut)
-        }
-
-        // Bottom nav floats over content. The gesture inset is applied INSIDE the nav, so its
-        // background reaches the screen edge and nothing shows through beneath it.
-        Box(Modifier.align(Alignment.BottomCenter)) {
-            ConvoTrackBottomNav(activeTab = activeTab, onSelect = { activeTab = it })
+    LaunchedEffect(requestedTab) {
+        if (requestedTab != null) {
+            activeTab = requestedTab
+            onRequestedTabConsumed()
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
+        when (activeTab) {
+            DsTab.History -> RideHistoryScreen(onOpenSummary = onOpenSummary, onOpenRide = onOpenLobby)
+            DsTab.Home -> HomeScreen(
+                onCreateRide = onCreateRide,
+                onJoinRide = { showJoin = true },
+                onOpenRide = onOpenLobby,
+                onSeeAllHistory = { activeTab = DsTab.History },
+                onOpenSummary = onOpenSummary,
+            )
+            DsTab.Profile -> ProfileScreen(onOpenMembership = onOpenMembership, onSignedOut = onSignOut)
+        }
+
+        // The bar floats over content; each tab reserves bottomNavClearance() for it.
+        BottomNavFloating(
+            active = activeTab,
+            onSelect = { activeTab = it },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+
     if (showJoin) {
-        ModalBottomSheet(
-            onDismissRequest = { showJoin = false; prefillCode = "" },
-            sheetState = sheetState,
-            containerColor = CT.surfaceDim,
-        ) {
+        DsBottomSheet(onDismiss = { showJoin = false; prefillCode = "" }) {
             JoinRideSheet(
                 prefillCode = prefillCode,
                 onJoined = { rideId ->

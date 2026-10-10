@@ -233,6 +233,7 @@ fun PillButton(
     icon: ImageVector? = null,
     height: Dp = 34.dp,
     enabled: Boolean = true,
+    horizontalPadding: Dp = 16.dp,
 ) {
     val (bg, fg, border) = when (tone) {
         PillTone.Primary -> Triple(DsColor.accent, DsColor.onAccent, Color.Transparent)
@@ -251,7 +252,7 @@ fun PillButton(
             .background(bg)
             .border(1.dp, border, DsShape.pill)
             .then(if (onClick != null) Modifier.dsClickable(enabled = enabled, onClick = onClick) else Modifier)
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
     ) {

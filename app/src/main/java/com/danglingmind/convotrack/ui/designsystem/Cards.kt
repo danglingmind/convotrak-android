@@ -143,7 +143,7 @@ fun MetaChip(icon: ImageVector, text: String, modifier: Modifier = Modifier, onP
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(icon, null, tint = DsColor.textPrimary, modifier = Modifier.size(15.dp))
-        Text(text.uppercase(), style = DsType.dataMono.sized(12.sp), color = DsColor.textPrimary, maxLines = 1)
+        Text(text, style = DsType.dataMono.sized(12.sp), color = DsColor.textPrimary, maxLines = 1)
     }
 }
 

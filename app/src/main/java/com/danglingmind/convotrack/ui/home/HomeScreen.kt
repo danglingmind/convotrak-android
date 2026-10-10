@@ -1,9 +1,7 @@
 package com.danglingmind.convotrack.ui.home
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,18 +17,21 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.Flag
-import androidx.compose.material.icons.outlined.SettingsInputAntenna
+import androidx.compose.material.icons.outlined.PersonAddAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -38,13 +39,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
 import com.danglingmind.convotrack.data.maps.DestinationHeroPhase
 import com.danglingmind.convotrack.data.net.HistoryRide
@@ -53,23 +52,42 @@ import com.danglingmind.convotrack.data.net.RideStatusFilter
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
-import com.danglingmind.convotrack.ui.history.LeaderBadge
+import com.danglingmind.convotrack.ui.common.DestinationPhotoImage
+import com.danglingmind.convotrack.ui.common.PhotoCredits
+import com.danglingmind.convotrack.ui.common.RideDetailsCache
+import com.danglingmind.convotrack.ui.common.RideRowCard
+import com.danglingmind.convotrack.ui.common.RideRowSkeleton
+import com.danglingmind.convotrack.ui.common.UiState
+import com.danglingmind.convotrack.ui.common.formatKm
+import com.danglingmind.convotrack.ui.common.rememberDestinationHero
+import com.danglingmind.convotrack.ui.designsystem.AvatarStack
+import com.danglingmind.convotrack.ui.designsystem.ConnectionStatusButton
+import com.danglingmind.convotrack.ui.designsystem.DestinationPill
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsGradient
+import com.danglingmind.convotrack.ui.designsystem.DsHaptic
+import com.danglingmind.convotrack.ui.designsystem.DsScreen
+import com.danglingmind.convotrack.ui.designsystem.DsShape
+import com.danglingmind.convotrack.ui.designsystem.DsSpace
+import com.danglingmind.convotrack.ui.designsystem.DsType
+import com.danglingmind.convotrack.ui.designsystem.EmptyState
+import com.danglingmind.convotrack.ui.designsystem.ErrorState
+import com.danglingmind.convotrack.ui.designsystem.Eyebrow
+import com.danglingmind.convotrack.ui.designsystem.LiveIndicator
+import com.danglingmind.convotrack.ui.designsystem.LogoBadge
+import com.danglingmind.convotrack.ui.designsystem.MetaChip
+import com.danglingmind.convotrack.ui.designsystem.PhotoBackdrop
+import com.danglingmind.convotrack.ui.designsystem.PillButton
+import com.danglingmind.convotrack.ui.designsystem.PillTone
+import com.danglingmind.convotrack.ui.designsystem.SectionAction
+import com.danglingmind.convotrack.ui.designsystem.SectionHeading
+import com.danglingmind.convotrack.ui.designsystem.StatusBarScrim
+import com.danglingmind.convotrack.ui.designsystem.bottomNavClearance
+import com.danglingmind.convotrack.ui.designsystem.dsClickable
+import com.danglingmind.convotrack.ui.designsystem.dsHaptic
 import com.danglingmind.convotrack.ui.map.ConvoTrackMap
 import com.danglingmind.convotrack.ui.ride.rideRoute
-import com.danglingmind.convotrack.ui.theme.bottomNavClearance
 import com.google.android.gms.maps.model.LatLng
-import androidx.compose.ui.graphics.Brush
-import com.danglingmind.convotrack.ui.common.DestinationPhotoImage
-import com.danglingmind.convotrack.ui.common.rememberDestinationHero
-import com.danglingmind.convotrack.ui.common.EmptyCard
-import com.danglingmind.convotrack.ui.common.ErrorBlock
-import com.danglingmind.convotrack.ui.common.LoadingBlock
-import com.danglingmind.convotrack.ui.common.UiState
-import com.danglingmind.convotrack.ui.common.dateLabel
-import com.danglingmind.convotrack.ui.common.distanceLabel
-import com.danglingmind.convotrack.ui.common.isCompleted
-import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTType
 import kotlinx.coroutines.launch
 
 @Composable
@@ -83,6 +101,7 @@ fun HomeScreen(
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<UiState<List<HistoryRide>>>(UiState.Loading) }
+    val credits = remember { mutableStateMapOf<String, String>() }
 
     suspend fun load() {
         state = UiState.Loading
@@ -99,280 +118,224 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { load() }
 
-    Box(Modifier.fillMaxSize().background(CT.surfaceDim)) {
-        Column(Modifier.fillMaxSize()) {
-            Spacer(Modifier.statusBarsPadding().height(56.dp))
-
-            // Action buttons (always visible)
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                ActionButton("CREATE RIDE", Icons.Filled.AddCircle, CT.primaryFixed, CT.onPrimaryFixed, Modifier.weight(1f), onClick = onCreateRide)
-                ActionButton("JOIN RIDE", Icons.Filled.PersonAdd, CT.surfaceContainerHighest, CT.onSurface, Modifier.weight(1f), bordered = true, onClick = onJoinRide)
-            }
+    DsScreen {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = bottomNavClearance()),
+        ) {
+            item { HomeHero(onCreateRide = onCreateRide, onJoinRide = onJoinRide) }
 
             when (val s = state) {
-                is UiState.Loading -> LoadingBlock(Modifier.padding(top = 40.dp))
-                is UiState.Error -> Box(Modifier.padding(20.dp)) {
-                    ErrorBlock(s.message, onRetry = { scope.launch { load() } })
+                is UiState.Loading -> items(2) {
+                    RideRowSkeleton(Modifier.padding(horizontal = DsSpace.gutter, vertical = 4.dp))
+                }
+                is UiState.Error -> item {
+                    ErrorState(s.message, onRetry = { scope.launch { load() } }, Modifier.padding(DsSpace.gutter))
                 }
                 is UiState.Success -> {
-                    val active = s.data.firstOrNull { !it.isCompleted }
+                    val active = s.data.firstOrNull { !it.isCompletedRide() }
                     val recent = s.data.filter { it.rideId != active?.rideId }.take(5)
-                    LazyColumn(
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = bottomNavClearance()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        if (active != null) {
-                            item { ActiveRideSection(active, onClick = { onOpenRide(active.rideId) }) }
-                        }
+                    if (active != null) {
                         item {
-                            Row(
-                                Modifier.fillMaxWidth().padding(top = if (active != null) 12.dp else 0.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("RECENT RIDES", style = CTType.headlineMd, color = CT.onSurface)
-                                Spacer(Modifier.weight(1f))
-                                if (recent.isNotEmpty()) {
-                                    Text(
-                                        "SEE ALL",
-                                        style = CTType.labelCaps,
-                                        color = CT.primaryFixed,
-                                        letterSpacing = 1.sp,
-                                        modifier = Modifier.clickable(onClick = onSeeAllHistory),
-                                    )
-                                }
-                            }
+                            ActiveRideSection(
+                                active,
+                                onClick = { onOpenRide(active.rideId) },
+                                modifier = Modifier.padding(horizontal = DsSpace.gutter).padding(top = 22.dp),
+                            )
                         }
-                        if (recent.isEmpty()) {
-                            item {
-                                EmptyCard(
-                                    title = "No rides yet",
-                                    subtitle = "Create or join your first ride and it'll show up here.",
-                                    actionLabel = "Create Ride",
-                                    onAction = onCreateRide,
-                                )
-                            }
-                        } else {
-                            items(recent, key = { it.rideId }) { ride ->
-                                RecentRideCard(
-                                    ride,
-                                    onClick = { if (ride.isCompleted) onOpenSummary(ride.rideId) else onOpenRide(ride.rideId) },
-                                )
-                            }
+                    }
+                    item {
+                        SectionHeading(
+                            "Recent rides",
+                            Modifier.padding(horizontal = DsSpace.gutter).padding(top = 20.dp, bottom = 4.dp),
+                        ) {
+                            if (recent.isNotEmpty()) SectionAction("See all", onClick = onSeeAllHistory)
                         }
+                    }
+                    if (recent.isEmpty()) {
+                        item {
+                            EmptyState(
+                                icon = Icons.Outlined.Flag,
+                                title = "No rides yet",
+                                body = "Create or join your first ride and it'll show up here.",
+                                actionLabel = "Create ride",
+                                onAction = onCreateRide,
+                                modifier = Modifier.padding(horizontal = DsSpace.gutter).padding(top = 8.dp),
+                            )
+                        }
+                    } else {
+                        items(recent, key = { it.rideId }) { ride ->
+                            RideRowCard(
+                                ride,
+                                onClick = { if (ride.isCompletedRide()) onOpenSummary(ride.rideId) else onOpenRide(ride.rideId) },
+                                onAttribution = { credit -> if (credit != null) credits[ride.rideId] = credit else credits.remove(ride.rideId) },
+                                modifier = Modifier.padding(horizontal = DsSpace.gutter, vertical = 4.dp),
+                            )
+                        }
+                        item { PhotoCredits(credits.values, Modifier.padding(horizontal = DsSpace.gutter)) }
                     }
                 }
             }
         }
-
-        // Floating top bar
-        Row(
-            Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Image(painterResource(R.drawable.logo_circle), null, Modifier.size(40.dp))
-            Spacer(Modifier.weight(1f))
-            Icon(Icons.Outlined.SettingsInputAntenna, null, tint = CT.primaryFixed, modifier = Modifier.size(22.dp))
-        }
+        StatusBarScrim()
     }
 }
 
-@Composable
-private fun ActionButton(
-    text: String,
-    icon: ImageVector,
-    background: Color,
-    foreground: Color,
-    modifier: Modifier = Modifier,
-    bordered: Boolean = false,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = modifier
-            .height(56.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(background)
-            .then(if (bordered) Modifier.border(1.dp, CT.outlineVariant, RoundedCornerShape(12.dp)) else Modifier)
-            .clickable(onClick = onClick),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, null, tint = foreground, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.size(8.dp))
-        Text(text, style = CTType.labelCaps, color = foreground, letterSpacing = 1.sp)
-    }
-}
+private fun HistoryRide.isCompletedRide() = status == "COMPLETED" || status == "ENDED"
 
+/** The app's ride status vocabulary (`appVocabulary.rideStatusLabel`). */
 private fun statusLabel(status: String): String = when (status) {
     "LOBBY" -> "IN LOBBY"
     "ACTIVE", "IN_PROGRESS" -> "RIDING"
     else -> status
 }
 
+/** Riders photo, logo + connection, eyebrow, serif headline, subtitle and the two actions. */
 @Composable
-private fun ActiveRideSection(ride: HistoryRide, onClick: () -> Unit) {
-    val api = remember { ServiceLocator.api }
-    // The full ride carries the destination coordinate (which the history row does not) and the
-    // route geometry used as the card background when there is no photo.
+private fun HomeHero(onCreateRide: () -> Unit, onJoinRide: () -> Unit) {
+    Box {
+        PhotoBackdrop(height = 430.dp, drawable = R.drawable.hero_riders, verticalBias = 0.8f, sideFade = true)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = DsSpace.gutter)
+                .padding(top = 8.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                LogoBadge()
+                Spacer(Modifier.weight(1f))
+                ConnectionStatusButton()
+            }
+            Spacer(Modifier.height(48.dp))
+            Eyebrow("Ride together")
+            Spacer(Modifier.height(8.dp))
+            Text("Discover\nnew roads", style = DsType.heroTitle.copy(fontSize = DsType.heroTitle.fontSize * 1.08f, lineHeight = DsType.heroTitle.lineHeight * 1.05f), color = DsColor.textOnPhoto)
+            Spacer(Modifier.height(12.dp))
+            Text("Plan, join and track rides with your tribe.", style = DsType.heroSubtitle, color = DsColor.textSecondary)
+            Spacer(Modifier.height(24.dp))
+            ActionButtonPair(onCreateRide, onJoinRide)
+        }
+    }
+}
+
+/** CREATE RIDE (accent, dark plus disc) / JOIN RIDE (glass). */
+@Composable
+private fun ActionButtonPair(onCreateRide: () -> Unit, onJoinRide: () -> Unit) {
+    val view = LocalView.current
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            Modifier
+                .weight(1f)
+                .height(52.dp)
+                .shadow(14.dp, DsShape.md, ambientColor = DsColor.accentGlow, spotColor = DsColor.accent)
+                .clip(DsShape.md)
+                .background(DsColor.accent)
+                .dsClickable { view.dsHaptic(DsHaptic.Primary); onCreateRide() },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Box(Modifier.size(26.dp).clip(CircleShape).background(DsColor.onAccent), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Add, null, tint = DsColor.accent, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.size(12.dp))
+            Text("CREATE RIDE", style = DsType.buttonWide, color = DsColor.onAccent, maxLines = 1)
+        }
+        Row(
+            Modifier
+                .weight(1f)
+                .height(52.dp)
+                .clip(DsShape.md)
+                .background(Color(0x12FFFFFF))
+                .border(1.dp, Color(0x24FFFFFF), DsShape.md)
+                .dsClickable(onClick = onJoinRide),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Icon(Icons.Outlined.PersonAddAlt, null, tint = DsColor.textPrimary, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.size(10.dp))
+            Text("JOIN RIDE", style = DsType.buttonWide, color = DsColor.textPrimary, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun ActiveRideSection(ride: HistoryRide, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    // The full ride carries the destination, participants and route (which the history row does
+    // not); the route is only needed for the map fallback when there is no photo.
     var full by remember(ride.rideId) { mutableStateOf<Ride?>(null) }
     var route by remember(ride.rideId) { mutableStateOf<List<LatLng>>(emptyList()) }
     LaunchedEffect(ride.rideId) {
-        full = runCatching { apiCall { api.getRide(ride.rideId) } }.getOrNull()
+        RideDetailsCache.invalidate(ride.rideId)
+        full = RideDetailsCache.get(ride.rideId)
     }
-
     val heroPhase by rememberDestinationHero(
         rideId = full?.id,
         destinationName = full?.destinationName,
         lat = full?.destinationLat,
         lng = full?.destinationLng,
     )
-
-    // The route is only needed for the map fallback, so a card showing a photo skips the
-    // Directions work entirely — this card appears on every visit to Home.
     LaunchedEffect(full, heroPhase) {
         val r = full ?: return@LaunchedEffect
         if (heroPhase is DestinationHeroPhase.Unavailable && route.isEmpty()) route = rideRoute(r)
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("ACTIVE RIDE", style = CTType.headlineMd, color = CT.onSurface)
-            Spacer(Modifier.weight(1f))
-            Box(Modifier.size(8.dp).clip(CircleShape).background(CT.primaryFixed))
-            Spacer(Modifier.size(6.dp))
-            Text(statusLabel(ride.status), style = CTType.labelCaps, color = CT.primaryFixed, letterSpacing = 2.sp)
-        }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionHeading("Active ride") { LiveIndicator(statusLabel(ride.status)) }
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(150.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .border(1.dp, CT.primaryFixed.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                .background(CT.surfaceContainerHigh),
+                .height(196.dp)
+                .clip(DsShape.lg)
+                .border(1.dp, DsColor.border, DsShape.lg)
+                .background(DsColor.cardSolid),
         ) {
             when (val phase = heroPhase) {
-                // The card's own surface stands in while we don't yet know whether there's a photo
-                // — showing the map here would only be replaced a moment later.
+                // The card's own surface stands in until we know whether there's a photo.
                 DestinationHeroPhase.Resolving -> Unit
-
                 is DestinationHeroPhase.Photo ->
-                    DestinationPhotoImage(
-                        bitmap = phase.photo.bitmap,
-                        // A wide letterbox banner, near-identical to the 16:9 Places serves, so a
-                        // crop loses almost nothing — and it sits under a heavy scrim as texture
-                        // rather than as the subject.
-                        crop = true,
-                        modifier = Modifier.matchParentSize(),
-                    )
-
+                    DestinationPhotoImage(bitmap = phase.photo.bitmap, crop = true, modifier = Modifier.matchParentSize())
                 DestinationHeroPhase.Unavailable ->
-                    if (route.isNotEmpty()) {
-                        ConvoTrackMap(
-                            modifier = Modifier.matchParentSize(),
-                            routeCoords = route,
-                            interactive = false,
-                        )
-                    }
+                    if (route.isNotEmpty()) ConvoTrackMap(modifier = Modifier.matchParentSize(), routeCoords = route, interactive = false)
             }
-            // Dark scrim so the title/RESUME stay legible over the map. It also sits above the
-            // map view and carries the click, since the (non-interactive) map consumes touches.
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .clickable(onClick = onClick)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Black.copy(alpha = 0.15f), Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.82f)),
-                        ),
-                    ),
-            )
-            // Photographer credit. Google's Places policy requires it wherever a Place Photo is
-            // displayed — the lobby renders it, so this surface showing the same photo without it
-            // was the one non-compliant half.
-            (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
-                Text(
-                    "Photo: $credit · Google",
-                    style = CTType.captionMd.copy(fontSize = 9.sp),
-                    color = Color.White.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                )
-            }
-            Column(Modifier.fillMaxSize().padding(18.dp)) {
-                Spacer(Modifier.weight(1f))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(ride.title, style = CTType.headlineMd, color = Color.White)
-                        Text(ride.distanceLabel(), style = CTType.dataMono, color = Color.White.copy(alpha = 0.75f))
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        "RESUME",
-                        style = CTType.labelCaps,
-                        color = CT.onPrimaryFixed,
-                        letterSpacing = 1.sp,
-                        modifier = Modifier.clip(CircleShape).background(CT.primaryFixed).padding(horizontal = 18.dp, vertical = 10.dp),
-                    )
+            // The scrim also sits above the (non-interactive) map and carries the click.
+            Box(Modifier.matchParentSize().background(DsGradient.cardPhotoScrim).dsClickable(pressedScale = 0.99f, onClick = onClick))
+
+            Row(
+                Modifier.fillMaxWidth().padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                full?.destinationName?.let {
+                    DestinationPill(it, Icons.Filled.LocationOn, Modifier.weight(1f, fill = false), trailingIcon = Icons.Filled.ChevronRight)
                 }
+                Spacer(Modifier.weight(0.01f))
+                val riders = full?.participants.orEmpty()
+                if (riders.isNotEmpty()) AvatarStack(riders.map { it.userId to it.name })
             }
+            Row(
+                Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(ride.title, style = DsType.cardTitle, color = DsColor.textOnPhoto, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        MetaChip(Icons.Filled.Route, "${formatKm(ride.distanceMeters)} KM")
+                        full?.estimatedDurationSeconds?.takeIf { it > 0 }?.let { MetaChip(Icons.Filled.Schedule, durationLabel(it)) }
+                    }
+                }
+                Spacer(Modifier.size(10.dp))
+                PillButton("Resume", onClick, tone = PillTone.Primary, icon = Icons.Filled.PlayArrow, height = 38.dp)
+            }
+        }
+        // Photographer credit: Google's Places policy requires it wherever a Place Photo is shown.
+        (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
+            Text("Photo: $credit · Google", style = DsType.micro, color = DsColor.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.End))
         }
     }
 }
 
-@Composable
-private fun RecentRideCard(ride: HistoryRide, onClick: () -> Unit) {
-    val completed = ride.isCompleted
-    val accent = if (completed) CT.outlineVariant.copy(alpha = 0.3f) else CT.primaryFixed.copy(alpha = 0.25f)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(CT.surfaceContainerLow)
-            .border(1.dp, accent, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Box(
-            Modifier.size(52.dp).clip(RoundedCornerShape(10.dp))
-                .background(if (completed) CT.surfaceContainerHigh else CT.primaryFixed.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Outlined.Flag, null, tint = if (completed) CT.onSurfaceVariant else CT.primaryFixed, modifier = Modifier.size(22.dp))
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(ride.title, style = CTType.bodyLg.copy(fontWeight = FontWeight.Bold), color = CT.onSurface)
-                Spacer(Modifier.weight(1f))
-                if (!completed) {
-                    Text(
-                        "RESUME",
-                        style = CTType.labelCaps,
-                        color = CT.onPrimaryFixed,
-                        letterSpacing = 1.sp,
-                        modifier = Modifier.clip(CircleShape).background(CT.primaryFixed).padding(horizontal = 8.dp, vertical = 3.dp),
-                    )
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                val date = ride.dateLabel()
-                if (date.isNotEmpty()) {
-                    Text(date, style = CTType.labelCaps, color = CT.onSurfaceVariant, maxLines = 1, softWrap = false)
-                    Text("·", color = CT.onSurfaceVariant.copy(alpha = 0.5f))
-                }
-                Text(ride.distanceLabel(), style = CTType.dataMono, color = CT.onSurfaceVariant, maxLines = 1, softWrap = false)
-                if (ride.isLeader == true) {
-                    Spacer(Modifier.size(2.dp))
-                    LeaderBadge()
-                }
-            }
-        }
-        Icon(Icons.Filled.ChevronRight, null, tint = CT.onSurfaceVariant.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
-    }
+private fun durationLabel(seconds: Int): String {
+    val minutes = seconds / 60
+    return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "$minutes min"
 }

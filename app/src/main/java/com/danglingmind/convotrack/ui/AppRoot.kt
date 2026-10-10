@@ -1,5 +1,9 @@
 package com.danglingmind.convotrack.ui
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import com.danglingmind.convotrack.ui.designsystem.DsTab
+
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -114,8 +118,11 @@ fun AppRoot(
                     onBack = { nav.popBackStack() },
                 )
             }
-            composable(Routes.MAIN) {
+            composable(Routes.MAIN) { entry ->
+                val requestedTab by entry.savedStateHandle.getStateFlow<String?>("tab", null).collectAsState()
                 MainScreen(
+                    requestedTab = requestedTab?.let { name -> DsTab.entries.firstOrNull { it.name == name } },
+                    onRequestedTabConsumed = { entry.savedStateHandle["tab"] = null },
                     initialInviteCode = deepLinkCode,
                     onInviteConsumed = onDeepLinkConsumed,
                     onCreateRide = { nav.navigate(Routes.CREATE_RIDE) },
@@ -164,6 +171,13 @@ fun AppRoot(
                         },
                         onStartRide = { nav.navigate(Routes.navigation(rideId)) },
                         onEdit = { editRideId -> nav.navigate(Routes.edit(editRideId)) },
+                        // The bottom nav stays visible in the lobby; picking a tab leaves the ride
+                        // flow (like back) and opens that tab.
+                        onTab = { tab ->
+                            sessionVm.endSession()
+                            runCatching { nav.getBackStackEntry(Routes.MAIN).savedStateHandle["tab"] = tab.name }
+                            nav.popBackStack(Routes.MAIN, inclusive = false)
+                        },
                     )
                 }
                 composable(

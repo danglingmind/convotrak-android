@@ -35,6 +35,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -291,6 +293,18 @@ fun PhotoBackdrop(
         if (sideFade) Box(Modifier.fillMaxSize().background(DsGradient.photoSideFade))
         Box(Modifier.fillMaxSize().background(fade))
     }
+}
+
+/** Dark fade behind the status bar so content scrolling under it stays out of the clock's way. */
+@Composable
+fun BoxScope.StatusBarScrim() {
+    Box(
+        Modifier
+            .align(Alignment.TopCenter)
+            .fillMaxWidth()
+            .windowInsetsTopHeight(WindowInsets.statusBars)
+            .background(Brush.verticalGradient(listOf(DsColor.bgBase.copy(alpha = 0.85f), DsColor.bgBase.copy(alpha = 0f)))),
+    )
 }
 
 /** Screen root: the app background gradient. */

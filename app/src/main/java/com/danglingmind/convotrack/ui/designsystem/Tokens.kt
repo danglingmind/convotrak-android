@@ -34,7 +34,7 @@ object DsColor {
     val fieldFocused = Color(0xFA1F2C38)
     val glassOnPhoto = Color(0x8C161A1E)    // round buttons and pills that sit on a photo
     val glassPill = Color(0x9E1E2834)
-    val nav = Color(0xEB0C1115)
+    val nav = Color(0xF70C1115)
     val neutralBadge = Color(0xFF2A2F37)
     val iconDisc = Color(0xFF14202A)
     val raised = Color(0xFF16212D)

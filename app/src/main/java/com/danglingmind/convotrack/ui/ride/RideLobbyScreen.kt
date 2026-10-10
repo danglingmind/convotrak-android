@@ -1,8 +1,10 @@
 package com.danglingmind.convotrack.ui.ride
 
+import android.content.Intent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,25 +14,37 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -43,38 +57,69 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.danglingmind.convotrack.data.maps.DestinationHeroPhase
 import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.ApiException
+import com.danglingmind.convotrack.data.net.Ride
 import com.danglingmind.convotrack.data.net.RideParticipant
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.isNotFoundError
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.data.realtime.RideRealtimeSession
 import com.danglingmind.convotrack.di.ServiceLocator
-import com.danglingmind.convotrack.data.maps.DestinationHeroPhase
 import com.danglingmind.convotrack.ui.common.DestinationPhotoImage
-import com.danglingmind.convotrack.ui.common.ErrorBlock
-import com.danglingmind.convotrack.ui.common.rememberDestinationHero
-import com.danglingmind.convotrack.ui.common.LoadingBlock
 import com.danglingmind.convotrack.ui.common.formatKm
+import com.danglingmind.convotrack.ui.common.rememberAvatarPhoto
+import com.danglingmind.convotrack.ui.common.rememberDestinationHero
 import com.danglingmind.convotrack.ui.common.rememberQrBitmap
+import com.danglingmind.convotrack.ui.designsystem.Avatar
+import com.danglingmind.convotrack.ui.designsystem.BottomNavFloating
+import com.danglingmind.convotrack.ui.designsystem.ConfirmDialog
+import com.danglingmind.convotrack.ui.designsystem.DestructiveButton
+import com.danglingmind.convotrack.ui.designsystem.DetailRow
+import com.danglingmind.convotrack.ui.designsystem.DetailsList
+import com.danglingmind.convotrack.ui.designsystem.DialogText
+import com.danglingmind.convotrack.ui.designsystem.DsBottomSheet
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsGradient
+import com.danglingmind.convotrack.ui.designsystem.DsScreen
+import com.danglingmind.convotrack.ui.designsystem.DsShape
+import com.danglingmind.convotrack.ui.designsystem.DsSize
+import com.danglingmind.convotrack.ui.designsystem.DsSpace
+import com.danglingmind.convotrack.ui.designsystem.DsTab
+import com.danglingmind.convotrack.ui.designsystem.DsType
+import com.danglingmind.convotrack.ui.designsystem.ErrorState
+import com.danglingmind.convotrack.ui.designsystem.Eyebrow
+import com.danglingmind.convotrack.ui.designsystem.FloatingButton
+import com.danglingmind.convotrack.ui.designsystem.FloatingTone
+import com.danglingmind.convotrack.ui.designsystem.InlineError
+import com.danglingmind.convotrack.ui.designsystem.LiveIndicator
+import com.danglingmind.convotrack.ui.designsystem.LoadingState
+import com.danglingmind.convotrack.ui.designsystem.PrimaryButton
+import com.danglingmind.convotrack.ui.designsystem.PulseDot
+import com.danglingmind.convotrack.ui.designsystem.RosterState
+import com.danglingmind.convotrack.ui.designsystem.SecondaryButton
+import com.danglingmind.convotrack.ui.designsystem.SecondaryTone
+import com.danglingmind.convotrack.ui.designsystem.SectionHeading
+import com.danglingmind.convotrack.ui.designsystem.SquareIconButton
+import com.danglingmind.convotrack.ui.designsystem.StatTile
+import com.danglingmind.convotrack.ui.designsystem.StatTone
+import com.danglingmind.convotrack.ui.designsystem.StatusBadge
+import com.danglingmind.convotrack.ui.designsystem.StatusBarScrim
+import com.danglingmind.convotrack.ui.designsystem.accentBar
+import com.danglingmind.convotrack.ui.designsystem.dsClickable
+import com.danglingmind.convotrack.ui.designsystem.glassSurface
 import com.danglingmind.convotrack.ui.map.ConvoTrackMap
 import com.danglingmind.convotrack.ui.map.MapCamera
 import com.danglingmind.convotrack.ui.map.NavCamera
 import com.google.android.gms.maps.model.LatLng
-import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTType
-import com.danglingmind.convotrack.ui.theme.ConvoTrackTopBar
-import com.danglingmind.convotrack.ui.theme.FloatingStatPill
-import com.danglingmind.convotrack.ui.theme.LimePrimaryButton
 import kotlinx.coroutines.launch
 
 /**
@@ -90,6 +135,8 @@ fun RideLobbyScreen(
     onBack: () -> Unit,
     onStartRide: () -> Unit,
     onEdit: (rideId: String) -> Unit,
+    /** A tab picked from the bottom nav, which stays visible in the lobby. */
+    onTab: (DsTab) -> Unit = {},
 ) {
     val api = remember { ServiceLocator.api }
     val auth = remember { ServiceLocator.auth }
@@ -123,599 +170,525 @@ fun RideLobbyScreen(
     // update live for everyone.
     LaunchedEffect(rideUpdated) { if (rideUpdated != null) sessionVm.refreshRide() }
 
-    Column(Modifier.fillMaxSize().background(CT.surfaceDim).statusBarsPadding()) {
-        // The leader may edit in ANY non-COMPLETED state (LOBBY, ACTIVE and PAUSED are all
-        // editable); editing a live ride re-routes everyone via ride:updated.
-        val amLeader = myId != null && ride?.leaderId == myId
-        val canEdit = amLeader && ride != null && ride?.status != "COMPLETED"
-        // Riders only, in both LOBBY and ACTIVE — a rider who has to peel off mid-ride is exactly
-        // who needs this, and waiting for the leader to kick them is not an answer.
-        //
-        // The leader has no equivalent: leaving would orphan the ride, leaving nobody able to
-        // start, end or edit it, so they cancel it from the edit page instead (the server rejects a
-        // leader leave with LEADER_CANNOT_LEAVE regardless of what the UI does).
-        val canLeave = !amLeader && ride != null && ride?.status != "COMPLETED"
-        ConvoTrackTopBar(
-            // The ride's own title now sits over the hero image — see the overlay below. This
-            // slot shares 56dp with the back arrow, the edit/leave action and the signal icon,
-            // which truncated all but the shortest ride names.
-            title = "Lobby",
-            showBack = true,
-            onBack = onBack,
-            actions = {
-                if (canEdit) {
-                    Icon(
-                        Icons.Filled.Edit,
-                        contentDescription = "Edit ride",
-                        tint = CT.primaryFixed,
-                        modifier = Modifier.size(40.dp).clip(CircleShape).clickable { onEdit(rideId) }.padding(9.dp),
-                    )
-                } else if (canLeave) {
-                    // Takes the leader's Edit slot — the two are mutually exclusive, so the corner
-                    // holds whichever applies to you and never both.
-                    //
-                    // Tinted rather than filled: a solid red capsule would be the only saturated
-                    // red on a lime-and-green screen, pulling the eye to the one control a rider is
-                    // least likely to want. It also overstates the stakes — leaving is reversible
-                    // (you can re-join with the code), whereas END RIDE and DELETE RIDE are not.
-                    Box(
-                        Modifier
-                            .height(36.dp)
-                            .clip(CircleShape)
-                            .background(CT.errorContainer.copy(alpha = 0.18f))
-                            .border(1.dp, CT.errorColor.copy(alpha = 0.28f), CircleShape)
-                            .clickable(enabled = !leaving) { showLeaveConfirm = true }
-                            .padding(horizontal = 14.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            if (leaving) "LEAVING…" else "LEAVE",
-                            style = CTType.labelCaps,
-                            color = CT.errorColor,
-                            letterSpacing = 1.sp,
-                            maxLines = 1,
-                        )
+    // The leader may edit in ANY non-COMPLETED state (LOBBY, ACTIVE and PAUSED are all editable);
+    // editing a live ride re-routes everyone via ride:updated.
+    val amLeader = myId != null && ride?.leaderId == myId
+    val canEdit = amLeader && ride != null && ride?.status != "COMPLETED"
+    // Riders only, in both LOBBY and ACTIVE — a rider who has to peel off mid-ride is exactly who
+    // needs this. The leader has no equivalent: leaving would orphan the ride, so they cancel it
+    // from the edit page instead (the server rejects a leader leave with LEADER_CANNOT_LEAVE).
+    val canLeave = !amLeader && ride != null && ride?.status != "COMPLETED"
+
+    DsScreen {
+        val loadedRide = ride
+        when {
+            loadedRide == null && !rideLoaded -> Column(Modifier.statusBarsPadding().padding(top = 72.dp)) { LoadingState() }
+            loadedRide == null -> Box(Modifier.statusBarsPadding().padding(top = 72.dp).padding(DsSpace.gutter)) {
+                ErrorState("Couldn't load this ride.", onRetry = { sessionVm.load(myId.orEmpty(), force = true) })
+            }
+            else -> LobbyContent(
+                rideId = rideId,
+                ride = loadedRide,
+                sessionVm = sessionVm,
+                riders = riders,
+                onlineIds = onlineIds,
+                liveStatus = liveStatus,
+                connected = connected,
+                myId = myId,
+                amLeader = amLeader,
+                starting = starting,
+                startError = startError,
+                onStart = {
+                    if (starting) return@LobbyContent
+                    starting = true
+                    startError = null
+                    scope.launch {
+                        try {
+                            apiCall { api.startRide(rideId) }
+                            onStartRide()
+                        } catch (e: ApiException) {
+                            // The ride is already ACTIVE (a double tap, or another device started it
+                            // first). The goal is met — navigate rather than erroring (iOS parity).
+                            if (e.message?.contains("RIDE_NOT_IN_LOBBY") == true) {
+                                onStartRide()
+                            } else {
+                                startError = e.riderMessage
+                                starting = false
+                            }
+                        } catch (e: Exception) {
+                            startError = e.riderMessage
+                            starting = false
+                        }
+                    }
+                },
+                onResume = onStartRide,
+                onTab = onTab,
+            )
+        }
+
+        StatusBarScrim()
+
+        // Floating controls over the hero: back · edit (leader) · more.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = DsSpace.gutter)
+                .padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            FloatingButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
+            Spacer(Modifier.weight(1f))
+            if (canEdit) FloatingButton(Icons.Filled.Edit, "Edit ride", { onEdit(rideId) }, iconSize = 20.dp)
+            ride?.let { r ->
+                LobbyMoreMenu(
+                    canLeave = canLeave,
+                    leaving = leaving,
+                    onShare = { shareInvite(ctx, r.inviteCode, r.title) },
+                    onShowQr = { showQrFor = r.inviteCode },
+                    onLeave = { showLeaveConfirm = true },
+                )
+            }
+        }
+    }
+
+    showQrFor?.let { code -> QrCodeDialog(inviteCode = code, onDismiss = { showQrFor = null }) }
+
+    if (showLeaveConfirm) {
+        ConfirmDialog(
+            title = "Leave this ride?",
+            onDismiss = { showLeaveConfirm = false },
+            confirmLabel = "Leave ride",
+            destructive = true,
+            onConfirm = {
+                showLeaveConfirm = false
+                leaving = true
+                leaveError = null
+                scope.launch {
+                    try {
+                        apiCall { api.leaveRide(rideId) }
+                        // Confirmation-FIRST, deliberately: tearing the session down optimistically
+                        // would drop the socket before the server's ride:participant_left broadcast —
+                        // the very event every other rider's roster and map pin removal hangs off.
+                        sessionVm.endSession()
+                        onBack()
+                    } catch (e: ApiException) {
+                        // "You aren't in this ride" counts as success: the rider asked to be out,
+                        // and trapping them behind an error alert would be absurd.
+                        if (e.message == "PARTICIPANT_NOT_FOUND" || isNotFoundError(e.message)) {
+                            sessionVm.endSession()
+                            onBack()
+                        } else {
+                            leaveError = e.riderMessage
+                            leaving = false
+                        }
+                    } catch (e: Exception) {
+                        leaveError = e.riderMessage
+                        leaving = false
                     }
                 }
             },
-        )
+        ) {
+            DialogText("You'll stop sharing your location and drop off the roster. You can re-join later with the invite code.")
+        }
+    }
 
-        val loadedRide = ride
-        when {
-            loadedRide == null && !rideLoaded -> LoadingBlock(Modifier.padding(top = 40.dp))
-            loadedRide == null -> Box(Modifier.padding(20.dp)) {
-                ErrorBlock(
-                    "Couldn't load this ride.",
-                    onRetry = { sessionVm.load(myId.orEmpty(), force = true) },
+    leaveError?.let { message ->
+        ConfirmDialog(title = "Couldn't leave ride", onDismiss = { leaveError = null }, confirmLabel = "OK", dismissLabel = null, onConfirm = { leaveError = null }) {
+            DialogText(message)
+        }
+    }
+
+    // The leader removed me from the ride.
+    if (wasRemoved) {
+        ConfirmDialog(
+            title = "Removed from ride",
+            onDismiss = { sessionVm.endSession(); onBack() },
+            confirmLabel = "OK",
+            dismissLabel = null,
+            onConfirm = { sessionVm.endSession(); onBack() },
+        ) { DialogText("The ride leader removed you from this ride.") }
+    }
+
+    // The leader deleted the whole ride. Non-leaders learn of it only through this broadcast; the
+    // leader initiated it and already left via the edit page.
+    if (wasDeleted && !amLeader) {
+        ConfirmDialog(
+            title = "Ride cancelled",
+            onDismiss = { sessionVm.endSession(); onBack() },
+            confirmLabel = "OK",
+            dismissLabel = null,
+            onConfirm = { sessionVm.endSession(); onBack() },
+        ) { DialogText("The ride leader cancelled this ride.") }
+    }
+}
+
+// QR dialog target lives at file level so the top bar's menu and the roster header share it.
+private var showQrFor by mutableStateOf<String?>(null)
+
+@Composable
+private fun LobbyContent(
+    rideId: String,
+    ride: Ride,
+    sessionVm: RideSessionViewModel,
+    riders: List<RideParticipant>,
+    onlineIds: Set<String>,
+    liveStatus: String,
+    connected: Boolean,
+    myId: String?,
+    amLeader: Boolean,
+    starting: Boolean,
+    startError: String?,
+    onStart: () -> Unit,
+    onResume: () -> Unit,
+    onTab: (DsTab) -> Unit,
+) {
+    val api = remember { ServiceLocator.api }
+    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+    val session = sessionVm.session
+
+    // The ride is live once EITHER the REST copy or a state_update says so — the session's status
+    // starts at LOBBY and only moves when the server broadcasts, so re-entering an already-ACTIVE
+    // ride would otherwise show START RIDE.
+    val isActive = liveStatus == "ACTIVE" || liveStatus == "IN_PROGRESS" ||
+        ride.status == "ACTIVE" || ride.status == "IN_PROGRESS"
+
+    // Optimistic local ready state: the tally and the button move the instant you tap rather than
+    // waiting for the server's ride:participant_ready echo.
+    var myReadyOptimistic by remember(rideId) { mutableStateOf(false) }
+    val myReady = myReadyOptimistic || riders.firstOrNull { it.userId == myId }?.status == "READY"
+
+    // Riders only. The leader has no MARK READY control (they get START instead), so counting them
+    // would leave the tally permanently one short and looking stuck.
+    val others = riders.filter { !it.isLeader }
+    val readyCount = others.count { rider -> if (rider.userId == myId) myReady else rider.status == "READY" }
+    val readyStatusText = when {
+        others.isEmpty() -> "SOLO"
+        readyCount == others.size -> "ALL READY"
+        else -> "$readyCount/${others.size} READY"
+    }
+    val canStart = others.isEmpty() || others.all { it.status == "READY" }
+
+    // Leader-only rider management (remove from ride).
+    var riderToManage by remember(rideId) { mutableStateOf<RideParticipant?>(null) }
+    var removing by remember(rideId) { mutableStateOf(false) }
+    var removeError by remember(rideId) { mutableStateOf<String?>(null) }
+
+    // Clear the leader's in-flight removal sheet once the roster confirms the kick.
+    LaunchedEffect(riders) {
+        val target = riderToManage ?: return@LaunchedEffect
+        if (riders.none { it.userId == target.userId }) {
+            riderToManage = null
+            removing = false
+        }
+    }
+
+    var routeCoords by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+    // Draw the leader-selected polyline so every rider sees the same line; re-keyed on the stored
+    // geometry + waypoints so a live ride:updated edit re-draws the route.
+    LaunchedEffect(ride.routePolyline, ride.waypoints) { routeCoords = rideRoute(ride) }
+
+    // Destination photo hero — the image Google Maps shows for this place. Three-state, so the map
+    // fallback never flashes before a photo.
+    val heroPhase by rememberDestinationHero(
+        rideId = ride.id,
+        destinationName = ride.destinationName,
+        lat = ride.destinationLat,
+        lng = ride.destinationLng,
+    )
+
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 200.dp),
+        ) {
+            item {
+                LobbyHero(ride, heroPhase, routeCoords, isActive)
+            }
+            item {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = DsSpace.gutter)
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    StatTile(Icons.Filled.Route, "Distance", "${formatKm(ride.distanceMeters)} km")
+                    StatTile(Icons.Filled.Group, "Riders", "${riders.size}")
+                    StatTile(
+                        Icons.Filled.Sensors,
+                        "Status",
+                        if (canStart) "Ready" else "Waiting",
+                        tone = if (canStart) StatTone.Success else StatTone.Warning,
+                    )
+                    if (ride.inviteCode.isNotEmpty()) StatTile(Icons.Filled.Link, "Code", ride.inviteCode, tone = StatTone.Code)
+                }
+            }
+            item {
+                SectionHeading("Squad roster", Modifier.padding(horizontal = DsSpace.gutter).padding(top = 24.dp, bottom = 10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (connected) LiveIndicator("Live")
+                        Text(readyStatusText, style = DsType.badge.copy(fontSize = DsType.badgeSmall.fontSize), color = DsColor.textMuted, maxLines = 1)
+                        SquareIconButton(Icons.Filled.Link, "Share invite", { shareInvite(ctx, ride.inviteCode, ride.title) })
+                        SquareIconButton(Icons.Filled.QrCode2, "Show QR code", { showQrFor = ride.inviteCode })
+                    }
+                }
+            }
+            // Leader first, then everyone else in roster order.
+            items(riders.sortedByDescending { it.isLeader }, key = { it.userId }) { rider ->
+                // Leader can tap any non-leader rider to open the management sheet.
+                val canManage = amLeader && !rider.isLeader
+                RosterRow(
+                    rider = rider,
+                    isMe = rider.userId == myId,
+                    isOnline = onlineIds.contains(rider.userId),
+                    rideActive = isActive,
+                    onClick = if (canManage) ({ riderToManage = rider }) else null,
+                    modifier = Modifier.padding(horizontal = DsSpace.gutter, vertical = 4.dp),
                 )
             }
-            else -> {
-                // The ride is live once EITHER the REST copy or a state_update says so — the
-                // session's status starts at LOBBY and only moves when the server broadcasts,
-                // so re-entering an already-ACTIVE ride would otherwise show START RIDE.
-                val isActive = liveStatus == "ACTIVE" || liveStatus == "IN_PROGRESS" ||
-                    loadedRide.status == "ACTIVE" || loadedRide.status == "IN_PROGRESS"
+            item {
+                SectionHeading("Ride details", Modifier.padding(horizontal = DsSpace.gutter).padding(top = 22.dp, bottom = 10.dp))
+                RideDetails(ride, Modifier.padding(horizontal = DsSpace.gutter))
+            }
+        }
 
-                // Optimistic local ready state: the tally and the button move the instant you tap
-                // rather than waiting for the server's ride:participant_ready echo.
-                var myReadyOptimistic by remember(rideId) { mutableStateOf(false) }
-                val myReady = myReadyOptimistic ||
-                    riders.firstOrNull { it.userId == myId }?.status == "READY"
-
-                // Riders only. The leader has no MARK READY control (they get START instead), so
-                // counting them would leave the tally permanently one short and looking stuck.
-                val others = riders.filter { !it.isLeader }
-                val readyCount = others.count { rider ->
-                    // Own row uses the optimistic local state, matching how the roster renders it,
-                    // so the tally moves the instant you tap rather than waiting for the echo.
-                    if (rider.userId == myId) myReady else rider.status == "READY"
+        // Sticky action above the floating nav.
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(DsGradient.bottomActionFade),
+        ) {
+            Column(
+                Modifier.padding(horizontal = DsSpace.gutter).padding(top = 28.dp, bottom = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (startError != null) InlineError(startError)
+                if (isActive) {
+                    // Ride already running — jump into navigation on tap (no auto-navigate).
+                    PrimaryButton("Resume navigation", onResume, icon = Icons.Filled.Navigation)
+                } else {
+                    // Everyone can mark ready; the emit is acked by the server.
+                    SecondaryButton(
+                        text = if (myReady) "You're ready" else "Mark ready",
+                        enabled = !myReady,
+                        tone = if (myReady) SecondaryTone.Confirmed else SecondaryTone.Neutral,
+                        onClick = {
+                            myReadyOptimistic = true
+                            scope.launch {
+                                // Roll back if the server never acked it.
+                                if (!session.markReady()) myReadyOptimistic = false
+                            }
+                        },
+                    )
+                    if (amLeader) {
+                        PrimaryButton(
+                            text = if (canStart) "Start ride" else "Waiting for riders",
+                            onClick = onStart,
+                            icon = Icons.Filled.Navigation,
+                            enabled = canStart,
+                            loading = starting,
+                        )
+                    } else {
+                        Text(
+                            "Waiting for the ride leader to start…",
+                            style = DsType.bodySmall,
+                            color = DsColor.textMuted,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        )
+                    }
                 }
-                val readyStatusText = when {
-                    others.isEmpty() -> "SOLO"
-                    readyCount == others.size -> "ALL READY"
-                    else -> "$readyCount/${others.size} READY"
-                }
-                val canStart = others.isEmpty() || others.all { it.status == "READY" }
-                var showQr by remember { mutableStateOf(false) }
+            }
+            BottomNavFloating(active = null, onSelect = onTab)
+        }
+    }
 
-                // Leader-only rider management (remove from ride).
-                var riderToManage by remember(rideId) { mutableStateOf<RideParticipant?>(null) }
-                var removing by remember(rideId) { mutableStateOf(false) }
-                var removeError by remember(rideId) { mutableStateOf<String?>(null) }
-
-                // Clear the leader's in-flight removal sheet once the roster confirms the kick.
-                LaunchedEffect(riders) {
-                    val target = riderToManage ?: return@LaunchedEffect
-                    if (riders.none { it.userId == target.userId }) {
-                        riderToManage = null
+    riderToManage?.let { rider ->
+        RemoveRiderSheet(
+            rider = rider,
+            removing = removing,
+            error = removeError,
+            onRemove = {
+                if (removing) return@RemoveRiderSheet
+                removing = true
+                removeError = null
+                scope.launch {
+                    try {
+                        apiCall { api.removeParticipant(rideId, rider.userId) }
+                        // The ride:participant_removed broadcast (which the leader also receives) is
+                        // what removes the rider from the roster and closes this sheet.
+                    } catch (e: Exception) {
+                        removeError = e.riderMessage
                         removing = false
                     }
                 }
+            },
+            onDismiss = { if (!removing) { riderToManage = null; removeError = null } },
+        )
+    }
+}
 
-                var routeCoords by remember { mutableStateOf<List<LatLng>>(emptyList()) }
-                // Draw the leader-selected polyline so every rider sees the same line; re-keyed on
-                // the stored geometry + waypoints so a live ride:updated edit re-draws the route.
-                LaunchedEffect(loadedRide.routePolyline, loadedRide.waypoints) {
-                    routeCoords = rideRoute(loadedRide)
-                }
+/** Height of the lobby hero. Shared by the frame and the camera-fit clamp so they can't drift. */
+private const val LOBBY_HERO_HEIGHT = 380f
 
-                // Destination photo hero — the image Google Maps shows for this place, in place of
-                // the route map. Three-state, so the map fallback never flashes before a photo.
-                val heroPhase by rememberDestinationHero(
-                    rideId = loadedRide.id,
-                    destinationName = loadedRide.destinationName,
-                    lat = loadedRide.destinationLat,
-                    lng = loadedRide.destinationLng,
-                )
+@Composable
+private fun LobbyHero(ride: Ride, heroPhase: DestinationHeroPhase, routeCoords: List<LatLng>, isActive: Boolean) {
+    Box(Modifier.fillMaxWidth().height(LOBBY_HERO_HEIGHT.dp)) {
+        // An explicit fit, not AutoFit: stop pins are bottom-anchored and tower above their
+        // coordinate, and the title block covers the lower part of the hero.
+        var cameraId by remember(ride.id) { mutableStateOf(0L) }
+        LaunchedEffect(routeCoords, ride.id) { cameraId += 1 }
+        when (heroPhase) {
+            // Deliberately empty: showing the map here is what makes a ride switch flash map → photo.
+            DestinationHeroPhase.Resolving -> Box(Modifier.matchParentSize().background(DsColor.cardSolid))
+            is DestinationHeroPhase.Photo -> DestinationPhotoImage(
+                bitmap = heroPhase.photo.bitmap,
+                crop = true,
+                modifier = Modifier.matchParentSize(),
+            )
+            DestinationHeroPhase.Unavailable -> ConvoTrackMap(
+                modifier = Modifier.matchParentSize(),
+                routeCoords = routeCoords,
+                markers = rideMarkers(ride),
+                stopCoords = rideStopCoords(ride),
+                interactive = false,
+                camera = if (routeCoords.isEmpty()) MapCamera.AutoFit else MapCamera.Fit(
+                    id = cameraId,
+                    coords = routeCoords,
+                    topDp = NavCamera.STOP_PIN_TOP_EXTENT_DP + 56f,
+                    leftDp = 40f,
+                    bottomDp = 150f,
+                    rightDp = 40f,
+                ),
+            )
+        }
+        Box(Modifier.matchParentSize().background(DsGradient.photoFade))
 
-                // Map with a floating stat-pill strip over its lower edge (iOS lobby mapSection).
-                //
-                // 360dp, not 260: the camera has to reserve ~100dp at the top for the destination
-                // pin's art (stop pins are bottom-anchored and tower above their coordinate) and
-                // ~84dp at the bottom for the floating pills. On a 260dp map that left a ~76dp
-                // band to frame a route in, so the fit zoomed out until the route was a speck.
-                Box(Modifier.fillMaxWidth().height(LOBBY_MAP_HEIGHT.dp)) {
-                    // An explicit fit, not AutoFit: stop pins are bottom-anchored and tower up to
-                    // ~92dp ABOVE their coordinate, and the stat pills float over the map's lower
-                    // edge. A symmetric fit put the destination pin underneath the top app bar.
-                    var lobbyCameraId by remember(rideId) { mutableStateOf(0L) }
-                    LaunchedEffect(routeCoords, loadedRide.id) { lobbyCameraId += 1 }
-                    when (val phase = heroPhase) {
-                        // Deliberately empty: neither the photo nor the map. Showing the map here
-                        // is what makes a ride switch flash map → photo. A plain surface reads as
-                        // "loading" without committing to either outcome.
-                        DestinationHeroPhase.Resolving ->
-                            Box(Modifier.matchParentSize().background(CT.surfaceContainerLow))
-
-                        is DestinationHeroPhase.Photo ->
-                            DestinationPhotoImage(
-                                bitmap = phase.photo.bitmap,
-                                crop = false,   // near-square slot: show the whole frame
-                                modifier = Modifier.matchParentSize(),
-                            )
-
-                        DestinationHeroPhase.Unavailable -> ConvoTrackMap(
-                        modifier = Modifier.matchParentSize(),
-                        routeCoords = routeCoords,
-                        markers = rideMarkers(loadedRide),
-                        stopCoords = rideStopCoords(loadedRide),
-                        interactive = false,
-                        camera = if (routeCoords.isEmpty()) {
-                            MapCamera.AutoFit
-                        } else {
-                            val rawTop = NavCamera.STOP_PIN_TOP_EXTENT_DP + 8f
-                            val rawBottom = 84f   // clears the floating stat-pill row
-                            // The insets must leave a usable band — asking the SDK to fit into a
-                            // zero-height viewport yields a nonsense zoom. Scale both back
-                            // proportionally if the chrome ever grows enough to threaten that
-                            // (larger text, more pills), keeping their ratio so the route stays
-                            // centred in whatever band is left (iOS `squeeze`).
-                            val maxVertical = LOBBY_MAP_HEIGHT - 80f
-                            val squeeze = minOf(1f, maxVertical / maxOf(rawTop + rawBottom, 1f))
-                            MapCamera.Fit(
-                                id = lobbyCameraId,
-                                coords = routeCoords,
-                                topDp = rawTop * squeeze,
-                                leftDp = 40f,
-                                bottomDp = rawBottom * squeeze,
-                                rightDp = 40f,
-                            )
-                        },
-                        )
-                    }
-                    Box(
-                        Modifier.matchParentSize().background(
-                            Brush.verticalGradient(
-                                0f to Color.Transparent,
-                                0.7f to CT.surfaceDim.copy(alpha = 0.55f),
-                                1f to CT.surfaceDim,
-                            ),
-                        ),
-                    )
-                    // The ride title, over the hero rather than in the app bar. Two lines
-                    // before it truncates, and a drop shadow so it stays legible against a bright
-                    // destination photo (iOS draws the same white-on-shadow treatment).
+        Column(
+            Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = DsSpace.gutter).padding(bottom = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Eyebrow("Ride")
+            Text(
+                ride.title,
+                style = DsType.heroTitle.copy(shadow = Shadow(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f), Offset(0f, 2f), 12f)),
+                color = DsColor.textOnPhoto,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PulseDot(DsColor.accent, 8.dp)
+                Text(if (isActive) "Riding" else "In lobby", style = DsType.body.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium), color = DsColor.textPrimary)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.LocationOn, null, tint = DsColor.textSecondary, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(6.dp))
+                Text(ride.destinationName, style = DsType.body, color = DsColor.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                // Photographer credit. Required by Google's Places policy whenever a Place Photo is
+                // displayed, so it renders WITH the image rather than being optional decoration.
+                (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
                     Text(
-                        loadedRide.title,
-                        style = CTType.headlineLg.copy(
-                            shadow = Shadow(
-                                color = Color.Black.copy(alpha = 0.6f),
-                                offset = Offset(0f, 2f),
-                                blurRadius = 12f,
-                            ),
-                        ),
-                        color = Color.White,
-                        maxLines = 2,
+                        "Photo: $credit · Google",
+                        style = DsType.micro,
+                        color = DsColor.textOnPhotoMuted,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .fillMaxWidth(0.82f)
-                            .padding(horizontal = 20.dp)
-                            .padding(top = 16.dp),
+                            .widthIn(max = 170.dp)
+                            .clip(DsShape.pill)
+                            .background(DsColor.glassPill)
+                            .border(1.dp, DsColor.borderOnPhoto, DsShape.pill)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                     )
-
-                    LazyRow(
-                        Modifier.align(Alignment.BottomStart).fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        item { FloatingStatPill(label = "DISTANCE", value = formatKm(loadedRide.distanceMeters), unit = "km") }
-                        item { FloatingStatPill(label = "RIDERS", value = "${riders.size}", unit = null) }
-                        item {
-                            FloatingStatPill(
-                                label = "STATUS",
-                                value = if (canStart) "Ready" else "Waiting",
-                                unit = null,
-                                dotColor = if (canStart) CT.primaryFixed else CT.tertiaryFixedDim,
-                            )
-                        }
-                        if (loadedRide.inviteCode.isNotEmpty()) {
-                            item { FloatingStatPill(label = "CODE", value = loadedRide.inviteCode, unit = null) }
-                        }
-                    }
-
-                    // Photographer credit. Required by Google's Places policy whenever a Place
-                    // Photo is displayed, so it renders WITH the image rather than being optional
-                    // decoration. Sits just above the floating stat-pill row.
-                    (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
-                        Text(
-                            "Photo: $credit · Google",
-                            style = CTType.bodyMd.copy(fontSize = 9.sp),
-                            color = Color.White.copy(alpha = 0.75f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(horizontal = 20.dp)
-                                .padding(bottom = 86.dp),
-                        )
-                    }
-                }
-
-                // Roster header: SQUAD ROSTER · LIVE indicator · share / QR actions.
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // The title takes the slack and truncates; everything to its right is
-                    // fixed-size. A plain weighted Spacer here collapsed to nothing on a phone and
-                    // the LIVE dot ran straight into the ready tally ("LIVE0 / 2 READY").
-                    Text(
-                        "SQUAD ROSTER",
-                        style = CTType.labelCaps,
-                        color = CT.primaryFixed,
-                        letterSpacing = 2.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (connected) {
-                        Spacer(Modifier.size(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(Modifier.size(6.dp).clip(CircleShape).background(CT.primaryFixed))
-                            Text("LIVE", style = CTType.labelCaps.copy(fontSize = 9.sp), color = CT.primaryFixed, letterSpacing = 1.sp)
-                        }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        readyStatusText,
-                        style = CTType.labelCaps,
-                        color = CT.onSurfaceVariant,
-                        letterSpacing = 1.sp,
-                        maxLines = 1,
-                    )
-                    Spacer(Modifier.size(10.dp))
-                    LobbyActionButton(Icons.Filled.Share, "Share invite") { shareInvite(ctx, loadedRide.inviteCode, loadedRide.title) }
-                    Spacer(Modifier.size(8.dp))
-                    LobbyActionButton(Icons.Filled.QrCode2, "Show QR code") { showQr = true }
-                }
-
-                LazyColumn(
-                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(riders, key = { it.userId }) { rider ->
-                        // Leader can tap any non-leader rider to open the management sheet.
-                        val canManage = amLeader && !rider.isLeader
-                        RiderRow(
-                            rider = rider,
-                            isMe = rider.userId == myId,
-                            isOnline = onlineIds.contains(rider.userId),
-                            rideActive = isActive,
-                            onClick = if (canManage) ({ riderToManage = rider }) else null,
-                        )
-                    }
-                }
-
-                if (showQr) {
-                    QrCodeDialog(inviteCode = loadedRide.inviteCode, onDismiss = { showQr = false })
-                }
-
-                riderToManage?.let { rider ->
-                    RemoveRiderSheet(
-                        rider = rider,
-                        removing = removing,
-                        error = removeError,
-                        onRemove = {
-                            if (removing) return@RemoveRiderSheet
-                            removing = true
-                            removeError = null
-                            scope.launch {
-                                try {
-                                    apiCall { api.removeParticipant(rideId, rider.userId) }
-                                    // The ride:participant_removed broadcast (which the leader
-                                    // also receives) is what removes the rider from the roster
-                                    // and closes this sheet.
-                                } catch (e: Exception) {
-                                    removeError = e.riderMessage
-                                    removing = false
-                                }
-                            }
-                        },
-                        onDismiss = { if (!removing) { riderToManage = null; removeError = null } },
-                    )
-                }
-
-                if (showLeaveConfirm) {
-                    AlertDialog(
-                        onDismissRequest = { showLeaveConfirm = false },
-                        containerColor = CT.surfaceContainer,
-                        title = { Text("Leave this ride?", style = CTType.headlineMd, color = CT.onSurface) },
-                        text = {
-                            Text(
-                                "You'll stop sharing your location and drop off the roster. " +
-                                    "You can re-join later with the invite code.",
-                                style = CTType.bodyMd,
-                                color = CT.onSurfaceVariant,
-                            )
-                        },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                showLeaveConfirm = false
-                                leaving = true
-                                leaveError = null
-                                scope.launch {
-                                    try {
-                                        apiCall { api.leaveRide(rideId) }
-                                        // Confirmation-FIRST, deliberately: tearing the session
-                                        // down optimistically would drop the socket before the
-                                        // server's ride:participant_left broadcast — the very event
-                                        // every other rider's roster, ready tally and map pin
-                                        // removal hangs off.
-                                        sessionVm.endSession()
-                                        onBack()
-                                    } catch (e: ApiException) {
-                                        // "You aren't in this ride" counts as success. The rider
-                                        // asked to be out; if the server already has them out (a
-                                        // double tap, a stale lobby, a leader who kicked them a
-                                        // moment earlier) the goal is met, and trapping them behind
-                                        // an error alert would be absurd.
-                                        if (e.message == "PARTICIPANT_NOT_FOUND" || isNotFoundError(e.message)) {
-                                            sessionVm.endSession()
-                                            onBack()
-                                        } else {
-                                            leaveError = e.riderMessage
-                                            leaving = false
-                                        }
-                                    } catch (e: Exception) {
-                                        leaveError = e.riderMessage
-                                        leaving = false
-                                    }
-                                }
-                            }) { Text("Leave Ride", color = CT.errorColor) }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showLeaveConfirm = false }) {
-                                Text("Cancel", color = CT.onSurfaceVariant)
-                            }
-                        },
-                    )
-                }
-
-                leaveError?.let { message ->
-                    AlertDialog(
-                        onDismissRequest = { leaveError = null },
-                        containerColor = CT.surfaceContainer,
-                        title = { Text("Couldn't Leave Ride", style = CTType.headlineMd, color = CT.onSurface) },
-                        text = { Text(message, style = CTType.bodyMd, color = CT.onSurfaceVariant) },
-                        confirmButton = {
-                            TextButton(onClick = { leaveError = null }) { Text("OK", color = CT.primaryFixed) }
-                        },
-                    )
-                }
-
-                // The leader removed me from the ride.
-                if (wasRemoved) {
-                    RemovedFromRideDialog(onConfirm = { sessionVm.endSession(); onBack() })
-                }
-
-                // The leader deleted the whole ride. Non-leaders learn of it only through this
-                // broadcast; the leader initiated it and already left via the edit page.
-                if (wasDeleted && !amLeader) {
-                    RideCancelledDialog(onConfirm = { sessionVm.endSession(); onBack() })
-                }
-
-                Column(Modifier.navigationBarsPadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (startError != null) {
-                        Text(startError!!, style = CTType.bodyMd, color = CT.errorColor, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                    }
-
-                    if (isActive) {
-                        // Ride already running — jump into navigation on tap (no auto-navigate).
-                        LimePrimaryButton(text = "RESUME NAVIGATION", onClick = onStartRide)
-                    } else {
-                        // Everyone can mark ready; the emit is acked by the server.
-                        SecondaryButton(
-                            text = if (myReady) "YOU'RE READY ✓" else "MARK READY",
-                            enabled = !myReady,
-                            highlighted = myReady,
-                            onClick = {
-                                myReadyOptimistic = true
-                                scope.launch {
-                                    // Roll back if the server never acked it.
-                                    if (!session.markReady()) myReadyOptimistic = false
-                                }
-                            },
-                        )
-
-                        if (amLeader) {
-                            LimePrimaryButton(
-                                text = when {
-                                    starting -> "STARTING…"
-                                    canStart -> "START RIDE"
-                                    else -> "WAITING FOR RIDERS"
-                                },
-                                enabled = canStart && !starting,
-                                onClick = {
-                                    if (starting) return@LimePrimaryButton
-                                    starting = true
-                                    startError = null
-                                    scope.launch {
-                                        try {
-                                            apiCall { api.startRide(rideId) }
-                                            onStartRide()
-                                        } catch (e: ApiException) {
-                                            // The ride is already ACTIVE (a double tap, or another
-                                            // device started it first). The goal is met — navigate
-                                            // rather than showing an error for it (iOS parity).
-                                            if (e.message?.contains("RIDE_NOT_IN_LOBBY") == true) {
-                                                onStartRide()
-                                            } else {
-                                                startError = e.riderMessage
-                                                starting = false
-                                            }
-                                        } catch (e: Exception) {
-                                            startError = e.riderMessage
-                                            starting = false
-                                        }
-                                    }
-                                },
-                            )
-                        } else {
-                            Text(
-                                "Waiting for the ride leader to start…",
-                                style = CTType.labelCaps,
-                                color = CT.onSurfaceVariant,
-                                letterSpacing = 1.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                            )
-                        }
-                    }
                 }
             }
         }
     }
 }
 
-/** Height of the lobby's map preview. Shared by the frame and the camera-fit clamp so they can't
- *  drift apart. */
-private const val LOBBY_MAP_HEIGHT = 360f
-
-/** Shown to a rider whose ride the leader deleted — acknowledging it leaves the ride flow. */
 @Composable
-private fun RideCancelledDialog(onConfirm: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onConfirm,
-        containerColor = CT.surfaceContainer,
-        title = { Text("Ride Cancelled", style = CTType.headlineMd, color = CT.onSurface) },
-        text = { Text("The ride leader cancelled this ride.", style = CTType.bodyMd, color = CT.onSurfaceVariant) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("OK", color = CT.primaryFixed) } },
+private fun RideDetails(ride: Ride, modifier: Modifier = Modifier) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val start = ride.waypoints.sortedBy { it.order }.firstOrNull { it.type == "START" }
+    val minutes = ride.estimatedDurationSeconds / 60
+    DetailsList(
+        rows = listOfNotNull(
+            start?.let { DetailRow(Icons.Filled.LocationOn, "Start point", it.name) },
+            DetailRow(Icons.Outlined.Flag, "Destination", ride.destinationName) {
+                SquareIconButton(
+                    Icons.Filled.NearMe,
+                    "Directions to the destination",
+                    onClick = {
+                        runCatching {
+                            uriHandler.openUri("https://www.google.com/maps/dir/?api=1&destination=${ride.destinationLat},${ride.destinationLng}")
+                        }
+                    },
+                    size = 36.dp,
+                )
+            },
+            DetailRow(Icons.Filled.Route, "Distance", "${formatKm(ride.distanceMeters)} km"),
+            if (minutes > 0) DetailRow(Icons.Filled.Schedule, "Estimated time", if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "$minutes mins") else null,
+        ),
+        modifier = modifier,
     )
 }
 
-@Composable
-private fun SecondaryButton(text: String, enabled: Boolean, highlighted: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (highlighted) CT.tertiaryFixed.copy(alpha = 0.15f) else CT.surfaceContainerHighest)
-            .border(1.dp, if (highlighted) CT.tertiaryFixed.copy(alpha = 0.5f) else CT.outlineVariant, RoundedCornerShape(12.dp))
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text, style = CTType.labelCaps, color = if (highlighted) CT.tertiaryFixed else CT.onSurface, letterSpacing = 1.sp)
-    }
-}
-
 /**
- * One roster row.
- *
  * The badge is a tri-state, not a boolean. The leader starts the ride rather than readying up, so a
- * leader must never render as WAITING; and once the ride is ACTIVE the ready/waiting distinction is
- * moot for everyone — they're all riding.
+ * leader must never render as WAITING; and once the ride is ACTIVE everyone is riding.
  */
-private fun rosterBadge(rider: RideParticipant, rideActive: Boolean): Triple<String, Color, Color> = when {
-    rideActive -> Triple("RIDING", CT.onPrimaryFixed, CT.tertiaryFixed)
-    rider.isLeader || rider.status == "READY" -> Triple("READY", CT.onPrimaryContainer, CT.primaryContainer)
-    else -> Triple("WAITING", CT.onSurfaceVariant, CT.surfaceVariant)
+private fun rosterState(rider: RideParticipant, rideActive: Boolean): RosterState = when {
+    rideActive -> RosterState.Riding
+    rider.isLeader || rider.status == "READY" -> RosterState.Ready
+    else -> RosterState.Waiting
 }
 
 @Composable
-private fun RiderRow(
+private fun RosterRow(
     rider: RideParticipant,
     isMe: Boolean,
     isOnline: Boolean,
-    rideActive: Boolean = false,
-    onClick: (() -> Unit)? = null,
+    rideActive: Boolean,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
 ) {
-    val (badgeText, badgeFg, badgeBg) = rosterBadge(rider, rideActive)
-    val ready = badgeText != "WAITING"
+    val photo = rememberAvatarPhoto(rider.avatarUrl)
+    val leader = rider.isLeader
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(CT.surfaceContainerHigh.copy(alpha = 0.7f))
-            .border(1.dp, if (ready) CT.primaryFixed else CT.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
-            .padding(14.dp),
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = if (leader) 72.dp else 60.dp)
+            .glassSurface(
+                DsShape.md,
+                if (leader) DsColor.leaderRow else DsColor.cardQuiet,
+                if (leader) DsColor.borderLeaderRow else DsColor.borderHairline,
+            )
+            .then(if (leader) Modifier.accentBar() else Modifier)
+            .then(if (onClick != null) Modifier.dsClickable(pressedScale = 0.99f, onClick = onClick) else Modifier)
+            .padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Avatar with an online presence dot (roster membership == online, iOS parity).
-        Box(Modifier.size(48.dp)) {
-            Box(
-                Modifier.matchParentSize().clip(CircleShape).background(CT.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(rider.name.take(1).uppercase(), style = CTType.headlineMd, color = CT.onSurface)
-            }
-            Box(
-                Modifier.align(Alignment.BottomEnd).size(14.dp).clip(CircleShape)
-                    .background(if (isOnline) CT.tertiaryFixed else CT.surfaceVariant)
-                    .border(2.dp, CT.surfaceDim, CircleShape),
-            )
-        }
-        // Name on its own line (ellipsised so it never crowds the trailing status badge); the
-        // rider title below it conveys the leader/rider role — no separate inline "LEADER" badge.
+        Avatar(rider.name, size = if (leader) 46.dp else 40.dp, photo = photo, colorKey = rider.userId, online = isOnline)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(if (isMe) "${rider.name} (You)" else rider.name, style = DsType.rowTitle, color = DsColor.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                if (isMe) "${rider.name} (You)" else rider.name,
-                style = CTType.bodyLg,
-                color = CT.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                if (rider.isLeader) "RIDE LEADER" else "FORMATION RIDER",
-                style = CTType.labelCaps.copy(fontSize = 10.sp),
-                color = if (rider.isLeader) CT.primaryFixed else CT.onSurfaceVariant,
-                letterSpacing = 1.sp,
+                if (leader) "RIDE LEADER" else "FORMATION RIDER",
+                style = DsType.badgeSmall,
+                color = if (leader) DsColor.accent else DsColor.textMuted,
             )
         }
-        Text(
-            badgeText,
-            style = CTType.labelCaps,
-            color = badgeFg,
-            letterSpacing = 1.sp,
-            modifier = Modifier.clip(CircleShape)
-                .background(badgeBg)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        )
+        StatusBadge(rosterState(rider, rideActive))
+        if (onClick != null) Icon(Icons.Filled.ChevronRight, null, tint = DsColor.textMuted, modifier = Modifier.size(20.dp))
     }
 }
 
 /** Bottom sheet the leader uses to remove a rider from the ride (iOS RemoveRiderSheet parity). */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RemoveRiderSheet(
     rider: RideParticipant,
@@ -724,101 +697,100 @@ private fun RemoveRiderSheet(
     onRemove: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CT.surfaceContainer) {
+    val photo = rememberAvatarPhoto(rider.avatarUrl)
+    DsBottomSheet(onDismiss = onDismiss) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp),
+            Modifier.fillMaxWidth().padding(horizontal = DsSpace.gutter).padding(top = 8.dp, bottom = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            Box(
-                Modifier.size(72.dp).clip(CircleShape).background(CT.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(rider.name.take(1).uppercase(), style = CTType.headlineLg, color = CT.onSurface)
+            Avatar(rider.name, size = 72.dp, photo = photo, colorKey = rider.userId)
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(rider.name, style = DsType.titleLarge, color = DsColor.textPrimary, maxLines = 1)
+                Text(if (rider.isLeader) "RIDE LEADER" else "FORMATION RIDER", style = DsType.badgeSmall, color = DsColor.textMuted)
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(rider.name, style = CTType.headlineMd, color = CT.onSurface, maxLines = 1)
-                Text(
-                    if (rider.isLeader) "RIDE LEADER" else "FORMATION RIDER",
-                    style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 2.sp,
-                )
-            }
-
-            if (error != null) {
-                Text(error, style = CTType.bodyMd, color = CT.errorColor, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-            }
-
-            Box(
-                Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(12.dp)).background(CT.errorContainer)
-                    .clickable(enabled = !removing, onClick = onRemove),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(if (removing) "REMOVING…" else "REMOVE FROM RIDE", style = CTType.labelCaps, color = CT.errorColor, letterSpacing = 1.sp)
-            }
-            Box(
-                Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(12.dp)).background(CT.surfaceContainerHighest)
-                    .clickable(enabled = !removing, onClick = onDismiss),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("CANCEL", style = CTType.labelCaps, color = CT.onSurface, letterSpacing = 1.sp)
-            }
+            if (error != null) InlineError(error)
+            DestructiveButton(if (removing) "Removing…" else "Remove from ride", onClick = onRemove, enabled = !removing)
+            SecondaryButton("Cancel", onClick = onDismiss, enabled = !removing)
         }
     }
 }
 
-/** Shown to a rider the leader has removed — acknowledging it leaves the ride. */
 @Composable
-private fun RemovedFromRideDialog(onConfirm: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onConfirm,
-        containerColor = CT.surfaceContainer,
-        title = { Text("Removed From Ride", style = CTType.headlineMd, color = CT.onSurface) },
-        text = { Text("The ride leader removed you from this ride.", style = CTType.bodyMd, color = CT.onSurfaceVariant) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("OK", color = CT.primaryFixed) } },
-    )
-}
-
-/** Small square icon action button used in the roster header (share / QR). */
-@Composable
-private fun LobbyActionButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
-    Box(
-        Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(CT.surfaceContainerHigh.copy(alpha = 0.7f))
-            .border(1.dp, CT.outline.copy(alpha = 0.2f), RoundedCornerShape(8.dp)).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = description, tint = CT.onSurface, modifier = Modifier.size(20.dp))
+private fun LobbyMoreMenu(
+    canLeave: Boolean,
+    leaving: Boolean,
+    onShare: () -> Unit,
+    onShowQr: () -> Unit,
+    onLeave: () -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        FloatingButton(Icons.Filled.MoreHoriz, "More", { open = true })
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            containerColor = DsColor.dialog,
+            shape = DsShape.md,
+            border = androidx.compose.foundation.BorderStroke(1.dp, DsColor.borderSubtle),
+        ) {
+            MenuItem(Icons.Filled.Share, "Share invite") { open = false; onShare() }
+            MenuItem(Icons.Filled.QrCode2, "Show QR code") { open = false; onShowQr() }
+            // Tinted, not filled: leaving is reversible (re-join with the code), unlike ending or
+            // deleting a ride, so it doesn't earn the screen's only saturated red.
+            if (canLeave) MenuItem(Icons.AutoMirrored.Filled.Logout, if (leaving) "Leaving…" else "Leave ride", danger = true, enabled = !leaving) { open = false; onLeave() }
+        }
     }
 }
 
-/** Full-screen QR dialog for the invite deep link (iOS QRCodeModal parity). */
+@Composable
+private fun MenuItem(icon: ImageVector, label: String, danger: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
+    val color = if (danger) DsColor.danger else DsColor.textPrimary
+    DropdownMenuItem(
+        text = { Text(label, style = DsType.body, color = color) },
+        leadingIcon = { Icon(icon, null, tint = color, modifier = Modifier.size(20.dp)) },
+        onClick = onClick,
+        enabled = enabled,
+        colors = MenuDefaults.itemColors(),
+    )
+}
+
+/** QR for the invite deep link (iOS QRCodeModal parity). */
 @Composable
 private fun QrCodeDialog(inviteCode: String, onDismiss: () -> Unit) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(CT.surfaceContainer).padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-        ) {
-            Text("JOIN CONVOTRACK", style = CTType.headlineMd, color = CT.primaryFixed, letterSpacing = 2.sp)
-            val qr = rememberQrBitmap(ApiClient.joinLink(inviteCode))
-            Box(
-                Modifier.size(240.dp).clip(RoundedCornerShape(16.dp)).background(Color.White),
-                contentAlignment = Alignment.Center,
+    Dialog(onDismissRequest = onDismiss) {
+        Box {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(DsShape.xl)
+                    .background(DsColor.dialog)
+                    .border(1.dp, DsColor.borderSubtle, DsShape.xl)
+                    .padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(22.dp),
             ) {
-                if (qr != null) {
-                    androidx.compose.foundation.Image(
-                        bitmap = qr,
-                        contentDescription = "Invite QR code",
-                        modifier = Modifier.size(208.dp),
-                    )
+                Text("JOIN CONVOTRACK", style = DsType.headerTitle, color = DsColor.textPrimary)
+                val qr = rememberQrBitmap(ApiClient.joinLink(inviteCode))
+                Box(Modifier.size(240.dp).clip(DsShape.md).background(androidx.compose.ui.graphics.Color.White), contentAlignment = Alignment.Center) {
+                    if (qr != null) Image(bitmap = qr, contentDescription = "Invite QR code", modifier = Modifier.size(208.dp))
+                }
+                if (inviteCode.isNotEmpty()) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("INVITE CODE", style = DsType.fieldLabel, color = DsColor.textMuted)
+                        Text(inviteCode, style = DsType.codeDisplay, color = DsColor.accent)
+                    }
                 }
             }
-            if (inviteCode.isNotEmpty()) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("INVITE CODE", style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 2.sp)
-                    Text(inviteCode, style = CTType.headlineMd, color = CT.primaryFixed, letterSpacing = 6.sp)
-                }
-            }
+            FloatingButton(
+                Icons.Filled.Close,
+                "Close",
+                onDismiss,
+                tone = FloatingTone.OnDark,
+                size = 36.dp,
+                iconSize = 18.dp,
+                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+            )
         }
     }
 }
@@ -826,15 +798,16 @@ private fun QrCodeDialog(inviteCode: String, onDismiss: () -> Unit) {
 /** Fires the Android share sheet with the invite deep link (iOS ShareSheetPresenter parity). */
 private fun shareInvite(ctx: android.content.Context, inviteCode: String, title: String) {
     val text = if (inviteCode.isNotEmpty()) {
-        // HTTPS App Link — tappable in every messaging app, opens the app if
-        // installed and falls back to a web page + store links otherwise.
+        // HTTPS App Link — tappable in every messaging app, opens the app if installed and falls
+        // back to a web page + store links otherwise.
         "Join my ConvoTrack ride \"$title\"! Tap to open: ${ApiClient.joinLink(inviteCode)}"
     } else {
         "Join my ConvoTrack ride \"$title\"!"
     }
-    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+    val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(android.content.Intent.EXTRA_TEXT, text)
+        putExtra(Intent.EXTRA_TEXT, text)
     }
-    ctx.startActivity(android.content.Intent.createChooser(intent, "Share invite"))
+    ctx.startActivity(Intent.createChooser(intent, "Share invite"))
 }
+
