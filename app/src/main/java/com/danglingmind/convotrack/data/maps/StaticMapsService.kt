@@ -46,18 +46,18 @@ object StaticMapsService {
             .addQueryParameter("size", "${widthDp}x$heightDp")
             .addQueryParameter("scale", "$scale")
             .addQueryParameter("maptype", "roadmap")
-            // Near-black desaturated basemap, no labels — the poster look.
+            // Dark Glass basemap (the in-app map style), no labels — the poster look.
             .addQueryParameter("style", "feature:all|element:labels|visibility:off")
-            .addQueryParameter("style", "feature:all|element:geometry|color:0x131313")
-            .addQueryParameter("style", "feature:road|element:geometry|color:0x262626")
-            .addQueryParameter("style", "feature:road.highway|element:geometry|color:0x2f2f2f")
-            .addQueryParameter("style", "feature:water|element:geometry|color:0x0a0a0a")
-            .addQueryParameter("style", "feature:landscape|element:geometry|color:0x161616")
+            .addQueryParameter("style", "feature:all|element:geometry|color:0x11191d")
+            .addQueryParameter("style", "feature:road|element:geometry|color:0x252e33")
+            .addQueryParameter("style", "feature:road.highway|element:geometry|color:0x38434a")
+            .addQueryParameter("style", "feature:water|element:geometry|color:0x0b1418")
+            .addQueryParameter("style", "feature:landscape|element:geometry|color:0x13201b")
             .addQueryParameter("style", "feature:poi|visibility:off")
             .addQueryParameter("style", "feature:transit|visibility:off")
-            // Route: bold lime, the hero of the card. With a `path` and no explicit center/zoom,
+            // Route: bold accent (ice cyan, DsColor.accent), the hero of the card. With a `path` and no explicit center/zoom,
             // Static Maps fits the path for us — which is exactly what we want here.
-            .addQueryParameter("path", "color:0xcaf300ff|weight:5|enc:$encoded")
+            .addQueryParameter("path", "color:0x3de8ffff|weight:5|enc:$encoded")
             .addQueryParameter("key", BuildConfig.MAPS_API_KEY)
             .build()
 

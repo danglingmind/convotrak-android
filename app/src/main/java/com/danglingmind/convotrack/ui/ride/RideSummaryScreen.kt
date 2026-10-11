@@ -64,6 +64,7 @@ import com.danglingmind.convotrack.ui.designsystem.DsShape
 import com.danglingmind.convotrack.ui.designsystem.DsSpace
 import com.danglingmind.convotrack.ui.designsystem.DsType
 import com.danglingmind.convotrack.ui.designsystem.ErrorState
+import com.danglingmind.convotrack.ui.designsystem.InlineError
 import com.danglingmind.convotrack.ui.designsystem.Eyebrow
 import com.danglingmind.convotrack.ui.designsystem.LoadingState
 import com.danglingmind.convotrack.ui.designsystem.MetaChip
@@ -73,6 +74,7 @@ import com.danglingmind.convotrack.ui.designsystem.SectionHeading
 import com.danglingmind.convotrack.ui.designsystem.SquareIconButton
 import com.danglingmind.convotrack.ui.designsystem.StatusBarScrim
 import com.danglingmind.convotrack.ui.designsystem.glassSurface
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.time.Instant
@@ -87,6 +89,7 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
     var state by remember { mutableStateOf<UiState<RideSummary>>(UiState.Loading) }
     var ride by remember { mutableStateOf<Ride?>(null) }
     var isGeneratingShare by remember { mutableStateOf(false) }
+    var shareError by remember { mutableStateOf<String?>(null) }
 
     suspend fun load() {
         state = UiState.Loading
@@ -151,6 +154,16 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
         StatusBarScrim()
 
         // Sticky: share (secondary, square) + DONE.
+        shareError?.let { message ->
+            InlineError(
+                message,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = DsSpace.gutter)
+                    .padding(bottom = 84.dp),
+            )
+        }
         Row(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -173,13 +186,27 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
                     shape = DsShape.lg,
                     busy = isGeneratingShare,
                     onClick = {
+                        if (isGeneratingShare) return@SquareIconButton
                         isGeneratingShare = true
+                        shareError = null
                         scope.launch {
                             try {
                                 val r = ride ?: runCatching { apiCall { api.getRide(rideId) } }.getOrNull()
-                                val route = r?.let { runCatching { rideRoute(it) }.getOrNull() }.orEmpty()
-                                val card = ShareSummaryCard.render(rideTitle = r?.title ?: "ConvoTrack ride", summary = summary, routeCoordinates = route)
-                                ShareSummaryCard.share(ctx, card, r?.title ?: "ConvoTrack ride")
+                                val title = r?.title ?: "ConvoTrack ride"
+                                // A card made on an earlier share is reused as-is: no re-render and
+                                // no Directions or Static Maps calls.
+                                val card = ShareSummaryCard.cachedCard(ctx, rideId) ?: run {
+                                    val route = r?.let { runCatching { rideRoute(it) }.getOrNull() }.orEmpty()
+                                    val bitmap = ShareSummaryCard.render(rideTitle = title, summary = summary, routeCoordinates = route)
+                                    ShareSummaryCard.saveCard(ctx, rideId, bitmap)
+                                }
+                                ShareSummaryCard.share(ctx, card, title)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                // A failed share must never take the app down; say so and let the
+                                // rider try again.
+                                shareError = "Couldn't create the summary image. Try again."
                             } finally {
                                 isGeneratingShare = false
                             }

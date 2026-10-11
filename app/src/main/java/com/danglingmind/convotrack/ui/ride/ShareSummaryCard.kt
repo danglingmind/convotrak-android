@@ -179,26 +179,77 @@ object ShareSummaryCard {
             c.drawRoundRect(RectF(qx - 16f, qy - 16f, qx + qrSize + 16f, qy + qrSize + 16f), 20f, 20f,
                 Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE })
             c.drawBitmap(qr, null, RectF(qx, qy, qx + qrSize, qy + qrSize), Paint(Paint.FILTER_BITMAP_FLAG))
+            // Label to the LEFT of the code, right-aligned to it. Above the code it collided with
+            // a third award row, which runs right up to the same right edge.
             val scan = paint(muted, 28f, bold = true, mono = true, letterSpacingEm = 0.12f)
-            c.drawText("SCAN TO", qx, qy - 60f, scan)
-            c.drawText("DOWNLOAD", qx, qy - 22f, scan)
+            val labelRight = qx - 16f - 28f
+            c.drawText("SCAN TO", labelRight - scan.measureText("SCAN TO"), qy + qrSize / 2 - 8f, scan)
+            c.drawText("DOWNLOAD", labelRight - scan.measureText("DOWNLOAD"), qy + qrSize / 2 + 30f, scan)
         }
 
         bmp
     }
 
-    /** Writes the card to app cache and hands it to the share sheet. */
-    suspend fun share(context: Context, bitmap: Bitmap, rideTitle: String) {
-        val uri = withContext(Dispatchers.IO) {
-            val dir = File(context.cacheDir, "shared").apply { mkdirs() }
-            // A per-share filename. Reusing one path meant two shares in quick succession produced
-            // the same content:// URI, so a receiver that had cached it by URI could re-send the
-            // PREVIOUS ride's card. Older cards are swept so the directory can't grow unbounded.
-            dir.listFiles()?.forEach { it.delete() }
-            val file = File(dir, "ride-summary-${'$'}{System.currentTimeMillis()}.png")
-            FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            FileProvider.getUriForFile(context, "${'$'}{context.packageName}.fileprovider", file)
+    /**
+     * Bumped when the poster's layout changes, so cards cached by an older build are re-rendered
+     * instead of being shared in the old design.
+     */
+    private const val CARD_VERSION = 2
+
+    /** How many rides' cards to keep. Each is ~0.5–1 MB; older ones are dropped first. */
+    private const val MAX_CACHED_CARDS = 20
+
+    /**
+     * Cached cards live in the one directory the FileProvider exposes (`res/xml/file_paths.xml`), so
+     * a cached card can be shared as-is. `cacheDir` is right for them: the OS may evict it under
+     * storage pressure, and a card is always cheap to render again.
+     */
+    private fun cardDir(context: Context) = File(context.cacheDir, "shared").apply { mkdirs() }
+
+    /**
+     * One file per ride. A finished ride's summary can't change (completed rides aren't editable),
+     * so the card rendered once is the card forever — and because the name carries the ride id, two
+     * different rides never share a content:// URI, which is what stopped a receiver that cached by
+     * URI from re-sending the previous ride's card.
+     */
+    private fun cardFile(context: Context, rideId: String) =
+        File(cardDir(context), "ride-summary-v$CARD_VERSION-${rideId.filter { it.isLetterOrDigit() || it == '-' }}.png")
+
+    /** The previously generated card for [rideId], or null if it hasn't been made (or was evicted). */
+    suspend fun cachedCard(context: Context, rideId: String): File? = withContext(Dispatchers.IO) {
+        cardFile(context, rideId).takeIf { it.isFile && it.length() > 0 }
+    }
+
+    /**
+     * Writes [bitmap] as [rideId]'s card. Written to a temp file and renamed so an interrupted write
+     * never leaves a truncated PNG that a later share would pick up as valid.
+     */
+    suspend fun saveCard(context: Context, rideId: String, bitmap: Bitmap): File = withContext(Dispatchers.IO) {
+        val target = cardFile(context, rideId)
+        val temp = File(target.parentFile, "${target.name}.tmp")
+        FileOutputStream(temp).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        if (!temp.renameTo(target)) {
+            temp.copyTo(target, overwrite = true)
+            temp.delete()
         }
+        pruneCache(target.parentFile!!)
+        target
+    }
+
+    /** Keeps the newest [MAX_CACHED_CARDS] cards and drops leftovers from older builds. */
+    private fun pruneCache(dir: File) {
+        val files = dir.listFiles().orEmpty()
+        files.filter { !it.name.startsWith("ride-summary-v$CARD_VERSION-") || it.name.endsWith(".tmp") }
+            .forEach { it.delete() }
+        files.filter { it.exists() && it.name.endsWith(".png") }
+            .sortedByDescending { it.lastModified() }
+            .drop(MAX_CACHED_CARDS)
+            .forEach { it.delete() }
+    }
+
+    /** Hands a saved card to the share sheet. */
+    suspend fun share(context: Context, card: File, rideTitle: String) {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", card)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
@@ -207,12 +258,12 @@ object ShareSummaryCard {
             // FileProvider is useless to them unless the grant travels with the intent.
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        // Activity starts belong on the main thread; the encode above is the only part that needed
-        // to be off it.
         withContext(Dispatchers.Main) {
             context.startActivity(
                 Intent.createChooser(intent, "Share ride summary")
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    // The chooser shows a preview of the image only if it can read it too.
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
             )
         }
     }
