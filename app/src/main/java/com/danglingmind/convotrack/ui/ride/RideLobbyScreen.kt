@@ -21,6 +21,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -161,6 +165,8 @@ fun RideLobbyScreen(
     var showLeaveConfirm by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
     var leaveError by remember { mutableStateOf<String?>(null) }
+    // Invite code whose QR is showing; opened from the top menu or the roster header.
+    var showQrFor by remember { mutableStateOf<String?>(null) }
 
     // Fetches the ride and starts the shared session. Idempotent, so re-entering the lobby from
     // navigation just re-joins the room rather than resetting the live roster.
@@ -178,6 +184,15 @@ fun RideLobbyScreen(
     // needs this. The leader has no equivalent: leaving would orphan the ride, so they cancel it
     // from the edit page instead (the server rejects a leader leave with LEADER_CANNOT_LEAVE).
     val canLeave = !amLeader && ride != null && ride?.status != "COMPLETED"
+
+    val listState = rememberLazyListState()
+    // The floating controls pick up a solid backing once the hero scrolls away under them.
+    val topAlpha by remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) 1f
+            else ((listState.firstVisibleItemScrollOffset - 500) / 300f).coerceIn(0f, 1f)
+        }
+    }
 
     DsScreen {
         val loadedRide = ride
@@ -223,6 +238,8 @@ fun RideLobbyScreen(
                 },
                 onResume = onStartRide,
                 onTab = onTab,
+                listState = listState,
+                onShowQr = { showQrFor = it },
             )
         }
 
@@ -232,9 +249,10 @@ fun RideLobbyScreen(
         Row(
             Modifier
                 .fillMaxWidth()
+                .drawBehind { drawRect(DsColor.bgBase.copy(alpha = 0.98f * topAlpha)) }
                 .statusBarsPadding()
                 .padding(horizontal = DsSpace.gutter)
-                .padding(top = 8.dp),
+                .padding(top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -324,9 +342,6 @@ fun RideLobbyScreen(
     }
 }
 
-// QR dialog target lives at file level so the top bar's menu and the roster header share it.
-private var showQrFor by mutableStateOf<String?>(null)
-
 @Composable
 private fun LobbyContent(
     rideId: String,
@@ -343,6 +358,8 @@ private fun LobbyContent(
     onStart: () -> Unit,
     onResume: () -> Unit,
     onTab: (DsTab) -> Unit,
+    listState: LazyListState,
+    onShowQr: (String) -> Unit,
 ) {
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
@@ -402,6 +419,7 @@ private fun LobbyContent(
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
+            state = listState,
             contentPadding = PaddingValues(bottom = 200.dp),
         ) {
             item {
@@ -429,11 +447,19 @@ private fun LobbyContent(
             }
             item {
                 SectionHeading("Squad roster", Modifier.padding(horizontal = DsSpace.gutter).padding(top = 24.dp, bottom = 10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (connected) LiveIndicator("Live")
-                        Text(readyStatusText, style = DsType.badge.copy(fontSize = DsType.badgeSmall.fontSize), color = DsColor.textMuted, maxLines = 1)
-                        SquareIconButton(Icons.Filled.Link, "Share invite", { shareInvite(ctx, ride.inviteCode, ride.title) })
-                        SquareIconButton(Icons.Filled.QrCode2, "Show QR code", { showQrFor = ride.inviteCode })
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // LIVE and the ready tally share one compact mono line so the heading keeps its room.
+                        Column(horizontalAlignment = Alignment.End) {
+                            if (connected) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    PulseDot(DsColor.accent, 6.dp)
+                                    Text("LIVE", style = DsType.badgeSmall, color = DsColor.accent)
+                                }
+                            }
+                            Text(readyStatusText, style = DsType.badgeSmall, color = DsColor.textMuted, maxLines = 1)
+                        }
+                        SquareIconButton(Icons.Filled.Link, "Share invite", { shareInvite(ctx, ride.inviteCode, ride.title) }, size = 36.dp)
+                        SquareIconButton(Icons.Filled.QrCode2, "Show QR code", { onShowQr(ride.inviteCode) }, size = 36.dp)
                     }
                 }
             }

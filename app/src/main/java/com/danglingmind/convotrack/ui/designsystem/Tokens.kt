@@ -118,8 +118,9 @@ object DsColor {
 
 /** Gradients (`tokens.gradient`). */
 object DsGradient {
+    /** Starts at background.base so hero photos (which fade to base) meet it without a seam. */
     val appBackground = Brush.verticalGradient(
-        0f to DsColor.bgTop, 0.45f to DsColor.bgBase, 1f to DsColor.bgDeep,
+        0f to DsColor.bgBase, 0.6f to DsColor.bgBase, 1f to DsColor.bgDeep,
     )
 
     /** Every hero photo: lets the photo read at the top, then lands on background.base. */
