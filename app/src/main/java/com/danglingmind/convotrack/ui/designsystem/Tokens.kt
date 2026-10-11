@@ -36,7 +36,7 @@ object DsColor {
     val glassPill = Color(0x9E1E2834)
     val nav = Color(0xF70C1115)
     val neutralBadge = Color(0xFF2A2F37)
-    val iconDisc = Color(0xFF14202A)
+    val iconDisc = Color(0xFF1A231B)
     val raised = Color(0xFF16212D)
     val dialog = Color(0xFF111B26)
     val sheet = Color(0xFF0B131B)
@@ -57,17 +57,17 @@ object DsColor {
     val textOnPhoto = Color.White
     val textOnPhotoMuted = Color(0xC7FFFFFF)
 
-    // Accent: ice cyan #3DE8FF, everything else derived from it (see the spec's `_chosen`).
-    val accent = Color(0xFF3DE8FF)
-    val accentBright = Color(0xFF5AEBFF)
-    val accentSoft = Color(0xFF34C5D9)
-    val accentDeep = Color(0xFF22808C)
-    val accentTint = Color(0x1F3DE8FF)       // 12%
-    val accentTonal = Color(0x2B3DE8FF)      // 17%
-    val accentBorder = Color(0x733DE8FF)     // 45%
-    val accentGlow = Color(0x473DE8FF)       // 28%
-    val focus = Color(0xFF37D1E6)
-    val onAccent = Color(0xFF040E0F)
+    // Accent: lime #CDEF1E (sampled from the user's reference screens, matches the logo), everything else derived from it (see the spec's `_chosen`).
+    val accent = Color(0xFFCDEF1E)
+    val accentBright = Color(0xFFD4F140)
+    val accentSoft = Color(0xFFAECB1A)
+    val accentDeep = Color(0xFF718310)
+    val accentTint = Color(0x1FCDEF1E)       // 12%
+    val accentTonal = Color(0x2BCDEF1E)      // 17%
+    val accentBorder = Color(0x73CDEF1E)     // 45%
+    val accentGlow = Color(0x47CDEF1E)       // 28%
+    val focus = Color(0xFFB8D71B)
+    val onAccent = Color(0xFF0C0E02)
 
     // Status
     val success = Color(0xFF5EF7A6)
@@ -99,8 +99,8 @@ object DsColor {
 
     // Map
     val mapRouteCore = accent
-    val mapRouteGlow = Color(0x4D3DE8FF)     // 30%
-    val mapRoutePlanned = Color(0x473DE8FF)  // 28%
+    val mapRouteGlow = Color(0x4DCDEF1E)     // 30%
+    val mapRoutePlanned = Color(0x47CDEF1E)  // 28%
     val mapRouteAlternative = Color(0x66B4B9C1)
     val mapStart = success
     val mapStop = accentDeep

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Dark Glass tokens the window needs before Compose draws (DsColor.accent / DsColor.bgBase). -->
-    <color name="accent">#FF3DE8FF</color>
+    <color name="accent">#FFCDEF1E</color>
     <color name="background_base">#FF060C12</color>
     <!-- Launcher icon only; unchanged from the original brand mark. -->
     <color name="launcher_background">#FF131313</color>

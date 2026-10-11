@@ -194,7 +194,7 @@ object ShareSummaryCard {
      * Bumped when the poster's layout changes, so cards cached by an older build are re-rendered
      * instead of being shared in the old design.
      */
-    private const val CARD_VERSION = 2
+    private const val CARD_VERSION = 3
 
     /** How many rides' cards to keep. Each is ~0.5–1 MB; older ones are dropped first. */
     private const val MAX_CACHED_CARDS = 20

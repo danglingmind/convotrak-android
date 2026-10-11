@@ -55,9 +55,9 @@ object StaticMapsService {
             .addQueryParameter("style", "feature:landscape|element:geometry|color:0x13201b")
             .addQueryParameter("style", "feature:poi|visibility:off")
             .addQueryParameter("style", "feature:transit|visibility:off")
-            // Route: bold accent (ice cyan, DsColor.accent), the hero of the card. With a `path` and no explicit center/zoom,
+            // Route: bold accent (lime, DsColor.accent), the hero of the card. With a `path` and no explicit center/zoom,
             // Static Maps fits the path for us — which is exactly what we want here.
-            .addQueryParameter("path", "color:0x3de8ffff|weight:5|enc:$encoded")
+            .addQueryParameter("path", "color:0xcdef1eff|weight:5|enc:$encoded")
             .addQueryParameter("key", BuildConfig.MAPS_API_KEY)
             .build()
 

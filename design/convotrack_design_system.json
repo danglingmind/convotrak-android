@@ -1,9 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "name": "ConvoTrack Dark Glass Ride UI",
-  "version": "2.3.3",
+  "version": "2.4.0",
   "description": "Full-app design system for ConvoTrack, matched to the reference screens (Home, Lobby, Edit Ride): photographic heroes that fade into a blue-black base, quiet glass cards, a serif headline, wide-tracked uppercase labels, mono data, and one accent accent for the next action and the route.",
   "changelog": [
+    "2.4.0: Accent switched back to lime #CDEF1E to match the app logo (ice cyan clashed with it). All accent-derived values (bright, soft, deep, tint, tonal, border, glow, onAccent, focus, map route and markers, accentGlow/focusGlow shadows) are re-derived from it, and iconDisc becomes an olive dark (#1A231B).",
     "2.3.3: Max riders is gated by plan (free 5 / Pro 25) with the paywall at the cap, matching iOS.",
     "2.3.2: Lobby drops the stat tiles; Ride details moves above the roster and gains a Joining code row with a copy button.",
     "2.3.1: Implemented on Android. iconDisc is a cyan-tinted dark (#14202A) to suit the accent; appBackground starts at base to avoid a seam under hero photos.",
@@ -130,7 +131,7 @@
           "blur": 22
         },
         "neutralBadge": "#2A2F37",
-        "iconDisc": "#14202A",
+        "iconDisc": "#1A231B",
         "raised": "#16212D",
         "dialog": "#111B26",
         "sheet": "#0B131B",
@@ -166,7 +167,7 @@
         "muted": "#868C95",
         "subtle": "#5C636D",
         "disabled": "#5D6670",
-        "onAccent": "#040E0F",
+        "onAccent": "#0C0E02",
         "onSuccess": "#0B2416",
         "onPhoto": "#FFFFFF",
         "onPhotoMuted": "rgba(255, 255, 255, 0.78)",
@@ -174,15 +175,15 @@
         "_usage": "label is the slightly dimmed white of section headings (ACTIVE RIDE, SQUAD ROSTER). subtle and disabled fail AA for body text."
       },
       "accent": {
-        "base": "#3DE8FF",
-        "bright": "#5AEBFF",
-        "soft": "#34C5D9",
-        "deep": "#22808C",
-        "tint": "rgba(61, 232, 255, 0.12)",
-        "tonal": "rgba(61, 232, 255, 0.17)",
-        "border": "rgba(61, 232, 255, 0.45)",
-        "glow": "rgba(61, 232, 255, 0.28)",
-        "_chosen": "Ice cyan, chosen by the user on the style-guide page (2026-10-10). Every other accent value is derived from it."
+        "base": "#CDEF1E",
+        "bright": "#D4F140",
+        "soft": "#AECB1A",
+        "deep": "#718310",
+        "tint": "rgba(205, 239, 30, 0.12)",
+        "tonal": "rgba(205, 239, 30, 0.17)",
+        "border": "rgba(205, 239, 30, 0.45)",
+        "glow": "rgba(205, 239, 30, 0.28)",
+        "_chosen": "Lime #CDEF1E, chosen by the user to match the logo (2026-10-11). Every other accent value is derived from it."
       },
       "status": {
         "success": "#5EF7A6",
@@ -215,7 +216,7 @@
         "subtle": "rgba(160, 180, 200, 0.12)",
         "default": "rgba(160, 180, 200, 0.18)",
         "strong": "rgba(160, 180, 200, 0.28)",
-        "focus": "#37D1E6",
+        "focus": "#B8D71B",
         "divider": "rgba(160, 180, 200, 0.10)",
         "leaderRow": "rgba(94, 247, 166, 0.22)",
         "_sampled": "tiles #1F2730, square buttons #222B36, leader row #32503F"
@@ -230,17 +231,17 @@
         "water": "#0B1418",
         "label": "#8D969C",
         "labelHalo": "#11191D",
-        "routeCore": "#3DE8FF",
-        "routeGlow": "rgba(61, 232, 255, 0.3)",
-        "routePlanned": "rgba(61, 232, 255, 0.28)",
+        "routeCore": "#CDEF1E",
+        "routeGlow": "rgba(205, 239, 30, 0.3)",
+        "routePlanned": "rgba(205, 239, 30, 0.28)",
         "routeAlternative": "rgba(180, 185, 193, 0.40)",
-        "routeConnector": "rgba(61, 232, 255, 0.75)",
+        "routeConnector": "rgba(205, 239, 30, 0.75)",
         "startMarker": "#5EF7A6",
-        "stopMarker": "#22808C",
-        "endMarker": "#3DE8FF",
+        "stopMarker": "#718310",
+        "endMarker": "#CDEF1E",
         "emergencyMarker": "color.status.dangerStrong",
         "markerPlate": "rgba(10, 16, 20, 0.86)",
-        "riderRing": "#3DE8FF",
+        "riderRing": "#CDEF1E",
         "edgeChipRing": "#5EF7A6"
       },
       "avatar": {
@@ -387,11 +388,11 @@
         "radiusFraction": 0.9,
         "stops": [
           {
-            "color": "rgba(61, 232, 255, 0.12)",
+            "color": "rgba(205, 239, 30, 0.12)",
             "position": 0
           },
           {
-            "color": "rgba(61, 232, 255, 0)",
+            "color": "rgba(205, 239, 30, 0)",
             "position": 1
           }
         ],
@@ -881,7 +882,7 @@
         "spread": 0
       },
       "focusGlow": {
-        "color": "rgba(61, 232, 255, 0.14)",
+        "color": "rgba(205, 239, 30, 0.14)",
         "offsetX": 0,
         "offsetY": 0,
         "blur": 12,
@@ -896,7 +897,7 @@
       },
       "androidNote": "Compose's Modifier.shadow takes ambientColor/spotColor (API 28+) but not a free blur radius. Draw accentGlow and focusGlow as a blurred accent layer behind the shape; on API < 31, where blur is a no-op, drop the glow.",
       "accentGlow": {
-        "color": "rgba(61, 232, 255, 0.28)",
+        "color": "rgba(205, 239, 30, 0.28)",
         "offsetX": 0,
         "offsetY": 6,
         "blur": 28,
@@ -4926,7 +4927,7 @@
     },
     {
       "topic": "Accent colour",
-      "decision": "#3DE8FF (ice cyan). Token names are now accent.* instead of accent*."
+      "decision": "#CDEF1E (lime), chosen by the user on 2026-10-11 to match the logo; replaces ice cyan #3DE8FF. Token names are now accent.* instead of accent*."
     },
     {
       "topic": "Bottom nav",
