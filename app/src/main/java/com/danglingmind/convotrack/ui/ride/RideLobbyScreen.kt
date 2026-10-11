@@ -83,6 +83,7 @@ import com.danglingmind.convotrack.data.realtime.RideRealtimeSession
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.DestinationPhotoImage
 import com.danglingmind.convotrack.ui.common.formatKm
+import com.danglingmind.convotrack.ui.common.openDirections
 import com.danglingmind.convotrack.ui.common.rememberAvatarPhoto
 import com.danglingmind.convotrack.ui.common.rememberDestinationHero
 import com.danglingmind.convotrack.ui.common.rememberQrBitmap
@@ -624,7 +625,7 @@ private fun LobbyHero(ride: Ride, heroPhase: DestinationHeroPhase, routeCoords: 
 
 @Composable
 private fun RideDetails(ride: Ride, modifier: Modifier = Modifier) {
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val context = LocalContext.current
     val start = ride.waypoints.sortedBy { it.order }.firstOrNull { it.type == "START" }
     val minutes = ride.estimatedDurationSeconds / 60
     DetailsList(
@@ -634,11 +635,7 @@ private fun RideDetails(ride: Ride, modifier: Modifier = Modifier) {
                 SquareIconButton(
                     Icons.Filled.NearMe,
                     "Directions to the destination",
-                    onClick = {
-                        runCatching {
-                            uriHandler.openUri("https://www.google.com/maps/dir/?api=1&destination=${ride.destinationLat},${ride.destinationLng}")
-                        }
-                    },
+                    onClick = { openDirections(context, ride.destinationLat, ride.destinationLng, ride.destinationName) },
                     size = 36.dp,
                 )
             },
