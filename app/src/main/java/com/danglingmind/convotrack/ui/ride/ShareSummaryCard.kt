@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -14,7 +16,6 @@ import com.danglingmind.convotrack.data.maps.StaticMapsService
 import com.danglingmind.convotrack.data.net.RideSummary
 import com.danglingmind.convotrack.ui.common.RideDuration
 import com.danglingmind.convotrack.ui.common.encodeQrBitmap
-import com.danglingmind.convotrack.ui.theme.CT
 import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -67,11 +68,11 @@ object ShareSummaryCard {
     ): Bitmap = withContext(Dispatchers.Default) {
         val bmp = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
-        c.drawColor(CT.surfaceDim.toArgb())
+        c.drawColor(DsColor.bgBase.toArgb())
 
-        val lime = CT.primaryFixed.toArgb()
-        val onSurface = CT.onSurface.toArgb()
-        val muted = CT.onSurfaceVariant.toArgb()
+        val lime = DsColor.accent.toArgb()
+        val onSurface = DsColor.textPrimary.toArgb()
+        val muted = DsColor.textSecondary.toArgb()
 
         // --- Map hero, top-anchored and faded into the card background ---------------------
         val heroH = 820f
@@ -95,7 +96,7 @@ object ShareSummaryCard {
             val fade = Paint().apply {
                 shader = android.graphics.LinearGradient(
                     0f, fadeTop, 0f, fadeBottom,
-                    intArrayOf(0x00131313, CT.surfaceDim.toArgb()),
+                    intArrayOf(0x00060C12, DsColor.bgBase.toArgb()),
                     null,
                     android.graphics.Shader.TileMode.CLAMP,
                 )

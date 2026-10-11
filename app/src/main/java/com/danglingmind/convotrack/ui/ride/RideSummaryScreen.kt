@@ -1,8 +1,6 @@
 package com.danglingmind.convotrack.ui.ride
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,17 +9,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,35 +33,60 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.danglingmind.convotrack.R
+import com.danglingmind.convotrack.data.maps.DestinationHeroPhase
+import com.danglingmind.convotrack.data.net.Ride
 import com.danglingmind.convotrack.data.net.RideSummary
 import com.danglingmind.convotrack.data.net.SummaryParticipant
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.displayTitle
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
-import com.danglingmind.convotrack.ui.common.ErrorBlock
-import com.danglingmind.convotrack.ui.common.LoadingBlock
+import com.danglingmind.convotrack.ui.common.DestinationPhotoImage
+import com.danglingmind.convotrack.ui.common.RideDetailsCache
 import com.danglingmind.convotrack.ui.common.RideDuration
 import com.danglingmind.convotrack.ui.common.UiState
 import com.danglingmind.convotrack.ui.common.formatKm
-import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTType
-import com.danglingmind.convotrack.ui.theme.LimePrimaryButton
+import com.danglingmind.convotrack.ui.common.rememberAvatarPhoto
+import com.danglingmind.convotrack.ui.common.rememberDestinationHero
+import com.danglingmind.convotrack.ui.designsystem.Avatar
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsGradient
+import com.danglingmind.convotrack.ui.designsystem.DsScreen
+import com.danglingmind.convotrack.ui.designsystem.DsShape
+import com.danglingmind.convotrack.ui.designsystem.DsSpace
+import com.danglingmind.convotrack.ui.designsystem.DsType
+import com.danglingmind.convotrack.ui.designsystem.ErrorState
+import com.danglingmind.convotrack.ui.designsystem.Eyebrow
+import com.danglingmind.convotrack.ui.designsystem.LoadingState
+import com.danglingmind.convotrack.ui.designsystem.MetaChip
+import com.danglingmind.convotrack.ui.designsystem.PhotoBackdrop
+import com.danglingmind.convotrack.ui.designsystem.PrimaryButton
+import com.danglingmind.convotrack.ui.designsystem.SectionHeading
+import com.danglingmind.convotrack.ui.designsystem.SquareIconButton
+import com.danglingmind.convotrack.ui.designsystem.StatusBarScrim
+import com.danglingmind.convotrack.ui.designsystem.glassSurface
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.time.Instant
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
     var state by remember { mutableStateOf<UiState<RideSummary>>(UiState.Loading) }
+    var ride by remember { mutableStateOf<Ride?>(null) }
+    var isGeneratingShare by remember { mutableStateOf(false) }
 
     suspend fun load() {
         state = UiState.Loading
@@ -72,227 +97,201 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
         }
     }
 
+    LaunchedEffect(rideId) {
+        // The ride itself (title, destination) changed at the end; drop any cached copy.
+        RideDetailsCache.invalidate(rideId)
+        ride = RideDetailsCache.get(rideId)
+    }
     LaunchedEffect(rideId) { load() }
 
-    Column(Modifier.fillMaxSize().background(CT.surfaceDim).statusBarsPadding()) {
-        Box(Modifier.weight(1f)) {
-            when (val s = state) {
-                is UiState.Loading -> LoadingBlock(Modifier.padding(top = 40.dp))
-                is UiState.Error -> Box(Modifier.padding(20.dp)) {
-                    ErrorBlock(s.message, onRetry = { scope.launch { load() } })
+    val heroPhase by rememberDestinationHero(
+        rideId = ride?.id,
+        destinationName = ride?.destinationName,
+        lat = ride?.destinationLat,
+        lng = ride?.destinationLng,
+    )
+
+    DsScreen {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Box {
+                when (val p = heroPhase) {
+                    is DestinationHeroPhase.Photo -> Box(Modifier.fillMaxWidth().height(320.dp)) {
+                        DestinationPhotoImage(p.photo.bitmap, crop = true, modifier = Modifier.matchParentSize())
+                        Box(Modifier.matchParentSize().background(DsGradient.photoFade))
+                    }
+                    // No destination photo: the road at sunset stands in.
+                    else -> PhotoBackdrop(height = 320.dp, drawable = R.drawable.hero_road, verticalBias = 0.62f)
                 }
-                is UiState.Success -> SummaryContent(s.data, rideId)
+                Text(
+                    "RIDE SUMMARY",
+                    style = DsType.headerTitle,
+                    color = DsColor.textPrimary,
+                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 20.dp),
+                )
+                Column(Modifier.fillMaxWidth().padding(horizontal = DsSpace.gutter).padding(top = 170.dp, bottom = 150.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Filled.EmojiEvents, null, tint = DsColor.accent, modifier = Modifier.size(18.dp))
+                        Eyebrow("Ride complete", color = DsColor.accent)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(ride?.title ?: "", style = DsType.heroTitle, color = DsColor.textOnPhoto, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
+                        Text("Photo: $credit · Google", style = DsType.micro, color = DsColor.textOnPhotoMuted, modifier = Modifier.padding(top = 4.dp))
+                    }
+                    Spacer(Modifier.height(20.dp))
+
+                    when (val s = state) {
+                        is UiState.Loading -> LoadingState()
+                        is UiState.Error -> ErrorState(s.message, onRetry = { scope.launch { load() } })
+                        is UiState.Success -> SummaryContent(s.data)
+                    }
+                }
             }
         }
-        Column(Modifier.padding(20.dp)) {
-            LimePrimaryButton(text = "DONE", onClick = onDone)
+        StatusBarScrim()
+
+        // Sticky: share (secondary, square) + DONE.
+        Row(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(DsGradient.bottomActionFade)
+                .navigationBarsPadding()
+                .padding(horizontal = DsSpace.gutter)
+                .padding(top = 28.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val summary = (state as? UiState.Success)?.data
+            if (summary != null) {
+                // The route is fetched only when the rider actually shares — most never do, and it
+                // is a Directions round-trip.
+                SquareIconButton(
+                    Icons.Filled.Share,
+                    "Share summary",
+                    size = 56.dp,
+                    shape = DsShape.lg,
+                    busy = isGeneratingShare,
+                    onClick = {
+                        isGeneratingShare = true
+                        scope.launch {
+                            try {
+                                val r = ride ?: runCatching { apiCall { api.getRide(rideId) } }.getOrNull()
+                                val route = r?.let { runCatching { rideRoute(it) }.getOrNull() }.orEmpty()
+                                val card = ShareSummaryCard.render(rideTitle = r?.title ?: "ConvoTrack ride", summary = summary, routeCoordinates = route)
+                                ShareSummaryCard.share(ctx, card, r?.title ?: "ConvoTrack ride")
+                            } finally {
+                                isGeneratingShare = false
+                            }
+                        }
+                    },
+                )
+            }
+            PrimaryButton("Done", onClick = onDone, modifier = Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun SummaryContent(summary: RideSummary, rideId: String) {
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val api = remember { ServiceLocator.api }
-    var isGeneratingShare by remember { mutableStateOf(false) }
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(24.dp),
-    ) {
-        Spacer(Modifier.size(8.dp))
-        Icon(Icons.Filled.EmojiEvents, null, tint = CT.primaryFixed, modifier = Modifier.size(56.dp))
-        Text("RIDE COMPLETE", style = CTType.labelCaps, color = CT.primaryFixed, letterSpacing = 2.sp)
+private fun SummaryContent(summary: RideSummary) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            dateLabel(summary.createdAt)?.let { MetaChip(Icons.Filled.CalendarToday, it, onPhoto = false) }
+            MetaChip(Icons.Filled.Group, "${summary.participants.size} rider${if (summary.participants.size == 1) "" else "s"}", onPhoto = false)
+        }
 
-        // 2x2 metric grid (iOS metricsGrid). Four cards rather than three squeezed onto one row:
-        // these are the headline numbers of a finished ride, and a third of the width can't hold a
-        // value like "1:44" beside its unit at a readable size.
+        // 2x2 metric grid: four cards rather than three squeezed onto one row — a third of the
+        // width can't hold a value like "1:44" beside its unit at a readable size.
         val duration = RideDuration.stat(summary.durationSeconds)
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MetricCard(
-                    label = "TOTAL DISTANCE",
-                    value = formatKm(summary.distanceMeters),
-                    unit = "KM",
-                    isPrimary = true,
-                    modifier = Modifier.weight(1f),
-                )
-                MetricCard(
-                    label = "DURATION",
-                    value = duration.first,
-                    unit = duration.second,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MetricCard(
-                    label = "AVG SPEED",
-                    value = summary.avgSpeedKmh?.let { String.format(java.util.Locale.US, "%.0f", it) } ?: "--",
-                    unit = "KM/H",
-                    modifier = Modifier.weight(1f),
-                )
-                MetricCard(
-                    label = "MAX GROUP SPLIT",
-                    value = String.format(java.util.Locale.US, "%.1f", summary.maxGroupSplitMeters / 1000),
-                    unit = "KM",
-                    // Past ~2 km the pack was not riding together in any meaningful sense, which is
-                    // the one number here worth flagging rather than merely reporting.
-                    isError = summary.maxGroupSplitMeters > 2000,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SummaryMetric("Total distance", formatKm(summary.distanceMeters), "KM", Modifier.weight(1f), primary = true)
+            SummaryMetric("Duration", duration.first, duration.second, Modifier.weight(1f))
         }
-
-        // Awards (per-participant titles assigned by the backend)
-        if (summary.participants.isNotEmpty()) {
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(CT.surfaceContainerLow)
-                    .border(1.dp, CT.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp)).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text("AWARDS", style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 1.sp)
-                summary.participants.forEach { AwardRow(it) }
-            }
-        }
-
-        // Share the ride as a poster. The route is fetched here rather than held by the screen
-        // because it is only ever needed if the rider actually taps share — most never do, and it
-        // is a Directions round-trip.
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(CT.surfaceContainerHighest)
-                .border(1.dp, CT.outlineVariant, RoundedCornerShape(12.dp))
-                .clickable(enabled = !isGeneratingShare) {
-                    isGeneratingShare = true
-                    scope.launch {
-                        try {
-                            val ride = runCatching { apiCall { api.getRide(rideId) } }.getOrNull()
-                            val route = ride?.let { runCatching { rideRoute(it) }.getOrNull() }.orEmpty()
-                            val card = ShareSummaryCard.render(
-                                rideTitle = ride?.title ?: "ConvoTrack ride",
-                                summary = summary,
-                                routeCoordinates = route,
-                            )
-                            ShareSummaryCard.share(ctx, card, ride?.title ?: "ConvoTrack ride")
-                        } finally {
-                            isGeneratingShare = false
-                        }
-                    }
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                if (isGeneratingShare) "GENERATING…" else "SHARE SUMMARY",
-                style = CTType.labelCaps,
-                color = CT.onSurface,
-                letterSpacing = 2.sp,
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SummaryMetric("Avg speed", summary.avgSpeedKmh?.let { String.format(Locale.US, "%.0f", it) } ?: "--", "KM/H", Modifier.weight(1f))
+            SummaryMetric(
+                "Max group split",
+                String.format(Locale.US, "%.1f", summary.maxGroupSplitMeters / 1000),
+                "KM",
+                Modifier.weight(1f),
+                // Past ~2 km the pack was not riding together in any meaningful sense — the one
+                // number here worth flagging rather than merely reporting.
+                alert = summary.maxGroupSplitMeters > 2000,
             )
         }
 
-        Spacer(Modifier.size(8.dp))
+        if (summary.participants.isNotEmpty()) {
+            SectionHeading("Awards", Modifier.padding(top = 12.dp, bottom = 2.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                summary.participants.forEach { AwardRow(it) }
+            }
+        }
     }
 }
 
+private fun dateLabel(iso: String): String? {
+    if (iso.isBlank()) return null
+    val millis = runCatching { Instant.parse(iso).toEpochMilli() }.getOrNull() ?: return null
+    return SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(millis))
+}
+
 /**
- * Single-line text that shrinks until it fits, down to [minSp].
- *
- * The metric cards are a fixed height and a half-width column, but the values that go in them range
- * from "0" to "164:28" — and a 48sp "164:28" simply does not fit, so it was silently clipped to
- * "164:2" with its unit pushed off the card entirely. A wrong number is worse than a small one.
- *
- * Compose has no `minimumScaleFactor`, so the size is stepped down from the layout result and the
- * text is held back from drawing until it has settled — otherwise the first frame renders at full
- * size and the value visibly jumps as it shrinks.
+ * Single-line text that shrinks until it fits, down to [minSp]. A wrong number is worse than a
+ * small one: a 44sp "164:28" doesn't fit a half-width card, so the size steps down from the layout
+ * result and the text is held back from drawing until it has settled.
  */
 @Composable
-private fun AutoShrinkText(
-    text: String,
-    style: androidx.compose.ui.text.TextStyle,
-    color: Color,
-    modifier: Modifier = Modifier,
-    minSp: Float = 26f,
-) {
+private fun AutoShrinkText(text: String, style: TextStyle, color: Color, modifier: Modifier = Modifier, minSp: Float = 26f) {
     var fontSize by remember(text) { mutableStateOf(style.fontSize) }
     var settled by remember(text) { mutableStateOf(false) }
     Text(
         text = text,
-        style = style.copy(fontSize = fontSize),
+        style = style.copy(fontSize = fontSize, lineHeight = fontSize),
         color = color,
         maxLines = 1,
         softWrap = false,
-        // A fixed line height tied to the font size, so the measured height shrinks with it —
-        // otherwise the default line spacing keeps the box tall no matter how small the glyphs get.
-        lineHeight = fontSize,
         modifier = modifier.drawWithContent { if (settled) drawContent() },
         onTextLayout = { result ->
-            // Height as well as width. The card is a fixed 110dp and clips, so at a system font
-            // scale of ~1.15+ a 48sp value overflowed VERTICALLY and was cut off — reintroducing
-            // the silent truncation this helper exists to prevent, on the axis it wasn't checking.
+            // Height as well as width: at a large system font scale the value overflows vertically.
             val overflowed = result.didOverflowWidth || result.didOverflowHeight
-            if (overflowed && fontSize.value > minSp) {
-                fontSize = (fontSize.value - 4f).sp
-            } else {
-                settled = true
-            }
+            if (overflowed && fontSize.value > minSp) fontSize = (fontSize.value - 4f).sp else settled = true
         },
     )
 }
 
-/**
- * One headline metric. Label above, big value + small unit on a shared baseline below.
- *
- * The value autoshrinks rather than wrapping or truncating: "1459.3" and "1:44" and "--" all have
- * to sit in the same fixed-height card, and a wrapped number reads as two numbers.
- */
 @Composable
-private fun MetricCard(
-    label: String,
-    value: String,
-    unit: String,
-    modifier: Modifier = Modifier,
-    isPrimary: Boolean = false,
-    isError: Boolean = false,
-) {
+private fun SummaryMetric(label: String, value: String, unit: String, modifier: Modifier = Modifier, primary: Boolean = false, alert: Boolean = false) {
     Column(
         modifier
-            .height(110.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(CT.surfaceContainerLow)
-            .border(1.dp, CT.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .height(112.dp)
+            .glassSurface(
+                DsShape.lg,
+                DsColor.card,
+                when {
+                    alert -> DsColor.dangerBorder
+                    primary -> DsColor.accentBorder
+                    else -> DsColor.borderSubtle
+                },
+            )
             .padding(16.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(
-            label,
-            style = CTType.labelCaps,
-            color = CT.onSurfaceVariant,
-            letterSpacing = 1.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(label.uppercase(), style = DsType.statLabel, color = DsColor.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            if (alert) Icon(Icons.Filled.Warning, "Group split over 2 km", tint = DsColor.danger, modifier = Modifier.size(14.dp))
+        }
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             AutoShrinkText(
-                text = value,
-                style = CTType.displayMetrics,
-                color = when {
-                    isError -> CT.errorColor
-                    isPrimary -> CT.primaryFixed
-                    else -> CT.onSurface
+                value,
+                DsType.metricDisplay,
+                when {
+                    alert -> DsColor.danger
+                    primary -> DsColor.accent
+                    else -> DsColor.textPrimary
                 },
-                modifier = Modifier.weight(1f, fill = false),
+                Modifier.weight(1f, fill = false),
             )
-            if (unit.isNotEmpty()) {
-                Text(
-                    unit,
-                    style = CTType.labelCaps,
-                    color = CT.onSurfaceVariant.copy(alpha = if (isError) 0.7f else 1f),
-                    maxLines = 1,
-                )
-            }
+            if (unit.isNotEmpty()) Text(unit, style = DsType.badgeSmall, color = DsColor.textMuted, maxLines = 1, modifier = Modifier.padding(bottom = 6.dp))
         }
     }
 }
@@ -300,23 +299,21 @@ private fun MetricCard(
 @Composable
 private fun AwardRow(p: SummaryParticipant) {
     val title = displayTitle(p.rideTitle)
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(
-            Modifier.size(40.dp).clip(CircleShape).background(CT.surfaceContainerHigh).border(2.dp, CT.primaryFixed, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Filled.Person, null, tint = CT.primaryFixed, modifier = Modifier.size(20.dp))
-        }
+    val photo = rememberAvatarPhoto(p.avatarUrl)
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 60.dp).glassSurface(DsShape.md, DsColor.cardQuiet, DsColor.borderHairline).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Avatar(p.name.ifBlank { "Rider" }, size = 40.dp, photo = photo, colorKey = p.userId, ring = DsColor.accentBorder)
         Column(Modifier.weight(1f)) {
-            Text(p.name, style = CTType.bodyLg, color = CT.onSurface)
-            if (title.isNotEmpty()) {
-                Text(title, style = CTType.labelCaps, color = CT.primaryFixed, letterSpacing = 1.sp)
-            }
+            Text(p.name.ifBlank { "Rider" }, style = DsType.rowTitle, color = DsColor.textPrimary, maxLines = 1)
+            if (title.isNotEmpty()) Text(title.uppercase(), style = DsType.badgeSmall, color = DsColor.accent)
         }
         if (p.syncScore != null) {
             Column(horizontalAlignment = Alignment.End) {
-                Text(p.syncScore.toString(), style = CTType.headlineMd, color = CT.tertiaryFixed)
-                Text("SYNC", style = CTType.labelCaps.copy(fontSize = 9.sp), color = CT.onSurfaceVariant, letterSpacing = 1.sp)
+                Text(p.syncScore.toString(), style = DsType.statValue.copy(fontFamily = DsType.badge.fontFamily), color = DsColor.success)
+                Text("SYNC", style = DsType.badgeSmall, color = DsColor.textMuted)
             }
         }
     }

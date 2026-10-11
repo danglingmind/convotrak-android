@@ -24,7 +24,6 @@ import com.danglingmind.convotrack.R
 import com.danglingmind.convotrack.data.maps.AvatarCache
 import com.danglingmind.convotrack.ui.ride.metersBetween
 import com.danglingmind.convotrack.ui.designsystem.DsColor
-import com.danglingmind.convotrack.ui.theme.CT
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.MapsInitializer
 import com.google.android.gms.maps.model.BitmapDescriptor
@@ -654,7 +653,7 @@ private fun bakeMarker(marker: MapMarker, scale: Float, avatar: Bitmap?): Pair<B
             stopPin(scale, regroupGlyph(type), regroupAccent(type), 40f, regroupLabel(type), filled = false)
         }
         MapMarkerKind.EMERGENCY ->
-            stopPin(scale, "!", CT.errorColor.toArgb(), 40f, "EMERGENCY")
+            stopPin(scale, "!", DsColor.danger.toArgb(), 40f, "EMERGENCY")
     }
 
 private fun stopPin(
@@ -727,7 +726,7 @@ private fun CurvedConnector(a: LatLng, b: LatLng) {
     if (points.size < 2) return
     Polyline(
         points = points,
-        color = CT.primaryFixed.copy(alpha = 0.75f),
+        color = DsColor.accent.copy(alpha = 0.75f),
         width = 4f,
         zIndex = 1.2f,
         pattern = listOf(Dash(10f), Gap(10f)),

@@ -1,5 +1,8 @@
 package com.danglingmind.convotrack.ui.map
 
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsType
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,8 +34,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTType
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 
@@ -271,8 +272,8 @@ fun EdgeChip(model: EdgeChipModel, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Box(
-            Modifier.size(34.dp).clip(CircleShape).background(CT.surfaceVariant)
-                .border(2.dp, CT.tertiaryFixed, CircleShape),
+            Modifier.size(34.dp).clip(CircleShape).background(DsColor.avatar)
+                .border(2.dp, DsColor.success, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             val avatar = model.avatar
@@ -286,15 +287,15 @@ fun EdgeChip(model: EdgeChipModel, modifier: Modifier = Modifier) {
             } else {
                 androidx.compose.material3.Text(
                     model.name.take(1).uppercase(),
-                    style = CTType.bodyMd.copy(fontSize = 14.sp),
-                    color = CT.onSurface,
+                    style = DsType.body.copy(fontSize = 14.sp),
+                    color = DsColor.textPrimary,
                 )
             }
         }
         androidx.compose.material3.Text(
             formatEdgeDistance(model.distanceMeters),
-            style = CTType.dataMono,
-            color = CT.onSurface,
+            style = DsType.dataMono,
+            color = DsColor.textPrimary,
             maxLines = 1,
         )
     }
@@ -313,20 +314,20 @@ fun ClusterChip(count: Int, distanceMeters: Double, modifier: Modifier = Modifie
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Box(
-            Modifier.size(34.dp).clip(CircleShape).background(CT.surfaceVariant)
-                .border(2.dp, CT.tertiaryFixed, CircleShape),
+            Modifier.size(34.dp).clip(CircleShape).background(DsColor.avatar)
+                .border(2.dp, DsColor.success, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             androidx.compose.material3.Text(
                 "$count",
-                style = CTType.dataMono.copy(fontSize = 15.sp),
-                color = CT.onSurface,
+                style = DsType.dataMono.copy(fontSize = 15.sp),
+                color = DsColor.textPrimary,
             )
         }
         androidx.compose.material3.Text(
             formatEdgeDistance(distanceMeters),
-            style = CTType.dataMono,
-            color = CT.onSurface,
+            style = DsType.dataMono,
+            color = DsColor.textPrimary,
             maxLines = 1,
         )
     }

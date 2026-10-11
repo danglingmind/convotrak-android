@@ -3,16 +3,11 @@ package com.danglingmind.convotrack.ui.common
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTType
+import com.danglingmind.convotrack.ui.designsystem.ConfirmDialog
+import com.danglingmind.convotrack.ui.designsystem.DialogText
+
 
 /**
  * Prominent disclosure, shown before the system location prompt.
@@ -35,45 +30,28 @@ fun LocationDisclosureDialog(
     onAccept: () -> Unit,
     onDecline: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDecline,
-        containerColor = CT.surfaceContainer,
-        title = { Text("Sharing your location", style = CTType.headlineMd, color = CT.onSurface) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    "To ride in a convoy, ConvoTrack collects your precise location and shares it " +
-                        "live with the other riders in this ride. It also goes to our servers, " +
-                        "which is what draws the route, the leaderboard and everyone's map pins.",
-                    style = CTType.bodyMd,
-                    color = CT.onSurfaceVariant,
-                )
-                Text(
-                    "This continues while the app is in the background so the pack doesn't lose " +
-                        "you at a junction. A notification stays in your status bar for as long as " +
-                        "it is running.",
-                    style = CTType.bodyMd,
-                    color = CT.onSurfaceVariant,
-                )
-                Text(
-                    "It stops the moment the ride ends or you leave it. You can ride without this, " +
-                        "but the others won't see where you are.",
-                    style = CTType.bodyMd,
-                    color = CT.onSurfaceVariant,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onAccept) {
-                Text("SHARE MY LOCATION", style = CTType.labelCaps, color = CT.primaryFixed)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDecline) {
-                Text("NOT NOW", style = CTType.labelCaps, color = CT.onSurfaceVariant)
-            }
-        },
-    )
+    // Declining has to be a real option, so NOT NOW is a full action beside SHARE, not an afterthought.
+    ConfirmDialog(
+        title = "Sharing your location",
+        onDismiss = onDecline,
+        dismissLabel = "Not now",
+        confirmLabel = "Share my location",
+        onConfirm = onAccept,
+    ) {
+        DialogText(
+            "To ride in a convoy, ConvoTrack collects your precise location and shares it live with the " +
+                "other riders in this ride. It also goes to our servers, which is what draws the route, the " +
+                "leaderboard and everyone's map pins.",
+        )
+        DialogText(
+            "This continues while the app is in the background so the pack doesn't lose you at a junction. " +
+                "A notification stays in your status bar for as long as it is running.",
+        )
+        DialogText(
+            "It stops the moment the ride ends or you leave it. You can ride without this, but the others " +
+                "won't see where you are.",
+        )
+    }
 }
 
 /**
@@ -87,38 +65,23 @@ fun LocationDisclosureDialog(
 @Composable
 fun LocationDeniedDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = CT.surfaceContainer,
-        title = { Text("You're riding dark", style = CTType.headlineMd, color = CT.onSurface) },
-        text = {
-            Text(
-                "Without location access the other riders can't see you on the map, and turn-by-turn " +
-                    "guidance won't follow you. Everything else in the ride still works — you'll see " +
-                    "them, they just won't see you.",
-                style = CTType.bodyMd,
-                color = CT.onSurfaceVariant,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                runCatching {
-                    context.startActivity(
-                        Intent(
-                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            Uri.fromParts("package", context.packageName, null),
-                        ),
-                    )
-                }
-                onDismiss()
-            }) {
-                Text("OPEN SETTINGS", style = CTType.labelCaps, color = CT.primaryFixed)
+    ConfirmDialog(
+        title = "You're riding dark",
+        onDismiss = onDismiss,
+        dismissLabel = "Carry on",
+        confirmLabel = "Open settings",
+        onConfirm = {
+            runCatching {
+                context.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+                )
             }
+            onDismiss()
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("CARRY ON", style = CTType.labelCaps, color = CT.onSurfaceVariant)
-            }
-        },
-    )
+    ) {
+        DialogText(
+            "Without location access the other riders can't see you on the map, and turn-by-turn guidance " +
+                "won't follow you. Everything else in the ride still works — you'll see them, they just won't see you.",
+        )
+    }
 }

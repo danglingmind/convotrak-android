@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui
 
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import com.danglingmind.convotrack.ui.designsystem.DsTab
@@ -36,7 +38,6 @@ import com.danglingmind.convotrack.ui.ride.RideLobbyScreen
 import com.danglingmind.convotrack.ui.ride.RideNavigationScreen
 import com.danglingmind.convotrack.ui.ride.RideSummaryScreen
 import com.danglingmind.convotrack.ui.splash.SplashScreen
-import com.danglingmind.convotrack.ui.theme.CT
 
 // Top-level navigation. Mirrors the iOS launch flow:
 // Splash (3.5s) -> Auth -> MainTab, with the ride flow pushed on top.
@@ -71,7 +72,7 @@ fun AppRoot(
     onDeepLinkConsumed: () -> Unit = {},
 ) {
     val nav = rememberNavController()
-    Surface(modifier = Modifier.fillMaxSize(), color = CT.surfaceDim) {
+    Surface(modifier = Modifier.fillMaxSize(), color = DsColor.bgBase) {
         NavHost(navController = nav, startDestination = Routes.SPLASH) {
             composable(Routes.SPLASH) {
                 val scope = rememberCoroutineScope()

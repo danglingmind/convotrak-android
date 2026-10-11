@@ -66,8 +66,6 @@ import com.danglingmind.convotrack.ui.map.NavCamera
 import com.danglingmind.convotrack.ui.map.OffscreenIndicatorsOverlay
 import com.danglingmind.convotrack.ui.map.UserPuck
 import com.danglingmind.convotrack.ui.map.clusterIndicators
-import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTType
 import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

@@ -11,7 +11,6 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import androidx.compose.ui.graphics.toArgb
 import com.danglingmind.convotrack.ui.designsystem.DsColor
-import com.danglingmind.convotrack.ui.theme.CT
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -91,7 +90,7 @@ object MapMarkerBitmaps {
 
         // Fill, lifted off the map by the same soft shadow Google uses.
         val fill = paint().apply {
-            color = CT.primaryFixed.toArgb()
+            color = DsColor.accent.toArgb()
             setShadowLayer(4f * scale, 0f, 1.5f * scale, 0x8C000000.toInt())
         }
         c.drawPath(path, fill)
@@ -191,7 +190,7 @@ object MapMarkerBitmaps {
         val size = riderCircleDp(isSelected) * scale
         val nameBandH = RIDER_NAME_BAND_DP * scale
         val distBandH = if (distanceText != null) RIDER_DIST_BAND_DP * scale else 0f
-        val lime = CT.primaryFixed.toArgb()
+        val lime = DsColor.accent.toArgb()
 
         val namePaint = textPaint((if (isSelected) 9f else 8f) * scale, android.graphics.Color.WHITE, bold = true, mono = true)
         val nameText = (name.substringBefore(" ").ifEmpty { name }).uppercase()
@@ -323,7 +322,7 @@ object MapMarkerBitmaps {
         if (filled) {
             c.drawOval(head, paint().apply { color = accent })
         } else {
-            c.drawOval(head, paint().apply { color = CT.surfaceContainerHighest.toArgb() })
+            c.drawOval(head, paint().apply { color = DsColor.raised.toArgb() })
             c.drawOval(
                 RectF(head).apply { inset(1.25f * scale, 1.25f * scale) },
                 paint().apply { style = Paint.Style.STROKE; strokeWidth = 2.5f * scale; color = accent },
@@ -332,7 +331,7 @@ object MapMarkerBitmaps {
 
         val glyphPaint = textPaint(
             circle * 0.45f,
-            if (filled) CT.onPrimaryFixed.toArgb() else accent,
+            if (filled) DsColor.onAccent.toArgb() else accent,
             bold = true,
         )
         val gw = glyphPaint.measureText(glyph)
@@ -375,7 +374,7 @@ object MapMarkerBitmaps {
         val alpha = (opacity * 255).toInt().coerceIn(0, 255)
         c.drawOval(
             RectF(0f, 0f, size, size),
-            paint().apply { color = CT.primaryFixed.toArgb(); this.alpha = alpha },
+            paint().apply { color = DsColor.accent.toArgb(); this.alpha = alpha },
         )
         c.drawOval(
             RectF(0.75f * scale, 0.75f * scale, size - 0.75f * scale, size - 0.75f * scale),
