@@ -29,6 +29,7 @@ import com.google.android.gms.maps.MapsInitializer
 import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.GoogleMapOptions
 import com.google.android.gms.maps.model.Dash
 import com.google.android.gms.maps.model.Gap
 import com.google.android.gms.maps.model.JointType
@@ -455,6 +456,9 @@ fun ConvoTrackMap(
         },
         cameraPositionState = cameraPositionState,
         contentPadding = contentPadding,
+        // Dark before the first tiles arrive; the SDK default is a light beige that flashes on
+        // every map card.
+        googleMapOptionsFactory = { GoogleMapOptions().backgroundColor(DsColor.bgBase.toArgb()) },
         properties = MapProperties(
             mapType = MapType.NORMAL,
             mapStyleOptions = darkStyle,

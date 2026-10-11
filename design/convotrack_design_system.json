@@ -1,9 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "name": "ConvoTrack Dark Glass Ride UI",
-  "version": "2.3.0-draft",
+  "version": "2.3.1",
   "description": "Full-app design system for ConvoTrack, matched to the reference screens (Home, Lobby, Edit Ride): photographic heroes that fade into a blue-black base, quiet glass cards, a serif headline, wide-tracked uppercase labels, mono data, and one accent accent for the next action and the route.",
   "changelog": [
+    "2.3.1: Implemented on Android. iconDisc is a cyan-tinted dark (#14202A) to suit the accent; appBackground starts at base to avoid a seam under hero photos.",
     "2.3.0-draft: Hero photos supplied by the user and added to design/assets. Recent-ride thumbnails confirmed. Bottom nav stays visible in the lobby.",
     "2.2.0-draft: Accent changed to ice cyan #3DE8FF. Bottom nav uses the app's real tabs (History · Home · Profile). Tags and statuses come from the app, not the references (no INVITED, Last seen, MEMBER, LIVE NOW or LEADER chip in the roster).",
     "2.1.0-draft: Rebased on the four reference screens. Colours re-sampled from them; added photographic heroes, floating circular buttons over photos, the floating bottom nav with a centre action button, solid status badges, the leader row accent bar, stat tiles, the ride-details list, meta chips, avatar stacks, ride thumbnails and the glowing route line. Replaces any 2.0 rule that disagrees.",
@@ -127,7 +128,7 @@
           "blur": 22
         },
         "neutralBadge": "#2A2F37",
-        "iconDisc": "#1A231B",
+        "iconDisc": "#14202A",
         "raised": "#16212D",
         "dialog": "#111B26",
         "sheet": "#0B131B",
@@ -256,14 +257,15 @@
       "appBackground": {
         "type": "linear",
         "angleDeg": 180,
+        "_change": "Starts at background.base so hero photos (which fade to base) meet it without a seam.",
         "stops": [
           {
-            "color": "#0E1822",
+            "color": "#060C12",
             "position": 0
           },
           {
             "color": "#060C12",
-            "position": 0.45
+            "position": 0.6
           },
           {
             "color": "#02070B",
