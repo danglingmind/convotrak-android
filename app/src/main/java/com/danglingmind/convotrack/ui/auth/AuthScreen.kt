@@ -57,8 +57,27 @@ import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
 import com.danglingmind.convotrack.data.auth.AuthResult
 import com.danglingmind.convotrack.di.ServiceLocator
-import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTType
+import com.danglingmind.convotrack.data.net.ApiClient
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsScreen
+import com.danglingmind.convotrack.ui.designsystem.DsShape
+import com.danglingmind.convotrack.ui.designsystem.DsSize
+import com.danglingmind.convotrack.ui.designsystem.DsSpace
+import com.danglingmind.convotrack.ui.designsystem.DsType
+import com.danglingmind.convotrack.ui.designsystem.Eyebrow
+import com.danglingmind.convotrack.ui.designsystem.FieldLabel
+import com.danglingmind.convotrack.ui.designsystem.InlineError
+import com.danglingmind.convotrack.ui.designsystem.LogoBadge
+import com.danglingmind.convotrack.ui.designsystem.PhotoBackdrop
+import com.danglingmind.convotrack.ui.designsystem.PulseDot
+import com.danglingmind.convotrack.ui.designsystem.SecondaryButton
+import com.danglingmind.convotrack.ui.designsystem.TextAction
+import com.danglingmind.convotrack.ui.designsystem.TextActionTone
+import com.danglingmind.convotrack.ui.designsystem.TextFieldCard
+import com.danglingmind.convotrack.ui.designsystem.dsClickable
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalUriHandler
 import kotlinx.coroutines.launch
 
 private const val FIELD_WIDTH = 350
@@ -112,156 +131,78 @@ fun AuthScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
-        // Hero background — gradient stand-in for the remote grayscale photo used on iOS.
-        Box(
+    DsScreen {
+        // The empty road at sunset, full height, fading into the base at the bottom.
+        PhotoBackdrop(height = 640.dp, drawable = R.drawable.hero_road, verticalBias = 0.55f)
+
+        Column(
             Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to CT.surfaceContainerHigh,
-                        0.6f to CT.surfaceDim.copy(alpha = 0.9f),
-                        1f to CT.surfaceDim,
-                    )
-                )
-        )
-
-        // Two equal-weight halves: the brand centred in the top half, and the sign-in block —
-        // button, then footer 32dp under it — centred in the bottom half.
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
                 .systemBarsPadding()
-                .padding(horizontal = 20.dp)
-                .padding(top = 48.dp, bottom = 28.dp),
+                .padding(horizontal = DsSpace.gutter)
+                .padding(top = 24.dp, bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                BrandHeader()
+            LogoBadge(size = 64.dp, modifier = Modifier.align(Alignment.Start))
+            Spacer(Modifier.height(36.dp))
+            Column(Modifier.fillMaxWidth()) {
+                Eyebrow("Ride together in real time")
+                Spacer(Modifier.height(10.dp))
+                Text("Discover\nnew roads", style = DsType.heroTitle, color = DsColor.textOnPhoto)
+                Spacer(Modifier.height(12.dp))
+                Text("Plan, join and track rides with your tribe.", style = DsType.heroSubtitle, color = DsColor.textSecondary)
             }
+            Spacer(Modifier.weight(1f))
 
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    // Google — the primary CTA, keeps the lime treatment from iOS.
-                    SignInButton(
-                        label = "Continue with Google",
-                        foreground = CT.onPrimaryFixed,
-                        background = CT.primaryFixed,
-                        border = CT.primaryFixed,
-                        borderWidth = 2.dp,
-                        isLoading = busy == Provider.GOOGLE,
+            Column(Modifier.widthIn(max = FIELD_WIDTH.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                GoogleSignInButton(loading = busy == Provider.GOOGLE, enabled = busy == null, onClick = { run(Provider.GOOGLE) })
+
+                if (EMAIL_AUTH_ENABLED) {
+                    OrDivider()
+                    EmailCodeForm(
+                        email = email,
+                        mode = mode,
+                        isLoading = busy == Provider.EMAIL,
                         enabled = busy == null,
-                        leading = { GoogleGIcon() },
-                        onClick = { run(Provider.GOOGLE) },
+                        canSubmit = canSubmitEmail,
+                        onEmail = { email = it; error = null },
+                        onSubmit = { run(Provider.EMAIL) },
                     )
-
-                    if (EMAIL_AUTH_ENABLED) {
-                        OrDivider()
-
-                        EmailCodeForm(
-                            email = email,
-                            mode = mode,
-                            isLoading = busy == Provider.EMAIL,
-                            enabled = busy == null,
-                            canSubmit = canSubmitEmail,
-                            onEmail = { email = it; error = null },
-                            onSubmit = { run(Provider.EMAIL) },
-                        )
-                    }
-
-                    if (error != null) {
-                        Text(
-                            error!!,
-                            style = CTType.captionMd,
-                            color = CT.errorColor,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(top = 10.dp).width(FIELD_WIDTH.dp),
-                        )
-                    }
-
                     // Sign in <-> Create account — only switches the email form's mode.
-                    if (EMAIL_AUTH_ENABLED) {
-                        Row(
-                            Modifier.padding(top = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(
-                                if (mode == EmailMode.SIGN_IN) "New rider?" else "Already riding?",
-                                style = CTType.captionMd,
-                                color = CT.onSurfaceVariant.copy(alpha = 0.7f),
-                            )
-                            Text(
-                                if (mode == EmailMode.SIGN_IN) "Create account" else "Sign in",
-                                style = CTType.captionMd.copy(fontWeight = FontWeight.Bold),
-                                color = CT.primaryFixed,
-                                modifier = Modifier.clickable(enabled = busy == null) {
-                                    mode = if (mode == EmailMode.SIGN_IN) EmailMode.SIGN_UP else EmailMode.SIGN_IN
-                                    error = null
-                                },
-                            )
-                        }
+                    Row(Modifier.align(Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (mode == EmailMode.SIGN_IN) "New rider?" else "Already riding?", style = DsType.bodySmall, color = DsColor.textMuted)
+                        TextAction(
+                            if (mode == EmailMode.SIGN_IN) "Create account" else "Sign in",
+                            onClick = {
+                                mode = if (mode == EmailMode.SIGN_IN) EmailMode.SIGN_UP else EmailMode.SIGN_IN
+                                error = null
+                            },
+                            enabled = busy == null,
+                        )
                     }
-
-                    Spacer(Modifier.height(32.dp))
-                    FooterSection()
                 }
 
+                if (error != null) InlineError(error!!)
             }
+
+            Spacer(Modifier.height(28.dp))
+            FooterSection()
         }
     }
 }
 
 @Composable
-private fun BrandHeader() {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Image(
-            painter = painterResource(R.drawable.logo_circle),
-            contentDescription = null,
-            modifier = Modifier.size(100.dp).padding(bottom = 16.dp),
-        )
-        Text(
-            text = "CONVOTRACK",
-            style = CTType.displayMetrics.copy(fontSize = 38.sp),
-            color = CT.primaryFixed,
-            letterSpacing = 6.sp,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Visible,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = "RIDE TOGETHER IN REAL TIME",
-            style = CTType.labelCaps,
-            color = CT.onSurfaceVariant,
-            letterSpacing = 3.6.sp,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-    }
-}
-
-@Composable
 private fun OrDivider() {
-    Row(
-        Modifier.width(FIELD_WIDTH.dp).padding(vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(Modifier.weight(1f).height(1.dp).background(CT.outlineVariant.copy(alpha = 0.4f)))
-        Text("OR", style = CTType.labelCaps, color = CT.onSurfaceVariant.copy(alpha = 0.6f), letterSpacing = 2.sp)
-        Box(Modifier.weight(1f).height(1.dp).background(CT.outlineVariant.copy(alpha = 0.4f)))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Box(Modifier.weight(1f).height(1.dp).background(DsColor.divider))
+        Text("OR", style = DsType.badgeSmall, color = DsColor.textMuted)
+        Box(Modifier.weight(1f).height(1.dp).background(DsColor.divider))
     }
 }
 
 /**
- * Email entry for both sign-in and sign-up.
- *
- * No password field: this Clerk instance authenticates email with a one-time code, and a password
- * sent to it is rejected as an unknown parameter. Both buttons therefore lead to the same place —
- * a code in the inbox and [VerificationScreen] — which is why the form collects only an address.
+ * Email entry for both sign-in and sign-up. No password field: this Clerk instance authenticates
+ * email with a one-time code, so both buttons lead to a code in the inbox and [VerificationScreen].
  */
 @Composable
 private fun EmailCodeForm(
@@ -273,154 +214,92 @@ private fun EmailCodeForm(
     onEmail: (String) -> Unit,
     onSubmit: () -> Unit,
 ) {
-    Column(
-        Modifier.width(FIELD_WIDTH.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        OutlinedTextField(
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FieldLabel("Email")
+        TextFieldCard(
             value = email,
             onValueChange = onEmail,
+            placeholder = "you@example.com",
             enabled = enabled,
-            placeholder = { Text("you@example.com", color = CT.onSurfaceVariant.copy(alpha = 0.4f)) },
-            label = { Text("EMAIL", style = CTType.labelCaps, letterSpacing = 1.sp) },
-            singleLine = true,
-            textStyle = CTType.bodyMd,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Email,
-                imeAction = ImeAction.Done,
-            ),
-            supportingText = {
-                Text(
-                    "We'll email you a 6-digit code",
-                    style = CTType.captionMd,
-                    color = CT.onSurfaceVariant.copy(alpha = 0.6f),
-                )
-            },
-            shape = RoundedCornerShape(4.dp),
-            colors = authFieldColors(),
-            modifier = Modifier.fillMaxWidth(),
+            textStyle = DsType.body,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
         )
-
-        SignInButton(
-            label = if (mode == EmailMode.SIGN_IN) "Sign in with Email" else "Create account",
-            foreground = CT.onSurface,
-            background = CT.surfaceContainerHighest,
-            border = CT.outline.copy(alpha = 0.3f),
-            borderWidth = 1.dp,
-            isLoading = isLoading,
-            enabled = canSubmit,
-            leading = { Icon(Icons.Filled.MarkEmailRead, null, tint = CT.onSurface, modifier = Modifier.size(18.dp)) },
+        Text("We'll email you a 6-digit code", style = DsType.helper, color = DsColor.textMuted)
+        SecondaryButton(
+            if (mode == EmailMode.SIGN_IN) "Sign in with email" else "Create account",
             onClick = onSubmit,
+            icon = Icons.Filled.MarkEmailRead,
+            enabled = canSubmit,
+            loading = isLoading,
         )
     }
 }
 
+/**
+ * Primary action with the Google "G" on a white disc — Google's branding guidelines require the
+ * mark on a white field, and the disc keeps it while the button stays the screen's accent action.
+ */
 @Composable
-private fun authFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = CT.primaryFixed,
-    unfocusedBorderColor = CT.outline.copy(alpha = 0.3f),
-    focusedTextColor = CT.onSurface,
-    unfocusedTextColor = CT.onSurface,
-    cursorColor = CT.primaryFixed,
-    focusedLabelColor = CT.primaryFixed,
-    unfocusedLabelColor = CT.onSurfaceVariant,
-    focusedContainerColor = CT.surfaceContainerLow,
-    unfocusedContainerColor = CT.surfaceContainerLow,
-)
-
-@Composable
-private fun SignInButton(
-    label: String,
-    foreground: Color,
-    background: Color,
-    border: Color,
-    borderWidth: androidx.compose.ui.unit.Dp,
-    isLoading: Boolean,
-    enabled: Boolean,
-    leading: @Composable () -> Unit,
-    onClick: () -> Unit,
-) {
+private fun GoogleSignInButton(loading: Boolean, enabled: Boolean, onClick: () -> Unit) {
     Box(
-        modifier = Modifier
-            .width(FIELD_WIDTH.dp)
-            .height(48.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(if (enabled) background else background.copy(alpha = 0.5f))
-            .border(borderWidth, if (enabled) border else border.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-            .clickable(enabled = enabled, onClick = onClick),
+        Modifier
+            .fillMaxWidth()
+            .height(DsSize.primaryButton)
+            .shadow(16.dp, DsShape.lg, ambientColor = DsColor.accentGlow, spotColor = DsColor.accent)
+            .clip(DsShape.lg)
+            .background(DsColor.accent)
+            .dsClickable(enabled = enabled && !loading, pressedScale = 0.985f, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        if (isLoading) {
-            CircularProgressIndicator(color = foreground, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+        if (loading) {
+            CircularProgressIndicator(color = DsColor.onAccent, strokeWidth = 2.5.dp, modifier = Modifier.size(24.dp))
         } else {
-            Text(
-                text = label.uppercase(),
-                style = CTType.bodyMd.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
-                color = if (enabled) foreground else foreground.copy(alpha = 0.5f),
-                letterSpacing = (-0.5).sp,
-            )
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { leading() }
-            }
+            Box(
+                Modifier.align(Alignment.CenterStart).padding(start = 12.dp).size(34.dp).clip(CircleShape).background(Color.White),
+                contentAlignment = Alignment.Center,
+            ) { GoogleGIcon() }
+            Text("CONTINUE WITH GOOGLE", style = DsType.buttonWide, color = DsColor.onAccent)
         }
     }
 }
 
 @Composable
 private fun FooterSection() {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            Text("TERMS", style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 4.sp)
-            Box(Modifier.size(5.dp).clip(CircleShape).background(CT.primaryFixed.copy(alpha = 0.5f)))
-            Text("PRIVACY", style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 4.sp)
+    val uriHandler = LocalUriHandler.current
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextAction("Terms", onClick = { runCatching { uriHandler.openUri(ApiClient.TERMS_URL) } }, tone = TextActionTone.Dismiss)
+            Box(Modifier.size(4.dp).clip(CircleShape).background(DsColor.textSubtle))
+            TextAction("Privacy", onClick = { runCatching { uriHandler.openUri(ApiClient.PRIVACY_URL) } }, tone = TextActionTone.Dismiss)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusPill(dotColor = CT.tertiaryFixedDim, label = "SERVER ONLINE")
-            StatusPill(
-                icon = { Icon(Icons.Filled.Lock, null, tint = CT.onSurfaceVariant, modifier = Modifier.size(11.dp)) },
-                label = "SSL ENCRYPTED",
-            )
+            StatusPill(label = "SERVER ONLINE", dot = true)
+            StatusPill(label = "SSL ENCRYPTED", icon = Icons.Filled.Lock)
         }
     }
 }
 
 @Composable
-fun StatusPill(
-    label: String,
-    dotColor: Color? = null,
-    icon: (@Composable () -> Unit)? = null,
-) {
-    val transition = rememberInfiniteTransition(label = "pill")
-    val pulse by transition.animateFloat(1f, 0.35f, infiniteRepeatable(tween(1000), RepeatMode.Reverse), label = "pulse")
+private fun StatusPill(label: String, dot: Boolean = false, icon: androidx.compose.ui.graphics.vector.ImageVector? = null) {
     Row(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(CT.surfaceContainerLow)
-            .border(1.dp, CT.outlineVariant.copy(alpha = 0.2f), CircleShape)
+        Modifier
+            .clip(DsShape.pill)
+            .background(Color(0x09FFFFFF))
+            .border(1.dp, DsColor.borderSubtle, DsShape.pill)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (dotColor != null) {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(dotColor.copy(alpha = pulse)))
-        }
-        icon?.invoke()
-        Text(
-            label,
-            style = CTType.labelCaps.copy(fontSize = 10.sp),
-            color = CT.onSurfaceVariant,
-            letterSpacing = 1.sp,
-        )
+        if (dot) PulseDot(DsColor.success, 7.dp)
+        if (icon != null) Icon(icon, null, tint = DsColor.textMuted, modifier = Modifier.size(12.dp))
+        Text(label, style = DsType.badgeSmall, color = DsColor.textMuted)
     }
 }
 
 // 4-color Google "G" — ported from iOS AuthView.swift GoogleGIcon Canvas paths (24x24).
 @Composable
 private fun GoogleGIcon() {
-    Canvas(Modifier.size(24.dp)) {
+    Canvas(Modifier.size(22.dp)) {
         val s = size.width / 24f
         fun p(x: Float, y: Float) = Offset(x * s, y * s)
 

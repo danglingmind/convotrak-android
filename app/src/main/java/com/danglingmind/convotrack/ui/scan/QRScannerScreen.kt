@@ -1,6 +1,18 @@
 package com.danglingmind.convotrack.ui.scan
 
 import android.Manifest
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsGradient
+import com.danglingmind.convotrack.ui.designsystem.DsShape
+import com.danglingmind.convotrack.ui.designsystem.DsSpace
+import com.danglingmind.convotrack.ui.designsystem.DsType
+import com.danglingmind.convotrack.ui.designsystem.FloatingButton
+import com.danglingmind.convotrack.ui.designsystem.IconDisc
+import com.danglingmind.convotrack.ui.designsystem.PrimaryButton
+import com.danglingmind.convotrack.ui.designsystem.SecondaryButton
 import android.content.pm.PackageManager
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -48,9 +60,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTType
-import com.danglingmind.convotrack.ui.theme.LimePrimaryButton
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -81,47 +90,73 @@ fun QRScannerScreen(
         denied = !ok
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().background(if (granted) Color.Black else DsColor.bgBase)) {
         when {
-            granted -> CameraPreview(onCode = onCode)
+            granted -> {
+                CameraPreview(onCode = onCode)
+                Viewfinder()
+            }
             denied -> PermissionState(
                 icon = Icons.Filled.NoPhotography,
-                iconTint = CT.errorColor,
-                title = "Camera Access Denied",
+                danger = true,
+                title = "Camera access denied",
                 body = "Enable camera access in Settings to scan QR codes.",
                 actionLabel = "Close",
                 onAction = onClose,
             )
             else -> PermissionState(
                 icon = Icons.Filled.CameraAlt,
-                iconTint = CT.primaryFixed,
-                title = "Camera Access Required",
+                danger = false,
+                title = "Camera access required",
                 body = "ConvoTrack needs camera access to scan QR codes.",
                 actionLabel = "Continue",
                 onAction = { permLauncher.launch(Manifest.permission.CAMERA) },
             )
         }
 
-        // Close button
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(20.dp), horizontalArrangement = Arrangement.End) {
-            Box(
-                Modifier.size(40.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f))
-                    .clickable(onClick = onClose),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Close, "Close", tint = Color.White, modifier = Modifier.size(18.dp))
-            }
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(DsSpace.gutter), horizontalArrangement = Arrangement.End) {
+            FloatingButton(Icons.Filled.Close, "Close", onClose)
         }
 
         if (granted) {
             Text(
                 "Point at a ConvoTrack QR code",
-                style = CTType.labelCaps,
-                color = Color.White.copy(alpha = 0.8f),
-                letterSpacing = 2.sp,
-                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 48.dp),
+                style = DsType.bodySmall,
+                color = DsColor.textOnPhoto,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 48.dp)
+                    .clip(DsShape.pill)
+                    .background(DsColor.glassPill)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
+    }
+}
+
+/** Accent corner brackets framing the scan area, with the rest of the feed dimmed. */
+@Composable
+private fun Viewfinder() {
+    Canvas(Modifier.fillMaxSize()) {
+        val box = 260.dp.toPx()
+        val left = (size.width - box) / 2
+        val top = (size.height - box) / 2
+        val dim = DsColor.scrim
+        drawRect(dim, size = androidx.compose.ui.geometry.Size(size.width, top))
+        drawRect(dim, topLeft = Offset(0f, top + box), size = androidx.compose.ui.geometry.Size(size.width, size.height - top - box))
+        drawRect(dim, topLeft = Offset(0f, top), size = androidx.compose.ui.geometry.Size(left, box))
+        drawRect(dim, topLeft = Offset(left + box, top), size = androidx.compose.ui.geometry.Size(size.width - left - box, box))
+        val len = 34.dp.toPx()
+        val w = 4.dp.toPx()
+        fun corner(x: Float, y: Float, dx: Float, dy: Float) {
+            drawLine(DsColor.accent, Offset(x, y + dy * len), Offset(x, y), w, StrokeCap.Round)
+            drawLine(DsColor.accent, Offset(x, y), Offset(x + dx * len, y), w, StrokeCap.Round)
+        }
+        corner(left, top, 1f, 1f)
+        corner(left + box, top, -1f, 1f)
+        corner(left, top + box, 1f, -1f)
+        corner(left + box, top + box, -1f, -1f)
     }
 }
 
@@ -197,25 +232,29 @@ internal fun extractInviteCode(raw: String): String? {
 @Composable
 private fun PermissionState(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconTint: Color,
+    danger: Boolean,
     title: String,
     body: String,
     actionLabel: String,
     onAction: () -> Unit,
 ) {
     Column(
-        Modifier.fillMaxSize().padding(32.dp),
+        Modifier.fillMaxSize().background(DsGradient.appBackground).padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, null, tint = iconTint, modifier = Modifier.size(48.dp))
+        IconDisc(
+            icon,
+            size = 72.dp,
+            iconSize = 34.dp,
+            background = if (danger) DsColor.dangerTint else DsColor.accentTint,
+            tint = if (danger) DsColor.danger else DsColor.accent,
+        )
         Spacer(Modifier.height(24.dp))
-        Text(title, style = CTType.headlineMd, color = Color.White)
+        Text(title, style = DsType.titleLarge, color = DsColor.textPrimary, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
-        Text(body, style = CTType.bodyMd, color = CT.onSurfaceVariant, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(24.dp))
-        Column(Modifier.padding(horizontal = 8.dp)) {
-            LimePrimaryButton(text = actionLabel, onClick = onAction)
-        }
+        Text(body, style = DsType.body, color = DsColor.textSecondary, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(28.dp))
+        if (danger) SecondaryButton(actionLabel, onClick = onAction) else PrimaryButton(actionLabel, onClick = onAction)
     }
 }

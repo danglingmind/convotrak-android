@@ -1,5 +1,10 @@
 package com.danglingmind.convotrack.ui.splash
 
+import androidx.compose.ui.graphics.Brush
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsGradient
+import com.danglingmind.convotrack.ui.designsystem.DsType
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -43,8 +48,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
-import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTType
 import kotlinx.coroutines.delay
 
 private val stages = listOf(
@@ -85,7 +88,7 @@ fun SplashScreen(onFinished: () -> Unit) {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(CT.surfaceContainerLowest),
+            .background(DsGradient.appBackground),
     ) {
         val h = maxHeight
 
@@ -98,12 +101,12 @@ fun SplashScreen(onFinished: () -> Unit) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(h * 0.15f))
             Box(contentAlignment = Alignment.Center) {
+                // A radial glow rather than a blurred disc: blur is a no-op below API 31 and clips to
+                // the layer's square bounds above it, which drew a hard-edged square behind the logo.
                 Box(
                     Modifier
-                        .size((240 * glow).dp)
-                        .blur(40.dp)
-                        .clip(CircleShape)
-                        .background(CT.primaryFixed.copy(alpha = 0.2f)),
+                        .size((260 * glow).dp)
+                        .background(Brush.radialGradient(listOf(DsColor.accentGlow, DsColor.accent.copy(alpha = 0f)))),
                 )
                 Image(
                     painter = painterResource(R.drawable.logo_circle),
@@ -123,28 +126,25 @@ fun SplashScreen(onFinished: () -> Unit) {
         ) {
             androidx.compose.material3.Text(
                 text = "CONVOTRACK",
-                style = CTType.displayMetrics,
-                color = CT.primaryFixed,
-                letterSpacing = (-1).sp,
+                style = DsType.brandWordmark.copy(fontSize = 44.sp),
+                color = DsColor.textPrimary,
             )
             Spacer(Modifier.height(8.dp))
             androidx.compose.material3.Text(
                 text = "MULTIPLAYER NAVIGATION",
-                style = CTType.labelCaps,
-                color = CT.onSurfaceVariant.copy(alpha = 0.8f),
-                letterSpacing = 8.sp,
+                style = DsType.eyebrow.copy(letterSpacing = 6.sp),
+                color = DsColor.textMuted,
             )
             Spacer(Modifier.height(16.dp))
             androidx.compose.foundation.layout.Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Box(Modifier.size(6.dp).clip(CircleShape).background(CT.primaryFixed.copy(alpha = dotAlpha)))
+                Box(Modifier.size(6.dp).clip(CircleShape).background(DsColor.accent.copy(alpha = dotAlpha)))
                 androidx.compose.material3.Text(
                     text = stages[stageIndex],
-                    style = CTType.labelCaps,
-                    color = CT.primaryFixed.copy(alpha = 0.7f),
-                    letterSpacing = 2.sp,
+                    style = DsType.badgeSmall,
+                    color = DsColor.accentSoft,
                 )
             }
         }
@@ -152,9 +152,8 @@ fun SplashScreen(onFinished: () -> Unit) {
         // Footer.
         androidx.compose.material3.Text(
             text = "EST. 2024 — CONVOTRACK PROTOCOL V4.2",
-            style = CTType.labelCaps.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
-            color = CT.onSurfaceVariant.copy(alpha = 0.3f),
-            letterSpacing = 1.sp,
+            style = DsType.badgeSmall,
+            color = DsColor.textSubtle,
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -182,13 +181,13 @@ private fun RouteLine(trim: Float, modifier: Modifier) {
         }
 
         // Background track.
-        drawPath(path, color = CT.surfaceContainerHighest, style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round))
+        drawPath(path, color = DsColor.borderSubtle, style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round))
 
         // Animated lime segment via PathMeasure trim.
         val measure = PathMeasure()
         measure.setPath(path, false)
         val dest = Path()
         measure.getSegment(0f, measure.length * trim, dest, true)
-        drawPath(dest, color = CT.primaryFixed, style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round))
+        drawPath(dest, color = DsColor.accent, style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round))
     }
 }
