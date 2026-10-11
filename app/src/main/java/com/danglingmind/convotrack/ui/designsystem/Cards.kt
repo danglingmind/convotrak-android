@@ -282,7 +282,14 @@ fun AvatarStack(names: List<Pair<String, String>>, modifier: Modifier = Modifier
 
 // MARK: - Details list
 
-data class DetailRow(val icon: ImageVector, val label: String, val value: String, val action: (@Composable () -> Unit)? = null)
+data class DetailRow(
+    val icon: ImageVector,
+    val label: String,
+    val value: String,
+    /** Overrides the value style, e.g. mono for a code. */
+    val valueStyle: androidx.compose.ui.text.TextStyle? = null,
+    val action: (@Composable () -> Unit)? = null,
+)
 
 /** Icon · muted label column · value, with hairline dividers (lobby RIDE DETAILS). */
 @Composable
@@ -297,7 +304,7 @@ fun DetailsList(rows: List<DetailRow>, modifier: Modifier = Modifier) {
                 Icon(row.icon, null, tint = DsColor.textSecondary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(14.dp))
                 Text(row.label, style = DsType.detailLabel, color = DsColor.textMuted, modifier = Modifier.width(118.dp), maxLines = 1)
-                Text(row.value, style = DsType.detailValue, color = DsColor.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(row.value, style = row.valueStyle ?: DsType.detailValue, color = DsColor.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 row.action?.invoke()
             }
         }

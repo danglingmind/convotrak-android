@@ -29,7 +29,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
@@ -92,6 +95,8 @@ import com.danglingmind.convotrack.ui.designsystem.DetailsList
 import com.danglingmind.convotrack.ui.designsystem.DialogText
 import com.danglingmind.convotrack.ui.designsystem.DsBottomSheet
 import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsHaptic
+import com.danglingmind.convotrack.ui.designsystem.dsHaptic
 import com.danglingmind.convotrack.ui.designsystem.DsGradient
 import com.danglingmind.convotrack.ui.designsystem.DsScreen
 import com.danglingmind.convotrack.ui.designsystem.DsShape
@@ -426,24 +431,8 @@ private fun LobbyContent(
                 LobbyHero(ride, heroPhase, routeCoords, isActive)
             }
             item {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = DsSpace.gutter)
-                        .padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    StatTile(Icons.Filled.Route, "Distance", "${formatKm(ride.distanceMeters)} km")
-                    StatTile(Icons.Filled.Group, "Riders", "${riders.size}")
-                    StatTile(
-                        Icons.Filled.Sensors,
-                        "Status",
-                        if (canStart) "Ready" else "Waiting",
-                        tone = if (canStart) StatTone.Success else StatTone.Warning,
-                    )
-                    if (ride.inviteCode.isNotEmpty()) StatTile(Icons.Filled.Link, "Code", ride.inviteCode, tone = StatTone.Code)
-                }
+                SectionHeading("Ride details", Modifier.padding(horizontal = DsSpace.gutter).padding(top = 20.dp, bottom = 10.dp))
+                RideDetails(ride, Modifier.padding(horizontal = DsSpace.gutter))
             }
             item {
                 SectionHeading("Squad roster", Modifier.padding(horizontal = DsSpace.gutter).padding(top = 24.dp, bottom = 10.dp)) {
@@ -475,10 +464,6 @@ private fun LobbyContent(
                     onClick = if (canManage) ({ riderToManage = rider }) else null,
                     modifier = Modifier.padding(horizontal = DsSpace.gutter, vertical = 4.dp),
                 )
-            }
-            item {
-                SectionHeading("Ride details", Modifier.padding(horizontal = DsSpace.gutter).padding(top = 22.dp, bottom = 10.dp))
-                RideDetails(ride, Modifier.padding(horizontal = DsSpace.gutter))
             }
         }
 
@@ -659,8 +644,35 @@ private fun RideDetails(ride: Ride, modifier: Modifier = Modifier) {
             },
             DetailRow(Icons.Filled.Route, "Distance", "${formatKm(ride.distanceMeters)} km"),
             if (minutes > 0) DetailRow(Icons.Filled.Schedule, "Estimated time", if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "$minutes mins") else null,
+            ride.inviteCode.takeIf { it.isNotEmpty() }?.let { code ->
+                DetailRow(Icons.Filled.Key, "Joining code", code, valueStyle = DsType.codeValue) { CopyCodeButton(code) }
+            },
         ),
         modifier = modifier,
+    )
+}
+
+/** Copies the invite code; the icon turns into a check for a moment to confirm. */
+@Composable
+private fun CopyCodeButton(code: String) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    var copied by remember(code) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            kotlinx.coroutines.delay(1800)
+            copied = false
+        }
+    }
+    SquareIconButton(
+        if (copied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+        if (copied) "Code copied" else "Copy joining code",
+        onClick = {
+            clipboard.setText(androidx.compose.ui.text.AnnotatedString(code))
+            view.dsHaptic(DsHaptic.Selection)
+            copied = true
+        },
+        size = 36.dp,
     )
 }
 

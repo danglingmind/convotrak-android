@@ -1,9 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "name": "ConvoTrack Dark Glass Ride UI",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "description": "Full-app design system for ConvoTrack, matched to the reference screens (Home, Lobby, Edit Ride): photographic heroes that fade into a blue-black base, quiet glass cards, a serif headline, wide-tracked uppercase labels, mono data, and one accent accent for the next action and the route.",
   "changelog": [
+    "2.3.2: Lobby drops the stat tiles; Ride details moves above the roster and gains a Joining code row with a copy button.",
     "2.3.1: Implemented on Android. iconDisc is a cyan-tinted dark (#14202A) to suit the accent; appBackground starts at base to avoid a seam under hero photos.",
     "2.3.0-draft: Hero photos supplied by the user and added to design/assets. Recent-ride thumbnails confirmed. Bottom nav stays visible in the lobby.",
     "2.2.0-draft: Accent changed to ice cyan #3DE8FF. Bottom nav uses the app's real tabs (History · Home · Profile). Tags and statuses come from the app, not the references (no INVITED, Last seen, MEMBER, LIVE NOW or LEADER chip in the roster).",
@@ -3210,7 +3211,8 @@
         "Start point",
         "Destination (trailing SquareIconButton 'navigation' to open in maps)",
         "Distance",
-        "Estimated time"
+        "Estimated time",
+        "Joining code (mono value, trailing copy button that turns into a check for ~2s)"
       ]
     }
   },
@@ -4067,15 +4069,10 @@
           "attribution": "GlassPill at the photo's bottom-end"
         },
         {
-          "id": "stats",
-          "component": "StatTile",
-          "items": [
-            "DISTANCE (road icon)",
-            "RIDERS (group)",
-            "STATUS (sensors, success)",
-            "CODE (link, mono)"
-          ],
-          "spacingBeforePt": 16
+          "id": "details",
+          "component": "DetailsList",
+          "heading": "SectionHeading 'RIDE DETAILS'",
+          "visibleWhen": "always; directly under the hero, before the roster"
         },
         {
           "id": "rosterHeading",
@@ -4093,12 +4090,6 @@
           "id": "roster",
           "component": "RosterRow",
           "leaderFirst": true
-        },
-        {
-          "id": "details",
-          "component": "DetailsList",
-          "heading": "SectionHeading 'RIDE DETAILS'",
-          "visibleWhen": "always; scrolls under the action"
         },
         {
           "id": "action",
