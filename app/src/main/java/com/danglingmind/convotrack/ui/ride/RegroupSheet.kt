@@ -1,25 +1,23 @@
 package com.danglingmind.convotrack.ui.ride
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,10 +30,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.danglingmind.convotrack.ui.theme.CT
-import com.danglingmind.convotrack.ui.theme.CTType
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsHaptic
+import com.danglingmind.convotrack.ui.designsystem.DsShape
+import com.danglingmind.convotrack.ui.designsystem.DsSpace
+import com.danglingmind.convotrack.ui.designsystem.DsType
+import com.danglingmind.convotrack.ui.designsystem.GhostButton
+import com.danglingmind.convotrack.ui.designsystem.SectionHeading
+import com.danglingmind.convotrack.ui.designsystem.SegmentedControl
+import com.danglingmind.convotrack.ui.designsystem.SheetTitle
+import com.danglingmind.convotrack.ui.designsystem.dsClickable
+import com.danglingmind.convotrack.ui.designsystem.dsHaptic
+import com.danglingmind.convotrack.ui.designsystem.glassSurface
+
 
 /**
  * Regroup reasons. EMERGENCY emits the `ride:emergency` socket event; the other three emit
@@ -73,73 +82,46 @@ fun RegroupSheet(
     onBroadcast: (RegroupReason, aheadMeters: Double) -> Unit,
     onCancel: () -> Unit,
 ) {
+    val view = LocalView.current
     var selected by remember { mutableStateOf<RegroupReason?>(null) }
     var distance by remember { mutableStateOf(RegroupDistance.CURRENT) }
 
-    Column(Modifier.navigationBarsPadding().padding(bottom = 32.dp)) {
-        Row(
-            Modifier.padding(horizontal = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(Icons.Filled.Flag, null, tint = CT.primaryFixed, modifier = Modifier.size(32.dp))
-            Text("REGROUP", style = CTType.headlineLg, color = CT.primaryFixed)
-        }
-
+    Column(Modifier.padding(bottom = 24.dp)) {
+        SheetTitle("Regroup", Icons.Filled.Groups)
         Text(
             "Tap a reason to broadcast instantly",
-            style = CTType.bodyLg,
-            color = CT.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 24.dp),
+            style = DsType.body,
+            color = DsColor.textSecondary,
+            modifier = Modifier.padding(horizontal = DsSpace.gutter).padding(top = 8.dp, bottom = 24.dp),
         )
 
         // Distance selector — offsets the meet point this far ahead on the route. Chosen BEFORE
         // the reason, because the reason tap is what fires.
-        Column(
-            Modifier.padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("MEET POINT", style = CTType.labelCaps, color = CT.onSurfaceVariant, letterSpacing = 2.sp)
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(CT.surfaceContainerHigh),
-            ) {
-                RegroupDistance.entries.forEach { option ->
-                    val active = distance == option
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .background(if (active) CT.primaryFixed else Color.Transparent)
-                            .clickable { distance = option }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            option.label,
-                            style = CTType.toggleLabel,
-                            color = if (active) CT.onPrimaryFixed else CT.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
+        Column(Modifier.padding(horizontal = DsSpace.gutter), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionHeading("Meet point", compact = true)
+            SegmentedControl(
+                options = RegroupDistance.entries,
+                selected = distance,
+                label = { it.label },
+                onSelect = { distance = it },
+            )
         }
 
         Spacer(Modifier.height(24.dp))
 
         // Reason grid (2x2). Each tile fires on tap.
-        Column(
-            Modifier.padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+        Column(Modifier.padding(horizontal = DsSpace.gutter), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             RegroupReason.entries.chunked(2).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     row.forEach { reason ->
                         ReasonTile(
                             reason = reason,
-                            isSelected = selected == reason,
+                            sending = isBroadcasting && selected == reason,
                             enabled = !isBroadcasting,
                             modifier = Modifier.weight(1f),
                             onClick = {
                                 if (isBroadcasting) return@ReasonTile
+                                view.dsHaptic(if (reason.isEmergency) DsHaptic.Destructive else DsHaptic.Primary)
                                 selected = reason
                                 onBroadcast(reason, distance.meters)
                             },
@@ -149,47 +131,48 @@ fun RegroupSheet(
             }
         }
 
-        Spacer(Modifier.height(24.dp))
-
-        Box(
-            Modifier.fillMaxWidth().clickable(onClick = onCancel).padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                "CANCEL REQUEST",
-                style = CTType.labelCaps,
-                color = CT.onSurfaceVariant,
-                letterSpacing = 8.sp,
-            )
-        }
+        Spacer(Modifier.height(16.dp))
+        GhostButton("Cancel request", onClick = onCancel, modifier = Modifier.padding(horizontal = DsSpace.gutter))
     }
+}
+
+private fun RegroupReason.accent(): Color = when (this) {
+    RegroupReason.FUEL -> DsColor.catFuel
+    RegroupReason.FOOD -> DsColor.catFood
+    RegroupReason.SCENIC -> DsColor.catScenic
+    RegroupReason.EMERGENCY -> DsColor.danger
 }
 
 @Composable
 private fun ReasonTile(
     reason: RegroupReason,
-    isSelected: Boolean,
+    sending: Boolean,
     enabled: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val accent = if (reason.isEmergency) CT.errorColor else CT.primaryFixed
-    val borderColor = when {
-        isSelected -> CT.primaryFixed
-        reason.isEmergency -> CT.errorColor.copy(alpha = 0.4f)
-        else -> CT.outlineVariant.copy(alpha = 0.3f)
-    }
+    val accent = reason.accent()
     Column(
         modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (reason.isEmergency) CT.errorContainer.copy(alpha = 0.1f) else Color(0xFF1C1C1C))
-            .border(if (isSelected) 2.dp else 1.dp, borderColor, RoundedCornerShape(16.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(20.dp),
+            .heightIn(min = 112.dp)
+            .glassSurface(
+                DsShape.lg,
+                if (reason.isEmergency) DsColor.dangerTint else DsColor.card,
+                when {
+                    sending -> accent
+                    reason.isEmergency -> DsColor.dangerBorder
+                    else -> DsColor.borderSubtle
+                },
+            )
+            .dsClickable(enabled = enabled, onClick = onClick)
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
     ) {
-        Icon(reason.icon, null, tint = accent, modifier = Modifier.size(28.dp))
-        Text(reason.label, style = CTType.labelCaps, color = accent, letterSpacing = 1.sp)
+        Box(Modifier.size(48.dp).clip(CircleShape).background(accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+            if (sending) CircularProgressIndicator(color = accent, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+            else Icon(reason.icon, null, tint = accent, modifier = Modifier.size(26.dp))
+        }
+        Text(reason.label.uppercase(), style = DsType.buttonPill, color = DsColor.textPrimary)
     }
 }

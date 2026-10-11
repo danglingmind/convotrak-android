@@ -1,5 +1,10 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.designsystem.ConfirmDialog
+import com.danglingmind.convotrack.ui.designsystem.DialogText
+import com.danglingmind.convotrack.ui.designsystem.DsBottomSheet
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
@@ -556,7 +561,7 @@ fun RideNavigationScreen(
 
     // --- Layout --------------------------------------------------------------------------------
 
-    Box(Modifier.fillMaxSize().background(CT.surfaceDim)) {
+    Box(Modifier.fillMaxSize().background(DsColor.bgBase)) {
         com.danglingmind.convotrack.ui.map.ConvoTrackMap(
             modifier = Modifier
                 .fillMaxSize()
@@ -688,12 +693,7 @@ fun RideNavigationScreen(
     }
 
     if (showRegroup) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = { showRegroup = false; isBroadcasting = false },
-            sheetState = sheetState,
-            containerColor = CT.surfaceDim,
-        ) {
+        DsBottomSheet(onDismiss = { showRegroup = false; isBroadcasting = false }) {
             RegroupSheet(
                 isBroadcasting = isBroadcasting,
                 onCancel = { showRegroup = false },
@@ -722,45 +722,34 @@ fun RideNavigationScreen(
     // and since the navigation screen carries no back button while guidance is running, it is the
     // ONLY way for a leader to step off this screen without ending everyone's ride.
     if (showEndConfirm) {
-        AlertDialog(
-            onDismissRequest = { showEndConfirm = false },
-            containerColor = CT.surfaceContainer,
-            title = { Text("Leave navigation or end the ride?", style = CTType.headlineMd, color = CT.onSurface) },
-            text = {
-                Text(
-                    "Exit closes navigation on your phone — the ride keeps running and you can " +
-                        "resume from the lobby. End Ride stops location sharing for every rider and " +
-                        "generates the summary; that can't be undone.",
-                    style = CTType.bodyMd,
-                    color = CT.onSurfaceVariant,
-                )
+        ConfirmDialog(
+            title = "Leave navigation or end the ride?",
+            onDismiss = { showEndConfirm = false },
+            dismissLabel = null,
+            extraAction = "Exit navigation" to { showEndConfirm = false; onExit() },
+            confirmLabel = "End ride",
+            destructive = true,
+            onConfirm = {
+                showEndConfirm = false
+                vm.endRide(onEndRide)
             },
-            confirmButton = {
-                TextButton(onClick = { showEndConfirm = false; onExit() }) {
-                    Text("Exit Navigation", color = CT.primaryFixed)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showEndConfirm = false
-                    vm.endRide(onEndRide)
-                }) { Text("End Ride", color = CT.errorColor) }
-            },
-        )
+        ) {
+            DialogText(
+                "Exit closes navigation on your phone — the ride keeps running and you can resume from " +
+                    "the lobby. End Ride stops location sharing for every rider and generates the summary; " +
+                    "that can't be undone.",
+            )
+        }
     }
 
     if (showEndError) {
-        AlertDialog(
-            onDismissRequest = { showEndError = false; vm.clearEndError() },
-            containerColor = CT.surfaceContainer,
-            title = { Text("Couldn't End Ride", style = CTType.headlineMd, color = CT.onSurface) },
-            text = { Text(endError ?: "An error occurred.", style = CTType.bodyMd, color = CT.onSurfaceVariant) },
-            confirmButton = {
-                TextButton(onClick = { showEndError = false; vm.clearEndError() }) {
-                    Text("OK", color = CT.primaryFixed)
-                }
-            },
-        )
+        ConfirmDialog(
+            title = "Couldn't end ride",
+            onDismiss = { showEndError = false; vm.clearEndError() },
+            dismissLabel = null,
+            confirmLabel = "OK",
+            onConfirm = { showEndError = false; vm.clearEndError() },
+        ) { DialogText(endError ?: "An error occurred.") }
     }
 }
 

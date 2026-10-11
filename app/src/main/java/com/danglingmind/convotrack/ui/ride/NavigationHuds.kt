@@ -1,5 +1,14 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsShape
+import com.danglingmind.convotrack.ui.designsystem.DsType
+import com.danglingmind.convotrack.ui.designsystem.FloatingButton
+import com.danglingmind.convotrack.ui.designsystem.FloatingTone
+import com.danglingmind.convotrack.ui.designsystem.PrimaryButton
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,7 +58,7 @@ import com.danglingmind.convotrack.ui.theme.CTType
  * Everything the HUD shows, in one parameter list, so portrait and landscape can be driven from the
  * identical set. They differ in arrangement and scale only — never in what they show.
  */
-private const val BUTTON_SIZE_PORTRAIT = 48
+private const val BUTTON_SIZE_PORTRAIT = 50
 private const val BUTTON_SIZE_LANDSCAPE = 44
 
 @Composable
@@ -151,56 +160,35 @@ private fun NavigationPreviewBar(
     bottomPadding: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.background(CT.surfaceDim)) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(CT.outlineVariant.copy(alpha = 0.25f)))
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 16.dp, bottom = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        modifier
+            .clip(DsShape.sheetTop)
+            .background(HudGlass)
+            .border(1.dp, DsColor.borderSubtle, DsShape.sheetTop)
+            .padding(horizontal = 20.dp)
+            .padding(top = 18.dp, bottom = bottomPadding),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("DESTINATION", style = DsType.fieldLabel, color = DsColor.textMuted)
+                Text(destinationName, style = DsType.cardTitle, color = DsColor.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    destinationName.uppercase(),
-                    style = CTType.dataMono.copy(fontSize = 12.sp, fontWeight = FontWeight.Black),
-                    color = CT.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    if (myDistanceKm > 0) String.format(java.util.Locale.US, "%.1f km away", myDistanceKm)
-                    else "Calculating route…",
-                    style = CTType.bodyMd.copy(fontSize = 11.sp),
-                    color = CT.onSurfaceVariant,
+                    if (myDistanceKm > 0) String.format(java.util.Locale.US, "%.1f km away", myDistanceKm) else "Calculating route…",
+                    style = DsType.bodySmall,
+                    color = DsColor.textMuted,
                 )
             }
+            Spacer(Modifier.width(16.dp))
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    etaText,
-                    style = CTType.dataMono.copy(fontSize = 22.sp, fontWeight = FontWeight.Black),
-                    color = CT.onSurface,
-                )
-                Text("ETA", style = CTType.labelCaps.copy(fontSize = 9.sp), color = CT.onSurfaceVariant, letterSpacing = 1.5.sp)
+                Text(etaText, style = DsType.hudEta, color = DsColor.textPrimary)
+                Text("ETA", style = DsType.hudStatLabel, color = DsColor.textMuted)
             }
         }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = bottomPadding)
-                .height(56.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(CT.primaryFixed)
-                .clickable(onClick = onStartNavigation),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Icon(Icons.Filled.Navigation, null, tint = CT.onPrimaryFixed, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(12.dp))
-            Text("START NAVIGATION", style = CTType.headlineMd, color = CT.onPrimaryFixed)
-        }
+        PrimaryButton("Start navigation", onStartNavigation, icon = Icons.Filled.Navigation)
     }
 }
 
-// MARK: - Portrait
 
 @Composable
 fun PortraitHud(
@@ -277,28 +265,20 @@ fun PortraitHud(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Box(
-                        Modifier.size(44.dp).clip(CircleShape).background(CT.surfaceContainerHigh.copy(alpha = 0.9f))
-                            .border(1.dp, CT.outlineVariant.copy(alpha = 0.3f), CircleShape)
-                            .clickable(onClick = onBack),
-                        contentAlignment = Alignment.Center,
+                    FloatingButton(Icons.AutoMirrored.Filled.ArrowBack, "Leave navigation (the ride keeps running)", onBack, tone = FloatingTone.OnDark)
+                    Row(
+                        Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(DsShape.pill)
+                            .background(HudGlass)
+                            .border(1.dp, DsColor.border, DsShape.pill)
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            "Leave navigation (the ride keeps running)",
-                            tint = CT.onSurface,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text("TO", style = CTType.labelCaps.copy(fontSize = 9.sp), color = CT.onSurfaceVariant, letterSpacing = 1.5.sp)
-                        Text(
-                            destinationName,
-                            style = CTType.bodyLg,
-                            color = CT.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Text("TO", style = DsType.badgeSmall, color = DsColor.textMuted)
+                        Text(destinationName, style = DsType.bodyStrong, color = DsColor.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -375,7 +355,10 @@ private fun NavBottomBar(
     androidx.compose.foundation.layout.BoxWithConstraints(
         Modifier
             .fillMaxWidth()
-            .background(CT.surfaceContainerHigh.copy(alpha = 0.94f)),
+            // Floats like the app's bottom nav: inset and rounded over the map.
+            .navigationBarsPadding()
+            .padding(horizontal = 12.dp)
+            .padding(bottom = 8.dp),
     ) {
         // Units only where there is genuinely room for them. A worst-case row — "120 KM/H",
         // "25h 8m", "1436.3 KM" plus both controls — needs ~466dp, which is wider than any phone
@@ -383,13 +366,17 @@ private fun NavBottomBar(
         // leaving no way to end a ride at all.
         val showUnits = maxWidth >= 430.dp
         val spacing = if (maxWidth >= 400.dp) 12.dp else 8.dp
-        Column {
-            Box(Modifier.fillMaxWidth().height(1.dp).background(CT.outlineVariant.copy(alpha = 0.25f)))
+        Column(
+            Modifier
+                .shadow(20.dp, DsShape.nav, ambientColor = Color.Black, spotColor = Color.Black)
+                .clip(DsShape.nav)
+                .background(HudGlass)
+                .border(1.dp, DsColor.border, DsShape.nav),
+        ) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                    .padding(start = 18.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spacing),
             ) {
@@ -409,18 +396,18 @@ private fun NavBottomBar(
                 NavControlButton(
                     icon = Icons.Filled.Groups,
                     description = "Regroup",
-                    tint = CT.onSurface,
-                    background = CT.surfaceContainerHigh.copy(alpha = 0.9f),
-                    border = CT.outlineVariant.copy(alpha = 0.3f),
+                    tint = DsColor.textPrimary,
+                    background = DsColor.card,
+                    border = DsColor.border,
                     size = BUTTON_SIZE_PORTRAIT.dp,
                     onClick = onRegroup,
                 )
                 NavControlButton(
                     icon = Icons.Filled.Stop,
                     description = "End ride",
-                    tint = CT.errorColor,
-                    background = CT.errorContainer.copy(alpha = 0.12f),
-                    border = CT.errorColor.copy(alpha = 0.35f),
+                    tint = DsColor.danger,
+                    background = DsColor.dangerTint,
+                    border = DsColor.dangerBorder,
                     size = BUTTON_SIZE_PORTRAIT.dp,
                     enabled = !isEnding,
                     busy = isEnding,
@@ -486,22 +473,13 @@ fun LandscapeHud(
         // camera housing is a band in the VERTICAL middle of the edge, so a control pinned to the
         // top corner clears it without needing the full inset.
         if (!isNavigationActive) {
-            Box(
-                Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 21.dp, top = 12.dp)
-                    .size(44.dp).clip(CircleShape).background(CT.surfaceContainerHigh.copy(alpha = 0.9f))
-                    .border(1.dp, CT.outlineVariant.copy(alpha = 0.3f), CircleShape)
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    "Leave navigation (the ride keeps running)",
-                    tint = CT.onSurface,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+            FloatingButton(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                "Leave navigation (the ride keeps running)",
+                onBack,
+                tone = FloatingTone.OnDark,
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 21.dp, top = 12.dp),
+            )
         }
 
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -512,7 +490,7 @@ fun LandscapeHud(
                     .width(panelWidth)
                     .fillMaxHeight()
                     .onSizeChanged { onPanelWidth(it.width) }
-                    .background(CT.surfaceDim.copy(alpha = 0.94f))
+                    .background(HudGlass)
                     .statusBarsPadding()
                     .navigationBarsPadding()
                     // Same 9dp gutter both sides, no notch allowance: every row sits above the
@@ -586,9 +564,9 @@ fun LandscapeHud(
                         NavControlButton(
                             icon = Icons.Filled.Groups,
                             description = "Regroup",
-                            tint = CT.onSurface,
-                            background = CT.surfaceContainerHigh.copy(alpha = 0.9f),
-                            border = CT.outlineVariant.copy(alpha = 0.3f),
+                            tint = DsColor.textPrimary,
+                            background = DsColor.card,
+                            border = DsColor.border,
                             size = BUTTON_SIZE_LANDSCAPE.dp,
                             modifier = Modifier.weight(1f),
                             fillWidth = true,
@@ -597,9 +575,9 @@ fun LandscapeHud(
                         NavControlButton(
                             icon = Icons.Filled.Stop,
                             description = "End ride",
-                            tint = CT.errorColor,
-                            background = CT.errorContainer.copy(alpha = 0.12f),
-                            border = CT.errorColor.copy(alpha = 0.35f),
+                            tint = DsColor.danger,
+                            background = DsColor.dangerTint,
+                            border = DsColor.dangerBorder,
                             size = BUTTON_SIZE_LANDSCAPE.dp,
                             enabled = !isEnding,
                             busy = isEnding,
