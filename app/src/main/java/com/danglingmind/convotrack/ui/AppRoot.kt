@@ -140,6 +140,7 @@ fun AppRoot(
             }
             composable(Routes.CREATE_RIDE) {
                 CreateRideScreen(
+                    onOpenMembership = { nav.navigate(Routes.MEMBERSHIP) },
                     onBack = { nav.popBackStack() },
                     onCreated = { rideId ->
                         nav.navigate(Routes.rideGraph(rideId)) {
@@ -211,6 +212,7 @@ fun AppRoot(
                     val sessionVm = rideSessionViewModel(nav, entry, rideId)
                     EditRideScreen(
                         rideId = rideId,
+                        onOpenMembership = { nav.navigate(Routes.MEMBERSHIP) },
                         onBack = { nav.popBackStack() },
                         onSaved = {
                             sessionVm.refreshRide()

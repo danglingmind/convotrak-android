@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +36,7 @@ import com.danglingmind.convotrack.data.net.CreateRideRequest
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
+import com.danglingmind.convotrack.ui.common.rememberRiderCap
 import com.danglingmind.convotrack.ui.designsystem.DsColor
 import com.danglingmind.convotrack.ui.designsystem.DsScreen
 import com.danglingmind.convotrack.ui.designsystem.DsSpace
@@ -48,6 +50,7 @@ import kotlinx.coroutines.launch
 fun CreateRideScreen(
     onBack: () -> Unit,
     onCreated: (rideId: String) -> Unit,
+    onOpenMembership: () -> Unit = {},
 ) {
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
@@ -55,9 +58,12 @@ fun CreateRideScreen(
     var creating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val canCreate = form.title.isNotBlank() && form.allResolved && form.preview != null && !creating
+    val riderCap = rememberRiderCap()
+    // Never start a new ride above the plan's limit (the server would silently trim it).
+    LaunchedEffect(riderCap.cap) { if (form.maxRiders > riderCap.cap) form.maxRiders = riderCap.cap }
 
     RideFormScaffold(title = "New ride", onBack = onBack) {
-        RouteFormSections(form)
+        RouteFormSections(form, riderCap, onUpgrade = onOpenMembership)
 
         if (error != null) InlineError(error!!)
 

@@ -1,6 +1,7 @@
 package com.danglingmind.convotrack.ui.ride
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsScore
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Icon
@@ -63,6 +65,8 @@ import com.danglingmind.convotrack.data.maps.PlaceResult
 import com.danglingmind.convotrack.data.maps.PlacesService
 import com.danglingmind.convotrack.data.maps.RouteOption
 import com.danglingmind.convotrack.data.net.CreateWaypoint
+import com.danglingmind.convotrack.ui.common.PRO_RIDER_CAP
+import com.danglingmind.convotrack.ui.common.RiderCap
 import com.danglingmind.convotrack.ui.common.formatKm
 import com.danglingmind.convotrack.ui.designsystem.DsColor
 import com.danglingmind.convotrack.ui.designsystem.DsShape
@@ -218,7 +222,12 @@ internal class RouteFormState(
 
 /** Title, route, preview, metrics and max riders, in that order (`screenSpecs.editRide`). */
 @Composable
-internal fun RouteFormSections(state: RouteFormState) {
+internal fun RouteFormSections(
+    state: RouteFormState,
+    riderCap: RiderCap,
+    /** Opens the paywall: a free rider tapping + at the cap, or the upgrade banner. */
+    onUpgrade: () -> Unit,
+) {
     // Recompute the route whenever the set of picked places changes (also on first load).
     LaunchedEffect(state.routeKey) { state.recompute() }
 
@@ -250,15 +259,50 @@ internal fun RouteFormSections(state: RouteFormState) {
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FieldLabel("Max riders")
+            // Free riders stop at the free cap; + there opens the paywall instead (iOS parity).
+            val atCap = state.maxRiders >= riderCap.cap
             Stepper(
                 value = state.maxRiders,
                 suffix = "riders",
                 onDecrement = { if (state.maxRiders > 2) state.maxRiders-- },
-                onIncrement = { if (state.maxRiders < 25) state.maxRiders++ },
+                onIncrement = {
+                    when {
+                        state.maxRiders < riderCap.cap -> state.maxRiders++
+                        !riderCap.isPremium -> onUpgrade()
+                    }
+                },
                 canDecrement = state.maxRiders > 2,
-                canIncrement = state.maxRiders < 25,
+                canIncrement = !atCap || !riderCap.isPremium,
+                dimIncrement = atCap,
             )
+            AnimatedVisibility(visible = atCap && !riderCap.isPremium) {
+                UpgradeBanner(onUpgrade)
+            }
         }
+    }
+}
+
+/** "Pro unlocks bigger packs · UPGRADE →" under the stepper once a free rider hits the cap. */
+@Composable
+private fun UpgradeBanner(onUpgrade: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 2.dp)
+            .glassSurface(DsShape.sm, DsColor.accentTint, DsColor.accentBorder)
+            .dsClickable(pressedScale = 0.99f, onClick = onUpgrade)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(Icons.Filled.WorkspacePremium, null, tint = DsColor.accent, modifier = Modifier.size(18.dp))
+        Text(
+            "Pro unlocks bigger packs — up to $PRO_RIDER_CAP riders",
+            style = DsType.bodySmall,
+            color = DsColor.textPrimary,
+            modifier = Modifier.weight(1f),
+        )
+        Text("UPGRADE →", style = DsType.buttonPill, color = DsColor.accent)
     }
 }
 

@@ -136,6 +136,8 @@ fun Stepper(
     canDecrement: Boolean,
     canIncrement: Boolean,
     modifier: Modifier = Modifier,
+    /** Draws + as at-limit while keeping it tappable — a free rider's + opens the paywall. */
+    dimIncrement: Boolean = false,
 ) {
     val view = LocalView.current
     Row(
@@ -146,12 +148,12 @@ fun Stepper(
         Text("$value", style = DsType.metricValue, color = DsColor.textPrimary)
         Text(suffix, style = DsType.body, color = DsColor.textMuted, modifier = Modifier.weight(1f))
         StepperButton(Icons.Filled.Remove, "Fewer", canDecrement) { view.dsHaptic(DsHaptic.Selection); onDecrement() }
-        StepperButton(Icons.Filled.Add, "More", canIncrement) { view.dsHaptic(DsHaptic.Selection); onIncrement() }
+        StepperButton(Icons.Filled.Add, "More", canIncrement, dimmed = dimIncrement) { view.dsHaptic(DsHaptic.Selection); onIncrement() }
     }
 }
 
 @Composable
-private fun StepperButton(icon: ImageVector, description: String, enabled: Boolean, onClick: () -> Unit) {
+private fun StepperButton(icon: ImageVector, description: String, enabled: Boolean, dimmed: Boolean = false, onClick: () -> Unit) {
     Box(
         Modifier
             .size(44.dp)
@@ -159,7 +161,7 @@ private fun StepperButton(icon: ImageVector, description: String, enabled: Boole
             .background(DsColor.card)
             .border(1.dp, DsColor.borderStrong, CircleShape)
             .dsClickable(enabled = enabled, onClick = onClick)
-            .then(if (enabled) Modifier else Modifier.dsAlpha(0.42f)),
+            .then(if (enabled && !dimmed) Modifier else Modifier.dsAlpha(0.42f)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, description, tint = DsColor.textPrimary, modifier = Modifier.size(20.dp))

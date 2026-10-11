@@ -23,6 +23,7 @@ import com.danglingmind.convotrack.data.net.Waypoint
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
+import com.danglingmind.convotrack.ui.common.rememberRiderCap
 import com.danglingmind.convotrack.ui.designsystem.ConfirmDialog
 import com.danglingmind.convotrack.ui.designsystem.DestructiveButton
 import com.danglingmind.convotrack.ui.designsystem.DialogText
@@ -48,6 +49,7 @@ fun EditRideScreen(
     /** Called after the ride is successfully deleted, so the caller can tear down the realtime
      *  session and leave the ride flow instead of popping back to a lobby for a dead ride. */
     onDeleted: () -> Unit = {},
+    onOpenMembership: () -> Unit = {},
 ) {
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
@@ -63,7 +65,7 @@ fun EditRideScreen(
 
     val r = ride
     if (r != null) {
-        EditRideForm(r, onBack, onSaved, onDeleted)
+        EditRideForm(r, onBack, onSaved, onDeleted, onOpenMembership)
     } else {
         DsScreen {
             Column(Modifier.fillMaxSize()) {
@@ -81,7 +83,7 @@ private fun waypointPlace(wp: Waypoint): PlaceResult =
     PlaceResult(id = "wp_${wp.order}", name = wp.name, latLng = LatLng(wp.lat, wp.lng), address = null)
 
 @Composable
-private fun EditRideForm(ride: Ride, onBack: () -> Unit, onSaved: () -> Unit, onDeleted: () -> Unit) {
+private fun EditRideForm(ride: Ride, onBack: () -> Unit, onSaved: () -> Unit, onDeleted: () -> Unit, onOpenMembership: () -> Unit) {
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
 
@@ -112,7 +114,7 @@ private fun EditRideForm(ride: Ride, onBack: () -> Unit, onSaved: () -> Unit, on
     var deleteError by remember { mutableStateOf<String?>(null) }
 
     RideFormScaffold(title = "Edit ride", onBack = onBack) {
-        RouteFormSections(form)
+        RouteFormSections(form, rememberRiderCap(), onUpgrade = onOpenMembership)
 
         if (error != null) InlineError(error!!)
 

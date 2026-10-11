@@ -1,9 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "name": "ConvoTrack Dark Glass Ride UI",
-  "version": "2.3.2",
+  "version": "2.3.3",
   "description": "Full-app design system for ConvoTrack, matched to the reference screens (Home, Lobby, Edit Ride): photographic heroes that fade into a blue-black base, quiet glass cards, a serif headline, wide-tracked uppercase labels, mono data, and one accent accent for the next action and the route.",
   "changelog": [
+    "2.3.3: Max riders is gated by plan (free 5 / Pro 25) with the paywall at the cap, matching iOS.",
     "2.3.2: Lobby drops the stat tiles; Ride details moves above the roster and gains a Joining code row with a copy button.",
     "2.3.1: Implemented on Android. iconDisc is a cyan-tinted dark (#14202A) to suit the accent; appBackground starts at base to avoid a seam under hero photos.",
     "2.3.0-draft: Hero photos supplied by the user and added to design/assets. Recent-ride thumbnails confirmed. Bottom nav stays visible in the lobby.",
@@ -1916,7 +1917,14 @@
         "disabledOpacity": 0.42
       },
       "buttonGapPt": 12,
-      "atLimit": "The button at the limit is disabled, not hidden."
+      "atLimit": "The button at the limit is disabled, not hidden.",
+      "planGate": {
+        "freeCap": 5,
+        "proCap": 25,
+        "premium": "Play entitlement OR server plan.isPremium",
+        "atFreeCap": "+ stays tappable but drawn at 42%; tapping it opens Membership. An UpgradeBanner ('Pro unlocks bigger packs — up to 25 riders · UPGRADE →', accent tint) appears under the stepper.",
+        "createClamp": "A new ride's default is clamped to the cap"
+      }
     },
     "SegmentedControl": {
       "_usage": "Regroup meet point (Current / 100 m / 500 m)",
