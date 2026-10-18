@@ -105,7 +105,7 @@ fun RideNavigationScreen(
     val liveState by session.liveState.collectAsState()
     val participants by session.participants.collectAsState()
     val onlineIds by session.onlineUserIds.collectAsState()
-    val splitGapMeters by session.splitGapMeters.collectAsState()
+    val split by session.split.collectAsState()
     val sessionRegroup by session.latestRegroup.collectAsState()
     val sessionRegroupResolvedId by session.latestRegroupResolvedId.collectAsState()
     val sessionEmergency by session.latestEmergency.collectAsState()
@@ -160,6 +160,11 @@ fun RideNavigationScreen(
     var showRegroupResolved by remember(rideId) { mutableStateOf(false) }
     var activeEmergency by remember(rideId) { mutableStateOf<SocketEmergency?>(null) }
     var splitAlertDismissed by remember(rideId) { mutableStateOf(false) }
+    // Real rider + gap for the split alert; hidden once dismissed, or while a regroup or an
+    // emergency already owns the banner area.
+    val splitAlert = split
+        ?.takeIf { !splitAlertDismissed && activeRegroup == null && activeEmergency == null }
+        ?.let { splitAlertInfo(it, leaderboardRows, participants, myId) }
 
     // Which transient events this screen has already acted on. The session holds each as state, so
     // it replays on every re-entry and recomposition — without these, walking back into navigation
@@ -417,7 +422,7 @@ fun RideNavigationScreen(
 
     // The split gap is server state (and clears on ride:split_resolved), so "I dismissed this
     // alert" is tracked separately. Reset when the split resolves, so the next one alerts again.
-    LaunchedEffect(splitGapMeters) { if (splitGapMeters == null) splitAlertDismissed = false }
+    LaunchedEffect(split) { if (split == null) splitAlertDismissed = false }
 
     // Removed by the leader, or the ride deleted — either way there is nothing left to navigate.
     LaunchedEffect(wasRemoved, wasDeleted) { if (wasRemoved || wasDeleted) onExit() }
@@ -503,7 +508,9 @@ fun RideNavigationScreen(
                 )
             }
             middleWaypoints.forEach { wp ->
-                add(MapMarker("wp_${wp.order}", LatLng(wp.lat, wp.lng), MapMarkerKind.WAYPOINT, wp.name))
+                // A stop already passed keeps its marker but loses its label.
+                val at = LatLng(wp.lat, wp.lng)
+                add(MapMarker("wp_${wp.order}", at, MapMarkerKind.WAYPOINT, wp.name.takeIf { vm.isStopAhead(at) }))
             }
             destination?.let { add(MapMarker("dest", it, MapMarkerKind.DESTINATION, destinationName)) }
             activeRegroup?.let {
@@ -607,7 +614,7 @@ fun RideNavigationScreen(
                 emergencyReporter = activeEmergency?.let { vm.emergencyReporterName(it) }.orEmpty(),
                 canDismissEmergency = activeEmergency?.let { vm.canDismissEmergency(it) } == true,
                 onDismissEmergency = { activeEmergency?.let { session.dismissEmergency(it.emergencyId) } },
-                splitGapMeters = splitGapMeters?.takeIf { !splitAlertDismissed && activeRegroup == null && activeEmergency == null },
+                splitAlert = splitAlert,
                 onDismissSplit = { splitAlertDismissed = true },
                 showRegroupToast = showRegroupToast,
                 showRegroupResolved = showRegroupResolved,
@@ -661,7 +668,7 @@ fun RideNavigationScreen(
                 emergencyReporter = activeEmergency?.let { vm.emergencyReporterName(it) }.orEmpty(),
                 canDismissEmergency = activeEmergency?.let { vm.canDismissEmergency(it) } == true,
                 onDismissEmergency = { activeEmergency?.let { session.dismissEmergency(it.emergencyId) } },
-                splitGapMeters = splitGapMeters?.takeIf { !splitAlertDismissed && activeRegroup == null && activeEmergency == null },
+                splitAlert = splitAlert,
                 onDismissSplit = { splitAlertDismissed = true },
                 showRegroupToast = showRegroupToast,
                 showRegroupResolved = showRegroupResolved,

@@ -185,7 +185,7 @@ object NavCamera {
      * about the marker towering over them, so a route whose northernmost point is a stop would
      * otherwise have that pin clipped off-screen.
      */
-    const val STOP_PIN_TOP_EXTENT_DP = 92f
+    const val STOP_PIN_TOP_EXTENT_DP = 104f
 }
 
 // Route thickness. `ROUTE_CHUNKINESS` is the single dial; the glow around the bright core derives
@@ -276,6 +276,9 @@ fun ConvoTrackMap(
     val context = LocalContext.current
     val density = LocalDensity.current
     val scale = density.density
+    // Baked labels can't follow the system font size on their own; cap it so a big setting grows
+    // them without letting them swallow the route.
+    val fontScale = density.fontScale.coerceIn(1f, 1.5f)
 
     // Drawn geometry is capped; the camera and all navigation math still use the full lists.
     // The bright route's head is the rider while guidance is running, so its near field is what
@@ -569,7 +572,7 @@ fun ConvoTrackMap(
         drawRoute.lastOrNull()?.let { EndCap("route_tail", it, endCapBright) }
 
         markers.forEach { marker ->
-            BakedMarker(marker, scale, avatars[marker.avatarUrl])
+            BakedMarker(marker, scale, fontScale, avatars[marker.avatarUrl])
         }
 
         if (user != null) {
@@ -615,13 +618,13 @@ private fun zIndexFor(kind: MapMarkerKind): Float = when (kind) {
 }
 
 @Composable
-private fun BakedMarker(marker: MapMarker, scale: Float, avatar: Bitmap?) {
+private fun BakedMarker(marker: MapMarker, scale: Float, fontScale: Float, avatar: Bitmap?) {
     // Re-bake only when the marker's APPEARANCE changes, never on position. Riders move every
     // second; their artwork does not.
     val styleKey = remember(marker.kind, marker.label, marker.isMe, marker.isSelected, marker.isOffline, marker.distanceText, marker.regroupType, avatar) {
         listOf(marker.kind, marker.label, marker.isMe, marker.isSelected, marker.isOffline, marker.distanceText, marker.regroupType, avatar?.hashCode())
     }
-    val baked = remember(styleKey, scale) { bakeMarker(marker, scale, avatar) }
+    val baked = remember(styleKey, scale, fontScale) { bakeMarker(marker, scale, fontScale, avatar) }
 
     val state = remember(marker.id) { MarkerState(position = marker.position) }
     LaunchedEffect(marker.position) { state.position = marker.position }
@@ -633,7 +636,7 @@ private fun BakedMarker(marker: MapMarker, scale: Float, avatar: Bitmap?) {
     )
 }
 
-private fun bakeMarker(marker: MapMarker, scale: Float, avatar: Bitmap?): Pair<BitmapDescriptor, Offset> =
+private fun bakeMarker(marker: MapMarker, scale: Float, fontScale: Float, avatar: Bitmap?): Pair<BitmapDescriptor, Offset> =
     when (marker.kind) {
         MapMarkerKind.RIDER -> {
             val bmp = MapMarkerBitmaps.riderMarker(
@@ -644,31 +647,33 @@ private fun bakeMarker(marker: MapMarker, scale: Float, avatar: Bitmap?): Pair<B
                 isSelected = marker.isSelected,
                 isOffline = marker.isOffline,
                 distanceText = marker.distanceText,
+                fontScale = fontScale,
             )
             // Anchored at the CIRCLE's centre — the name band sits above it, the distance below.
             BitmapDescriptorFactory.fromBitmap(bmp) to
-                Offset(0.5f, MapMarkerBitmaps.riderAnchorY(marker.isSelected, marker.distanceText != null))
+                Offset(0.5f, MapMarkerBitmaps.riderAnchorY(marker.isSelected, marker.distanceText != null, fontScale))
         }
-        MapMarkerKind.DESTINATION -> stopPin(scale, "⚑", DsColor.mapEnd.toArgb(), 44f, marker.label)
-        MapMarkerKind.WAYPOINT -> stopPin(scale, "•", DsColor.mapStop.toArgb(), 32f, marker.label, filled = false)
-        MapMarkerKind.START -> stopPin(scale, "▲", DsColor.mapStart.toArgb(), 36f, marker.label, filled = false)
+        MapMarkerKind.DESTINATION -> stopPin(scale, fontScale, "⚑", DsColor.mapEnd.toArgb(), 44f, marker.label)
+        MapMarkerKind.WAYPOINT -> stopPin(scale, fontScale, "•", DsColor.mapStop.toArgb(), 32f, marker.label, filled = false)
+        MapMarkerKind.START -> stopPin(scale, fontScale, "▲", DsColor.mapStart.toArgb(), 36f, marker.label, filled = false)
         MapMarkerKind.REGROUP -> {
             val type = marker.regroupType.orEmpty()
-            stopPin(scale, regroupGlyph(type), regroupAccent(type), 40f, regroupLabel(type), filled = false)
+            stopPin(scale, fontScale, regroupGlyph(type), regroupAccent(type), 40f, regroupLabel(type), filled = false)
         }
         MapMarkerKind.EMERGENCY ->
-            stopPin(scale, "!", DsColor.danger.toArgb(), 40f, "EMERGENCY")
+            stopPin(scale, fontScale, "!", DsColor.danger.toArgb(), 40f, "Emergency")
     }
 
 private fun stopPin(
     scale: Float,
+    fontScale: Float,
     glyph: String,
     accent: Int,
     circleDp: Float,
     label: String?,
     filled: Boolean = true,
 ): Pair<BitmapDescriptor, Offset> {
-    val bmp = MapMarkerBitmaps.stopPin(scale, glyph, accent, circleDp, label, filled = filled)
+    val bmp = MapMarkerBitmaps.stopPin(scale, glyph, accent, circleDp, label, filled = filled, fontScale = fontScale)
     // Bottom-anchored at the pointer tip: the art above the coordinate is what the camera fit has
     // to reserve for (see NavCamera.STOP_PIN_TOP_EXTENT_DP).
     val tipY = (circleDp * scale + 6f * scale) / bmp.height
@@ -690,10 +695,10 @@ private fun regroupAccent(type: String) = when (type) {
 }
 
 private fun regroupLabel(type: String) = when (type) {
-    "FUEL" -> "FUEL STOP"
-    "FOOD" -> "FOOD STOP"
-    "SCENIC" -> "SCENIC STOP"
-    else -> "STOP"
+    "FUEL" -> "Fuel stop"
+    "FOOD" -> "Food stop"
+    "SCENIC" -> "Scenic stop"
+    else -> "Stop"
 }
 
 /**

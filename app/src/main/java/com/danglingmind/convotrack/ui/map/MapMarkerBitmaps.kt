@@ -31,11 +31,16 @@ object MapMarkerBitmaps {
      *  the route curve underneath. */
     fun riderCircleDp(isSelected: Boolean): Float = if (isSelected) 40f else 32f
 
-    /** Height of the name band drawn above the rider circle, in dp. The circle's centre — the
-     *  marker's anchor — therefore sits at `riderNameBandDp + size/2`. */
-    const val RIDER_NAME_BAND_DP = 20f
+    /** Smallest map label, in sp. Labels are baked into bitmaps, so the system font scale has to
+     *  be passed in and applied by hand (capped by the caller). */
+    const val LABEL_SP = 12f
 
-    private const val RIDER_DIST_BAND_DP = 16f
+    /** Height of the name band drawn above the rider circle, in dp. The circle's centre — the
+     *  marker's anchor — therefore sits at `riderNameBandDp + size/2`. Grows with the font scale
+     *  so a larger label still fits its plate. */
+    fun riderNameBandDp(fontScale: Float): Float = maxOf(20f, LABEL_SP * fontScale * 1.25f + 7f)
+
+    private fun riderDistBandDp(fontScale: Float): Float = maxOf(16f, LABEL_SP * fontScale * 1.25f + 3f)
 
     private fun paint(): Paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -161,11 +166,12 @@ object MapMarkerBitmaps {
     // MARK: - Rider marker
 
     /** Where the rider marker's anchor sits, as a 0..1 fraction of the baked bitmap's height. */
-    fun riderAnchorY(isSelected: Boolean, hasDistance: Boolean): Float {
+    fun riderAnchorY(isSelected: Boolean, hasDistance: Boolean, fontScale: Float = 1f): Float {
         val size = riderCircleDp(isSelected)
-        val distBand = if (hasDistance) RIDER_DIST_BAND_DP else 0f
-        val total = RIDER_NAME_BAND_DP + size + distBand
-        return (RIDER_NAME_BAND_DP + size / 2) / total
+        val nameBand = riderNameBandDp(fontScale)
+        val distBand = if (hasDistance) riderDistBandDp(fontScale) else 0f
+        val total = nameBand + size + distBand
+        return (nameBand + size / 2) / total
     }
 
     /**
@@ -186,17 +192,19 @@ object MapMarkerBitmaps {
         isSelected: Boolean,
         isOffline: Boolean,
         distanceText: String?,
+        fontScale: Float = 1f,
     ): Bitmap {
         val size = riderCircleDp(isSelected) * scale
-        val nameBandH = RIDER_NAME_BAND_DP * scale
-        val distBandH = if (distanceText != null) RIDER_DIST_BAND_DP * scale else 0f
+        val nameBandH = riderNameBandDp(fontScale) * scale
+        val distBandH = if (distanceText != null) riderDistBandDp(fontScale) * scale else 0f
+        val labelPx = LABEL_SP * fontScale * scale
         val lime = DsColor.accent.toArgb()
 
-        val namePaint = textPaint((if (isSelected) 9f else 8f) * scale, android.graphics.Color.WHITE, bold = true, mono = true)
-        val nameText = (name.substringBefore(" ").ifEmpty { name }).uppercase()
+        val namePaint = textPaint(labelPx, android.graphics.Color.WHITE, bold = true)
+        val nameText = name.substringBefore(" ").ifEmpty { name }
         val nameW = namePaint.measureText(nameText)
 
-        val distPaint = textPaint(9f * scale, lime, bold = true, mono = true)
+        val distPaint = textPaint(labelPx, lime, bold = true, mono = true)
         val distW = distanceText?.let { distPaint.measureText(it) } ?: 0f
 
         val canvasW = maxOf(size + 8 * scale, nameW + 8 * scale, distW + 8 * scale)
@@ -293,16 +301,18 @@ object MapMarkerBitmaps {
         accent: Int,
         circleDp: Float,
         label: String?,
-        labelMaxWidthDp: Float = 112f,
+        labelMaxWidthDp: Float = 128f,
         filled: Boolean = true,
+        fontScale: Float = 1f,
     ): Bitmap {
         val circle = circleDp * scale
         val tipH = 6f * scale
         val tipW = 10f * scale
 
-        val labelPaint = textPaint(8f * scale, android.graphics.Color.WHITE, bold = true, mono = true)
+        val labelPaint = textPaint(LABEL_SP * fontScale * scale, android.graphics.Color.WHITE, bold = true)
         val maxLabelW = labelMaxWidthDp * scale
-        val lines = label?.uppercase()?.let { wrapText(it, labelPaint, maxLabelW, maxLines = 2) } ?: emptyList()
+        // Blank label = icon only (a stop already passed), so no plate is drawn.
+        val lines = label?.takeIf { it.isNotBlank() }?.let { wrapText(it, labelPaint, maxLabelW, maxLines = 2) } ?: emptyList()
         val lineH = labelPaint.fontMetrics.let { it.descent - it.ascent }
         val labelW = lines.maxOfOrNull { labelPaint.measureText(it) } ?: 0f
         val plateW = if (lines.isEmpty()) 0f else labelW + 16 * scale

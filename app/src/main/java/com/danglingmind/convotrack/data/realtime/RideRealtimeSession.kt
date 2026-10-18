@@ -5,6 +5,7 @@ import com.danglingmind.convotrack.data.net.RegroupEvent
 import com.danglingmind.convotrack.data.net.RideParticipant
 import com.danglingmind.convotrack.data.net.RideStateUpdate
 import com.danglingmind.convotrack.data.net.RideUpdatedEvent
+import com.danglingmind.convotrack.data.socket.SplitEvent
 import com.danglingmind.convotrack.data.socket.SocketEmergency
 import com.danglingmind.convotrack.data.socket.SocketService
 import kotlinx.coroutines.CoroutineScope
@@ -69,8 +70,9 @@ class RideRealtimeSession(
     private val _splitActive = MutableStateFlow(false)
     val splitActive: StateFlow<Boolean> = _splitActive.asStateFlow()
 
-    private val _splitGapMeters = MutableStateFlow<Double?>(null)
-    val splitGapMeters: StateFlow<Double?> = _splitGapMeters.asStateFlow()
+    /** Latest `ride:split_detected` payload (gap, leader, last rider); null once it resolves. */
+    private val _split = MutableStateFlow<SplitEvent?>(null)
+    val split: StateFlow<SplitEvent?> = _split.asStateFlow()
 
     private val _latestRegroup = MutableStateFlow<RegroupEvent?>(null)
     val latestRegroup: StateFlow<RegroupEvent?> = _latestRegroup.asStateFlow()
@@ -179,7 +181,7 @@ class RideRealtimeSession(
         _rideStatus.value = "LOBBY"
         _liveState.value = null
         _splitActive.value = false
-        _splitGapMeters.value = null
+        _split.value = null
         _latestRegroup.value = null
         _latestRegroupResolvedId.value = null
         _latestEmergency.value = null
@@ -329,11 +331,11 @@ class RideRealtimeSession(
 
         collect(socket.splitDetected) { event ->
             _splitActive.value = true
-            _splitGapMeters.value = event.gapMeters
+            _split.value = event
         }
         collect(socket.splitResolved) {
             _splitActive.value = false
-            _splitGapMeters.value = null
+            _split.value = null
         }
         collect(socket.regroupStarted) { event -> _latestRegroup.value = event }
         collect(socket.regroupResolved) { id -> _latestRegroupResolvedId.value = id }

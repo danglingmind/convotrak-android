@@ -52,7 +52,10 @@ import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.data.realtime.RideRealtimeSession
 import com.danglingmind.convotrack.ui.common.rememberAvatarPhoto
 import com.danglingmind.convotrack.ui.designsystem.Avatar
+import com.danglingmind.convotrack.data.net.RideParticipant
+import com.danglingmind.convotrack.data.socket.SplitEvent
 import com.danglingmind.convotrack.ui.designsystem.DsColor
+import com.danglingmind.convotrack.ui.designsystem.DsSize
 import com.danglingmind.convotrack.ui.designsystem.DsShape
 import com.danglingmind.convotrack.ui.designsystem.DsType
 import com.danglingmind.convotrack.ui.designsystem.PillButton
@@ -62,6 +65,7 @@ import com.danglingmind.convotrack.ui.designsystem.TagChip
 import com.danglingmind.convotrack.ui.designsystem.TextAction
 import com.danglingmind.convotrack.ui.designsystem.TextActionTone
 import com.danglingmind.convotrack.ui.designsystem.dsClickable
+import kotlin.math.roundToInt
 
 /**
  * Shared navigation HUD components. The portrait bottom bar and the landscape side panel render the
@@ -405,10 +409,45 @@ fun EmergencyBanner(
     )
 }
 
+/** What the split alert says: who is furthest back, and how far behind the leader. */
+data class SplitAlertInfo(val riderName: String, val gapMeters: Double)
+
+/**
+ * Resolves a `ride:split_detected` payload into display values.
+ *
+ * The gap is recomputed from the live leaderboard so it keeps moving while the alert is up; the
+ * server's figure covers the moment before every row has a position of its own.
+ */
+fun splitAlertInfo(
+    split: SplitEvent,
+    rows: List<NavLeaderboardRow>,
+    participants: List<RideParticipant>,
+    myId: String,
+): SplitAlertInfo {
+    val lastId = split.lastRiderId
+    val name = when {
+        lastId == null -> "A rider"
+        lastId == myId -> "You"
+        else -> (rows.firstOrNull { it.id == lastId }?.name
+            ?: participants.firstOrNull { it.userId == lastId }?.name)
+            ?.substringBefore(' ')
+            ?: "A rider"
+    }
+    val last = rows.firstOrNull { it.id == lastId }
+    val lead = rows.firstOrNull { it.id == split.leaderId } ?: rows.firstOrNull()
+    val live = if (last != null && lead != null) (last.distanceToGoalKm - lead.distanceToGoalKm) * 1000 else 0.0
+    return SplitAlertInfo(name, if (live > 0) live else split.gapMeters)
+}
+
+/** Whole metres under a kilometre (10 m steps, so it doesn't tick on every fix), tenths of a km above. */
+fun formatSplitGap(meters: Double): String =
+    if (meters < 1000) "${maxOf(10, (meters / 10).roundToInt() * 10)} m"
+    else String.format(java.util.Locale.US, "%.1f km", meters / 1000)
+
 /** Group-split alert — the pack has spread out. Offers a quick Regroup or a dismiss. */
 @Composable
 fun GroupSplitAlert(
-    gapMeters: Double,
+    info: SplitAlertInfo,
     onIgnore: () -> Unit,
     onRegroup: () -> Unit,
     modifier: Modifier = Modifier,
@@ -419,11 +458,11 @@ fun GroupSplitAlert(
         border = DsColor.dangerBorder,
         icon = Icons.Filled.Warning,
         eyebrow = "GROUP SPLIT",
-        message = "Riders are ${String.format(java.util.Locale.US, "%.0f", gapMeters)} m apart",
+        message = "${info.riderName} is ${formatSplitGap(info.gapMeters)} behind the leader",
         modifier = modifier,
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                PillButton("Regroup", onRegroup, height = 32.dp, horizontalPadding = 12.dp)
+                PillButton("Regroup", onRegroup, height = DsSize.touchTarget, horizontalPadding = 12.dp)
                 TextAction("Dismiss", onIgnore, tone = TextActionTone.Dismiss)
             }
         },

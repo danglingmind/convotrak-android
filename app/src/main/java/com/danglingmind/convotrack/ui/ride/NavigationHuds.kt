@@ -111,7 +111,7 @@ private fun TransientStack(
     emergencyReporter: String,
     canDismissEmergency: Boolean,
     onDismissEmergency: () -> Unit,
-    splitGapMeters: Double?,
+    splitAlert: SplitAlertInfo?,
     onDismissSplit: () -> Unit,
     onRegroupFromSplit: () -> Unit,
     showRegroupToast: Boolean,
@@ -135,8 +135,8 @@ private fun TransientStack(
                 onDismiss = if (canDismissEmergency) onDismissEmergency else null,
             )
         }
-        if (splitGapMeters != null) {
-            GroupSplitAlert(splitGapMeters, onIgnore = onDismissSplit, onRegroup = onRegroupFromSplit)
+        if (splitAlert != null) {
+            GroupSplitAlert(splitAlert, onIgnore = onDismissSplit, onRegroup = onRegroupFromSplit)
         }
         if (showRegroupToast && activeRegroupType != null) RegroupToastBanner(activeRegroupType)
         if (showRegroupResolved) RegroupResolvedBanner()
@@ -207,7 +207,7 @@ fun PortraitHud(
     emergencyReporter: String,
     canDismissEmergency: Boolean,
     onDismissEmergency: () -> Unit,
-    splitGapMeters: Double?,
+    splitAlert: SplitAlertInfo?,
     onDismissSplit: () -> Unit,
     showRegroupToast: Boolean,
     showRegroupResolved: Boolean,
@@ -290,7 +290,7 @@ fun PortraitHud(
                 emergencyReporter = emergencyReporter,
                 canDismissEmergency = canDismissEmergency,
                 onDismissEmergency = onDismissEmergency,
-                splitGapMeters = splitGapMeters,
+                splitAlert = splitAlert,
                 onDismissSplit = onDismissSplit,
                 onRegroupFromSplit = { onDismissSplit(); onRegroup() },
                 showRegroupToast = showRegroupToast,
@@ -443,7 +443,7 @@ fun LandscapeHud(
     emergencyReporter: String,
     canDismissEmergency: Boolean,
     onDismissEmergency: () -> Unit,
-    splitGapMeters: Double?,
+    splitAlert: SplitAlertInfo?,
     onDismissSplit: () -> Unit,
     showRegroupToast: Boolean,
     showRegroupResolved: Boolean,
@@ -528,7 +528,7 @@ fun LandscapeHud(
                         emergencyReporter = emergencyReporter,
                         canDismissEmergency = canDismissEmergency,
                         onDismissEmergency = onDismissEmergency,
-                        splitGapMeters = splitGapMeters,
+                        splitAlert = splitAlert,
                         onDismissSplit = onDismissSplit,
                         onRegroupFromSplit = { onDismissSplit(); onRegroup() },
                         showRegroupToast = showRegroupToast,

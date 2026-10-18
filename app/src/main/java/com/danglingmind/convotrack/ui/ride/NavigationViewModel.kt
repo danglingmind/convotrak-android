@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -985,6 +986,10 @@ class NavigationViewModel : ViewModel() {
     fun clearEndError() { _endError.value = null }
 
     // MARK: - Emergency naming
+
+    /** False once the rider has driven past the stop at [stop]. */
+    fun isStopAhead(stop: LatLng): Boolean =
+        remainingStops.any { abs(it.latitude - stop.latitude) < 1e-6 && abs(it.longitude - stop.longitude) < 1e-6 }
 
     fun emergencyReporterName(emergency: SocketEmergency): String {
         if (emergency.userId == myUserId) return "You"
