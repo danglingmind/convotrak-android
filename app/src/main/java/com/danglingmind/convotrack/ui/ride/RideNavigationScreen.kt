@@ -547,7 +547,10 @@ fun RideNavigationScreen(
         }
     }
 
-    BackHandler { onExit() }
+    // The back swipe leaves the route preview like a back button, but is swallowed while guidance
+    // is live: a stray swipe must not drop a rider out of navigation. Leaving goes through the
+    // explicit Exit / End ride controls, the same rule as the iOS edge swipe.
+    BackHandler { if (!isNavigationActive) onExit() }
 
     // --- Derived display ------------------------------------------------------------------------
 
