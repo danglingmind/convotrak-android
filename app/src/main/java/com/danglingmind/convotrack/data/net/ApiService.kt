@@ -97,4 +97,7 @@ interface ApiService {
     // Membership
     @POST("/memberships/activate")
     suspend fun activateMembership(@Body request: ActivateMembershipRequest): ActivateMembershipResponse
+
+    @POST("/events")
+    suspend fun sendEvents(@Body request: PaywallEventsRequest): EventsAccepted
 }

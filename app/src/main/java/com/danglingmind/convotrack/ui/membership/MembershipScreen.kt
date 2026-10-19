@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.membership
 
+import com.danglingmind.convotrack.data.upsell.PaywallAnalytics
+import androidx.compose.runtime.DisposableEffect
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -111,6 +113,23 @@ fun MembershipScreen(onClose: () -> Unit, source: PaywallSource = PaywallSource.
     LaunchedEffect(Unit) { billing.start() }
     LaunchedEffect(isPremium) { if (isPremium) showSuccess = true }
 
+    // Funnel events (iOS parity). "Converted" only when Pro arrived while this paywall was open;
+    // leaving any other way — close button or system back — counts as dismissed.
+    val startedPremium = remember { billing.isPremium.value }
+    var converted by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { PaywallAnalytics.log(PaywallAnalytics.Event.PaywallShown, source, planState.access) }
+    LaunchedEffect(isPremium) {
+        if (isPremium && !startedPremium && !converted) {
+            converted = true
+            PaywallAnalytics.log(PaywallAnalytics.Event.Converted, source)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            if (!converted && !startedPremium) PaywallAnalytics.log(PaywallAnalytics.Event.PaywallDismissed, source, planState.access)
+        }
+    }
+
     // Plans come from Play, ordered longest-cycle-first, with savings derived from the actual billing
     // periods. Keyed on `products` so they recompute exactly when Play answers — and only then.
     val plans = remember(products) { billing.displayPlans() }
@@ -161,6 +180,7 @@ fun MembershipScreen(onClose: () -> Unit, source: PaywallSource = PaywallSource.
                         error = error ?: restoreNotice,
                         restoring = restoring,
                         onPurchase = {
+                            PaywallAnalytics.log(PaywallAnalytics.Event.PurchaseStarted, source, planState.access)
                             val activity = context.findActivity()
                             val productId = selectedProductId
                             if (activity != null && productId != null) billing.purchase(activity, productId)

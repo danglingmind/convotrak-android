@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.data.net
 
+import com.danglingmind.convotrack.data.device.DeviceIdentity
 import com.danglingmind.convotrack.BuildConfig
 import com.danglingmind.convotrack.data.auth.AuthRepository
 import kotlinx.coroutines.runBlocking
@@ -110,7 +111,11 @@ private class AuthInterceptor(private val auth: AuthRepository) : okhttp3.Interc
     }
 
     private fun Request.withBearer(token: String): Request =
-        newBuilder().header("Authorization", "Bearer $token").build()
+        newBuilder()
+            .header("Authorization", "Bearer $token")
+            // One free trial per device (see `DeviceIdentity`); sent on every call, harmless elsewhere.
+            .header("X-Device-Id", DeviceIdentity.id)
+            .build()
 }
 
 /**

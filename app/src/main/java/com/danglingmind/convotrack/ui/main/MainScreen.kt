@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.main
 
+import com.danglingmind.convotrack.data.upsell.PaywallAnalytics
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -107,6 +108,7 @@ fun MainScreen(
         )
         if (UpsellPolicy.shouldShowAppOpenNudge(upsell.inputs(access))) {
             upsell.recordNudgeShown()
+            PaywallAnalytics.log(PaywallAnalytics.Event.NudgeShown, PaywallSource.AppOpen, access)
             showNudge = true
         }
     }
@@ -169,6 +171,7 @@ fun MainScreen(
         DsBottomSheet(onDismiss = {
             showNudge = false
             ServiceLocator.upsell.recordNudgeDismissed()
+            PaywallAnalytics.log(PaywallAnalytics.Event.NudgeDismissed, PaywallSource.AppOpen, plan.access)
         }) {
             ProNudgeContent(
                 plan = plan,
@@ -179,6 +182,7 @@ fun MainScreen(
                 onNotNow = {
                     showNudge = false
                     ServiceLocator.upsell.recordNudgeDismissed()
+                    PaywallAnalytics.log(PaywallAnalytics.Event.NudgeDismissed, PaywallSource.AppOpen, plan.access)
                 },
             )
         }

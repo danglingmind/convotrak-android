@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.home
 
+import com.danglingmind.convotrack.data.upsell.PaywallAnalytics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
@@ -159,6 +160,7 @@ fun HomeScreen(
                                 onAction = { Paywall.present(PaywallSource.HomeCard) },
                                 onDismiss = if (card.dismissible) {
                                     {
+                                        PaywallAnalytics.log(PaywallAnalytics.Event.HomeCardDismissed, PaywallSource.HomeCard, plan.access)
                                         upsell.snoozeHomeCard(inTrial = plan.access is Access.Trial)
                                         cardSnoozed = true
                                     }

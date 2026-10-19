@@ -274,6 +274,24 @@ data class UserMeResponse(
 )
 
 @Serializable
+data class PaywallEventPayload(
+    val name: String,
+    val source: String? = null,
+    val access: String? = null,
+    val occurredAt: String,
+)
+
+@Serializable
+data class PaywallEventsRequest(
+    val platform: String,
+    val appVersion: String? = null,
+    val events: List<PaywallEventPayload>,
+)
+
+@Serializable
+data class EventsAccepted(val accepted: Int = 0)
+
+@Serializable
 data class UpdateProfileRequest(
     val username: String? = null,
     val phone: String? = null,

@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.di
 
+import com.danglingmind.convotrack.data.device.DeviceIdentity
 import android.app.Application
 import com.clerk.api.Clerk
 import com.danglingmind.convotrack.data.auth.AuthRepository
@@ -40,6 +41,7 @@ object ServiceLocator {
 
     fun init(app: Application) {
         Clerk.initialize(app, CLERK_PUBLISHABLE_KEY)
+        DeviceIdentity.init(app)
         auth = ClerkAuthRepository(app)
         api = ApiClient.create(auth)
         socket = SocketService(auth)
