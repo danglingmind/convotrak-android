@@ -1,5 +1,10 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.map.EdgeKind
+import com.danglingmind.convotrack.ui.map.EdgeTarget
+import com.danglingmind.convotrack.data.audio.NavVoiceGuide
+import com.danglingmind.convotrack.data.audio.VoiceAnnouncer
+import com.danglingmind.convotrack.data.audio.VoicePriority
 import com.danglingmind.convotrack.ui.designsystem.ConfirmDialog
 import com.danglingmind.convotrack.ui.designsystem.DialogText
 import com.danglingmind.convotrack.ui.designsystem.DsBottomSheet
@@ -118,6 +123,7 @@ fun RideNavigationScreen(
     // --- Navigation state ----------------------------------------------------------------------
     val riders by vm.riders.collectAsState()
     val leaderboardRows by vm.leaderboardRows.collectAsState()
+    val thenManeuver by vm.thenManeuver.collectAsState()
     val mySpeedKmh by vm.mySpeedKmh.collectAsState()
     val hasSpeedFix by vm.hasSpeedFix.collectAsState()
     val isRiderMoving by vm.isMoving.collectAsState()
@@ -156,14 +162,13 @@ fun RideNavigationScreen(
 
     var activeRegroup by remember(rideId) { mutableStateOf<com.danglingmind.convotrack.data.net.RegroupEvent?>(null) }
     var hasMarkedArrived by remember(rideId) { mutableStateOf(false) }
-    var showRegroupToast by remember(rideId) { mutableStateOf(false) }
     var showRegroupResolved by remember(rideId) { mutableStateOf(false) }
     var activeEmergency by remember(rideId) { mutableStateOf<SocketEmergency?>(null) }
     var splitAlertDismissed by remember(rideId) { mutableStateOf(false) }
-    // Real rider + gap for the split alert; hidden once dismissed, or while a regroup or an
-    // emergency already owns the banner area.
+    // Real rider + gap for the split alert; hidden once dismissed. The alert slot, not this
+    // flag, decides what shows first when a regroup or an emergency is live too.
     val splitAlert = split
-        ?.takeIf { !splitAlertDismissed && activeRegroup == null && activeEmergency == null }
+        ?.takeIf { !splitAlertDismissed }
         ?.let { splitAlertInfo(it, leaderboardRows, participants, myId) }
 
     // Which transient events this screen has already acted on. The session holds each as state, so
@@ -324,15 +329,18 @@ fun RideNavigationScreen(
     fun startRegroup(ev: com.danglingmind.convotrack.data.net.RegroupEvent, isMine: Boolean) {
         activeRegroup = ev
         hasMarkedArrived = false
-        // Briefly frame the meet point, then hand the camera back to guidance.
-        isFreeLooking = true
-        lastInteractionAt = System.currentTimeMillis()
-        issueCamera { id -> MapCamera.Navigate(id, LatLng(ev.lat, ev.lng), 15f, 0f, 0f, true, MapFraming.CENTERED) }
-        // Alert riders who didn't broadcast it — toast + the two-tone siren, clearly distinct from
-        // the emergency wail. The initiator already knows, so stays silent.
+        // The camera stays on the road: the banner's Show action and the edge chip let the rider
+        // look at the meet point when they choose to. Riders who didn't broadcast it get the
+        // two-tone siren, clearly distinct from the emergency wail; the initiator already knows.
         if (!isMine) {
-            showRegroupToast = true
             SirenPlayer.play(SirenPlayer.Sound.REGROUP)
+            val stop = when (ev.type) {
+                "FUEL" -> "the fuel stop"
+                "FOOD" -> "the food stop"
+                "SCENIC" -> "the scenic stop"
+                else -> "the meeting point"
+            }
+            VoiceAnnouncer.announce("Regroup called. Head to $stop.", delayMs = 1_800, priority = VoicePriority.ALERT)
         }
     }
 
@@ -348,15 +356,7 @@ fun RideNavigationScreen(
         activeRegroup = null
         hasMarkedArrived = false
         showRegroupResolved = true
-        resumeNavigation()   // drop the regroup framing if it resolved within the focus window
     }
-    // Hand the camera back to guidance a few seconds after a regroup is framed.
-    LaunchedEffect(activeRegroup?.regroupId) {
-        if (activeRegroup == null || !isNavigationActive) return@LaunchedEffect
-        delay(5_000)
-        resumeNavigation()
-    }
-    LaunchedEffect(showRegroupToast) { if (showRegroupToast) { delay(4_000); showRegroupToast = false } }
     LaunchedEffect(showRegroupResolved) { if (showRegroupResolved) { delay(2_500); showRegroupResolved = false } }
 
     LaunchedEffect(sessionEmergency) {
@@ -364,6 +364,21 @@ fun RideNavigationScreen(
         if (handledEmergencyId == ev.emergencyId) return@LaunchedEffect
         handledEmergencyId = ev.emergencyId
         activeEmergency = ev
+        VoiceAnnouncer.announce(
+            "Emergency. ${vm.emergencyReporterName(ev)} needs help.",
+            delayMs = 1_800,
+            priority = VoicePriority.EMERGENCY,
+        )
+    }
+    // Said once per split, whether or not the banner is showing: a rider who dismissed it, or
+    // whose banner is hidden behind a regroup, should still hear that the pack has spread out.
+    LaunchedEffect(split) {
+        val ev = split ?: return@LaunchedEffect
+        val info = splitAlertInfo(ev, leaderboardRows, participants, myId)
+        VoiceAnnouncer.announce(
+            "Group split. ${info.riderName} is ${NavVoiceGuide.spokenDistance(info.gapMeters)} behind the leader.",
+            priority = VoicePriority.ALERT,
+        )
     }
     LaunchedEffect(sessionEmergencyResolvedId) {
         val id = sessionEmergencyResolvedId ?: return@LaunchedEffect
@@ -539,9 +554,25 @@ fun RideNavigationScreen(
     }
 
     // Off-screen riders joined with their display metadata, then clustered by screen proximity.
-    val edgeClusters = remember(edgeIndicators, riders, onlineIds, density, edgeAvatars.size) {
+    val edgeClusters = remember(edgeIndicators, riders, onlineIds, density, edgeAvatars.size, activeRegroup, activeEmergency) {
         val byId = riders.associateBy { it.id }
         val models = edgeIndicators.mapNotNull { ind ->
+            if (ind.id == EdgeTarget.REGROUP_ID) {
+                val type = activeRegroup?.type ?: return@mapNotNull null
+                return@mapNotNull EdgeChipModel(
+                    id = ind.id, name = "", avatar = null, isOffline = false,
+                    edgeX = ind.edgeX, edgeY = ind.edgeY, distanceMeters = ind.distanceMeters,
+                    kind = EdgeKind.REGROUP, regroupType = type,
+                )
+            }
+            if (ind.id == EdgeTarget.EMERGENCY_ID) {
+                if (activeEmergency == null) return@mapNotNull null
+                return@mapNotNull EdgeChipModel(
+                    id = ind.id, name = "", avatar = null, isOffline = false,
+                    edgeX = ind.edgeX, edgeY = ind.edgeY, distanceMeters = ind.distanceMeters,
+                    kind = EdgeKind.EMERGENCY,
+                )
+            }
             val rider = byId[ind.id] ?: return@mapNotNull null
             EdgeChipModel(
                 id = ind.id,
@@ -556,7 +587,21 @@ fun RideNavigationScreen(
         clusterIndicators(models, radiusPx = density.density * 60f)
     }
 
+    /**
+     * Flies to a point the rider asked to see. The follow camera returns on its own after ~10 s of
+     * movement, the same way it does after a pan.
+     */
+    fun peek(at: LatLng, zoom: Float = 16f) {
+        isFreeLooking = true
+        // Future-dated so the "3 s since last touch" auto-resume doesn't cut the peek short.
+        lastInteractionAt = System.currentTimeMillis() + 7_000
+        issueCamera { cid -> MapCamera.Navigate(cid, at, zoom, 0f, 0f, true, MapFraming.CENTERED) }
+    }
+
     fun focusRider(id: String) {
+        // Edge chips for the regroup point and the emergency share the rider tap path.
+        if (id == EdgeTarget.REGROUP_ID) { activeRegroup?.let { peek(LatLng(it.lat, it.lng), 15f) }; return }
+        if (id == EdgeTarget.EMERGENCY_ID) { activeEmergency?.let { peek(LatLng(it.lat, it.lng)) }; return }
         val rider = riders.firstOrNull { it.id == id } ?: return
         isFreeLooking = true
         lastInteractionAt = System.currentTimeMillis()
@@ -602,6 +647,7 @@ fun RideNavigationScreen(
                 isNavigationActive = isNavigationActive,
                 instruction = instruction,
                 maneuver = maneuver,
+                thenManeuver = thenManeuver,
                 distToTurn = distToTurn,
                 leaderboardRows = leaderboardRows,
                 onlineIds = onlineIds,
@@ -614,12 +660,13 @@ fun RideNavigationScreen(
                 emergencyReporter = activeEmergency?.let { vm.emergencyReporterName(it) }.orEmpty(),
                 canDismissEmergency = activeEmergency?.let { vm.canDismissEmergency(it) } == true,
                 onDismissEmergency = { activeEmergency?.let { session.dismissEmergency(it.emergencyId) } },
+                onShowEmergency = { activeEmergency?.let { peek(LatLng(it.lat, it.lng)) } },
                 splitAlert = splitAlert,
                 onDismissSplit = { splitAlertDismissed = true },
-                showRegroupToast = showRegroupToast,
                 showRegroupResolved = showRegroupResolved,
                 activeRegroupType = activeRegroup?.type,
                 hasMarkedArrived = hasMarkedArrived,
+                onShowRegroup = { activeRegroup?.let { peek(LatLng(it.lat, it.lng), 15f) } },
                 onMarkArrived = {
                     activeRegroup?.let { session.markArrivedAtRegroup(it.regroupId) }
                     hasMarkedArrived = true
@@ -656,6 +703,7 @@ fun RideNavigationScreen(
                 onResume = ::resumeNavigation,
                 instruction = instruction,
                 maneuver = maneuver,
+                thenManeuver = thenManeuver,
                 distToTurn = distToTurn,
                 leaderboardRows = leaderboardRows,
                 onlineIds = onlineIds,
@@ -668,12 +716,13 @@ fun RideNavigationScreen(
                 emergencyReporter = activeEmergency?.let { vm.emergencyReporterName(it) }.orEmpty(),
                 canDismissEmergency = activeEmergency?.let { vm.canDismissEmergency(it) } == true,
                 onDismissEmergency = { activeEmergency?.let { session.dismissEmergency(it.emergencyId) } },
+                onShowEmergency = { activeEmergency?.let { peek(LatLng(it.lat, it.lng)) } },
                 splitAlert = splitAlert,
                 onDismissSplit = { splitAlertDismissed = true },
-                showRegroupToast = showRegroupToast,
                 showRegroupResolved = showRegroupResolved,
                 activeRegroupType = activeRegroup?.type,
                 hasMarkedArrived = hasMarkedArrived,
+                onShowRegroup = { activeRegroup?.let { peek(LatLng(it.lat, it.lng), 15f) } },
                 onMarkArrived = {
                     activeRegroup?.let { session.markArrivedAtRegroup(it.regroupId) }
                     hasMarkedArrived = true

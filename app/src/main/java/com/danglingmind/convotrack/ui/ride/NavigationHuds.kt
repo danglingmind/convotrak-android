@@ -1,5 +1,18 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.designsystem.dsClickable
+import com.danglingmind.convotrack.ui.designsystem.DsSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import com.danglingmind.convotrack.data.audio.VoiceAnnouncer
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import com.danglingmind.convotrack.ui.designsystem.DsColor
 import com.danglingmind.convotrack.ui.designsystem.DsShape
 import com.danglingmind.convotrack.ui.designsystem.DsType
@@ -103,52 +116,89 @@ private fun LeaderboardStrip(
 }
 
 /** Banners, alerts and the arrived control — everything that appears only sometimes. */
+/**
+ * One banner at a time, chosen by priority: emergency > group split > regroup called > regroup
+ * complete. When more than one is live a "+N more" chip under the banner steps through the rest,
+ * so a pile of alerts never pushes the road off the screen and the most urgent one can't end up at
+ * the bottom of the pile.
+ *
+ * Off-route and reconnecting are NOT alerts: they describe the guidance itself, so they are a
+ * status line on the turn card.
+ */
 @Composable
-private fun TransientStack(
-    connectionState: RideRealtimeSession.ConnectionState,
-    isOffRoute: Boolean,
+private fun AlertSlot(
     activeEmergency: SocketEmergency?,
     emergencyReporter: String,
     canDismissEmergency: Boolean,
     onDismissEmergency: () -> Unit,
+    onShowEmergency: () -> Unit,
     splitAlert: SplitAlertInfo?,
     onDismissSplit: () -> Unit,
     onRegroupFromSplit: () -> Unit,
-    showRegroupToast: Boolean,
     showRegroupResolved: Boolean,
     activeRegroupType: String?,
     hasMarkedArrived: Boolean,
     onMarkArrived: () -> Unit,
+    onShowRegroup: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ConnectionBanner(connectionState)
-        if (isOffRoute) {
-            Row { OffRouteBanner(); Spacer(Modifier.weight(1f)) }
-        }
-        if (activeEmergency != null) {
-            EmergencyBanner(
+    val alerts = buildList {
+        if (activeEmergency != null) add(NavAlert.EMERGENCY)
+        if (splitAlert != null) add(NavAlert.SPLIT)
+        if (activeRegroupType != null) add(NavAlert.REGROUP)
+        if (showRegroupResolved) add(NavAlert.REGROUP_RESOLVED)
+    }
+    if (alerts.isEmpty()) return
+    // Back to the most urgent whenever the set changes.
+    var cycle by remember(alerts) { mutableIntStateOf(0) }
+    val current = alerts[cycle.coerceAtMost(alerts.size - 1)]
+
+    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        when (current) {
+            NavAlert.EMERGENCY -> if (activeEmergency != null) EmergencyBanner(
                 reporterName = emergencyReporter,
                 message = activeEmergency.message,
+                onShow = onShowEmergency,
                 // No dismiss control unless you raised it or you lead: the server enforces the
                 // same rule, so offering the button to anyone else would only fail.
                 onDismiss = if (canDismissEmergency) onDismissEmergency else null,
             )
+            NavAlert.SPLIT -> if (splitAlert != null) GroupSplitAlert(splitAlert, onIgnore = onDismissSplit, onRegroup = onRegroupFromSplit)
+            NavAlert.REGROUP -> if (activeRegroupType != null) RegroupAlertBanner(
+                type = activeRegroupType,
+                hasArrived = hasMarkedArrived,
+                onShow = onShowRegroup,
+                onArrived = onMarkArrived,
+            )
+            NavAlert.REGROUP_RESOLVED -> RegroupResolvedBanner()
         }
-        if (splitAlert != null) {
-            GroupSplitAlert(splitAlert, onIgnore = onDismissSplit, onRegroup = onRegroupFromSplit)
-        }
-        if (showRegroupToast && activeRegroupType != null) RegroupToastBanner(activeRegroupType)
-        if (showRegroupResolved) RegroupResolvedBanner()
-        if (activeRegroupType != null) {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                if (hasMarkedArrived) WaitingForOthersPill() else ArrivedButton(onMarkArrived)
+        if (alerts.size > 1) {
+            val more = "${alerts.size - 1} more alerts"
+            Box(
+                Modifier
+                    .heightIn(min = DsSize.touchTarget)
+                    .semantics { contentDescription = more }
+                    .dsClickable { cycle = (cycle + 1) % alerts.size },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "+${alerts.size - 1} more",
+                    style = DsType.badgeSmall,
+                    color = DsColor.textPrimary,
+                    modifier = Modifier
+                        .clip(DsShape.pill)
+                        .background(HudGlass)
+                        .border(1.dp, DsColor.border, DsShape.pill)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
             }
         }
     }
 }
 
-/** Destination + ETA + START NAVIGATION, shown before guidance begins. */
+/** The alerts that can claim the banner slot, in priority order. */
+private enum class NavAlert { EMERGENCY, SPLIT, REGROUP, REGROUP_RESOLVED }
+
 @Composable
 private fun NavigationPreviewBar(
     destinationName: String,
@@ -195,6 +245,7 @@ fun PortraitHud(
     onResume: () -> Unit,
     instruction: String,
     maneuver: String,
+    thenManeuver: String?,
     distToTurn: Double,
     leaderboardRows: List<NavLeaderboardRow>,
     onlineIds: Set<String>,
@@ -207,13 +258,14 @@ fun PortraitHud(
     emergencyReporter: String,
     canDismissEmergency: Boolean,
     onDismissEmergency: () -> Unit,
+    onShowEmergency: () -> Unit,
     splitAlert: SplitAlertInfo?,
     onDismissSplit: () -> Unit,
-    showRegroupToast: Boolean,
     showRegroupResolved: Boolean,
     activeRegroupType: String?,
     hasMarkedArrived: Boolean,
     onMarkArrived: () -> Unit,
+    onShowRegroup: () -> Unit,
     speedText: String,
     etaText: String,
     distText: String,
@@ -241,7 +293,10 @@ fun PortraitHud(
                 TurnInstructionCard(
                     instruction = instruction,
                     maneuver = maneuver,
+                    thenManeuver = thenManeuver,
                     distanceMeters = distToTurn,
+                    isOffRoute = isOffRoute,
+                    isReconnecting = connectionState == RideRealtimeSession.ConnectionState.RECONNECTING,
                     isLandscape = false,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 )
@@ -283,21 +338,20 @@ fun PortraitHud(
         }
 
         if (isNavigationActive) {
-            TransientStack(
-                connectionState = connectionState,
-                isOffRoute = isOffRoute,
+            AlertSlot(
                 activeEmergency = activeEmergency,
                 emergencyReporter = emergencyReporter,
                 canDismissEmergency = canDismissEmergency,
                 onDismissEmergency = onDismissEmergency,
+                onShowEmergency = onShowEmergency,
                 splitAlert = splitAlert,
                 onDismissSplit = onDismissSplit,
                 onRegroupFromSplit = { onDismissSplit(); onRegroup() },
-                showRegroupToast = showRegroupToast,
                 showRegroupResolved = showRegroupResolved,
                 activeRegroupType = activeRegroupType,
                 hasMarkedArrived = hasMarkedArrived,
                 onMarkArrived = onMarkArrived,
+                onShowRegroup = onShowRegroup,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
         }
@@ -307,6 +361,14 @@ fun PortraitHud(
         if (isNavigationActive && isFreeLooking) {
             Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
                 ResumeNavigationPill(onResume)
+            }
+        }
+
+        if (isNavigationActive) {
+            // Bottom-trailing, in thumb reach: the rider reaches for it with the hand that is
+            // already near the controls, not across the whole screen to the top.
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 8.dp), horizontalArrangement = Arrangement.End) {
+                VoiceToggleButton()
             }
         }
 
@@ -431,6 +493,7 @@ fun LandscapeHud(
     isNavigationActive: Boolean,
     instruction: String,
     maneuver: String,
+    thenManeuver: String?,
     distToTurn: Double,
     leaderboardRows: List<NavLeaderboardRow>,
     onlineIds: Set<String>,
@@ -443,13 +506,14 @@ fun LandscapeHud(
     emergencyReporter: String,
     canDismissEmergency: Boolean,
     onDismissEmergency: () -> Unit,
+    onShowEmergency: () -> Unit,
     splitAlert: SplitAlertInfo?,
     onDismissSplit: () -> Unit,
-    showRegroupToast: Boolean,
     showRegroupResolved: Boolean,
     activeRegroupType: String?,
     hasMarkedArrived: Boolean,
     onMarkArrived: () -> Unit,
+    onShowRegroup: () -> Unit,
     speedText: String,
     etaText: String,
     distText: String,
@@ -504,7 +568,10 @@ fun LandscapeHud(
                     TurnInstructionCard(
                         instruction = instruction,
                         maneuver = maneuver,
+                        thenManeuver = thenManeuver,
                         distanceMeters = distToTurn,
+                        isOffRoute = isOffRoute,
+                        isReconnecting = connectionState == RideRealtimeSession.ConnectionState.RECONNECTING,
                         isLandscape = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -521,22 +588,22 @@ fun LandscapeHud(
                     )
 
                     // 3 — banners, directly under the leaderboard.
-                    TransientStack(
-                        connectionState = connectionState,
-                        isOffRoute = isOffRoute,
-                        activeEmergency = activeEmergency,
-                        emergencyReporter = emergencyReporter,
-                        canDismissEmergency = canDismissEmergency,
-                        onDismissEmergency = onDismissEmergency,
-                        splitAlert = splitAlert,
-                        onDismissSplit = onDismissSplit,
-                        onRegroupFromSplit = { onDismissSplit(); onRegroup() },
-                        showRegroupToast = showRegroupToast,
-                        showRegroupResolved = showRegroupResolved,
-                        activeRegroupType = activeRegroupType,
-                        hasMarkedArrived = hasMarkedArrived,
-                        onMarkArrived = onMarkArrived,
-                    )
+                    AlertSlot(
+                activeEmergency = activeEmergency,
+                emergencyReporter = emergencyReporter,
+                canDismissEmergency = canDismissEmergency,
+                onDismissEmergency = onDismissEmergency,
+                onShowEmergency = onShowEmergency,
+                splitAlert = splitAlert,
+                onDismissSplit = onDismissSplit,
+                onRegroupFromSplit = { onDismissSplit(); onRegroup() },
+                showRegroupResolved = showRegroupResolved,
+                activeRegroupType = activeRegroupType,
+                hasMarkedArrived = hasMarkedArrived,
+                onMarkArrived = onMarkArrived,
+                onShowRegroup = onShowRegroup,
+                modifier = Modifier,
+            )
 
                     Spacer(Modifier.weight(1f))
 
@@ -559,6 +626,18 @@ fun LandscapeHud(
                     // icon buttons; here the panel is the only chrome, so the actions get its full
                     // width.
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val voiceMuted by VoiceAnnouncer.muted.collectAsState()
+                        NavControlButton(
+                            icon = if (voiceMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                            description = if (voiceMuted) "Turn on voice guidance" else "Mute voice guidance",
+                            tint = DsColor.textPrimary,
+                            background = DsColor.card,
+                            border = DsColor.border,
+                            size = BUTTON_SIZE_LANDSCAPE.dp,
+                            modifier = Modifier.weight(1f),
+                            fillWidth = true,
+                            onClick = { VoiceAnnouncer.setMuted(!voiceMuted) },
+                        )
                         NavControlButton(
                             icon = Icons.Filled.Groups,
                             description = "Regroup",

@@ -784,7 +784,10 @@ private fun computeEdgeIndicators(
     val visible = projection.visibleRegion.latLngBounds
 
     return markers.mapNotNull { marker ->
-        if (marker.kind != MapMarkerKind.RIDER || marker.isMe) return@mapNotNull null
+        // Riders other than me, plus the two places a rider is being asked to go.
+        val wanted = (marker.kind == MapMarkerKind.RIDER && !marker.isMe) ||
+            marker.kind == MapMarkerKind.REGROUP || marker.kind == MapMarkerKind.EMERGENCY
+        if (!wanted) return@mapNotNull null
         val pos = marker.position
         if (isUnsetCoordinate(pos.latitude, pos.longitude)) return@mapNotNull null
         if (visible.contains(pos)) return@mapNotNull null   // on-screen → no chip

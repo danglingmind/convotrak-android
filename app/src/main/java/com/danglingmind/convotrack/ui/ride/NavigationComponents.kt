@@ -1,5 +1,15 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.designsystem.FloatingTone
+import com.danglingmind.convotrack.ui.designsystem.FloatingButton
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import com.danglingmind.convotrack.data.audio.NavVoiceGuide
+import com.danglingmind.convotrack.data.audio.VoiceAnnouncer
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -123,7 +133,10 @@ private fun legacyManeuverIcon(instruction: String): ImageVector {
 fun TurnInstructionCard(
     instruction: String,
     maneuver: String,
+    thenManeuver: String?,
     distanceMeters: Double,
+    isOffRoute: Boolean,
+    isReconnecting: Boolean,
     isLandscape: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -134,7 +147,15 @@ fun TurnInstructionCard(
             .shadow(18.dp, DsShape.lg, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(DsShape.lg)
             .background(HudGlass)
-            .border(1.dp, DsColor.accentBorder, DsShape.lg)
+            .border(
+                1.dp,
+                when {
+                    isOffRoute -> DsColor.dangerBorder
+                    isReconnecting -> DsColor.warning.copy(alpha = 0.5f)
+                    else -> DsColor.accentBorder
+                },
+                DsShape.lg,
+            )
             .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -143,6 +164,20 @@ fun TurnInstructionCard(
             Icon(maneuverIcon(maneuver, instruction), null, tint = DsColor.onAccent, modifier = Modifier.size(glyph))
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // One line above the distance: the guidance is unreliable, and why. Off route wins.
+            if (isOffRoute || isReconnecting) {
+                val tone = if (isOffRoute) DsColor.danger else DsColor.warning
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (isOffRoute) Icon(Icons.Filled.Warning, null, tint = tone, modifier = Modifier.size(13.dp))
+                    else CircularProgressIndicator(modifier = Modifier.size(12.dp), color = tone, strokeWidth = 2.dp)
+                    Text(
+                        if (isOffRoute) "Off route · rerouting…" else "Reconnecting…",
+                        style = DsType.badgeSmall,
+                        color = tone,
+                        maxLines = 1,
+                    )
+                }
+            }
             val distText = turnDistanceText(distanceMeters)
             if (distText.isNotEmpty()) {
                 Text(
@@ -159,6 +194,18 @@ fun TurnInstructionCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            // A quick double turn: show the second one too, so it isn't a surprise.
+            if (thenManeuver != null) {
+                val spoken = NavVoiceGuide.phrase(thenManeuver) ?: "continue"
+                Row(
+                    Modifier.semantics(mergeDescendants = true) { contentDescription = "Then $spoken" },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("Then", style = DsType.bodySmall, color = DsColor.textSecondary)
+                    Icon(maneuverIcon(thenManeuver, ""), null, tint = DsColor.textSecondary, modifier = Modifier.size(16.dp))
+                }
+            }
         }
     }
 }
@@ -300,40 +347,6 @@ private fun HudBanner(
     }
 }
 
-/** Slim "reconnecting" strip. Callers gate it on the session's connection state, so it takes no
- *  layout space while the connection is healthy. */
-@Composable
-fun ConnectionBanner(state: RideRealtimeSession.ConnectionState, modifier: Modifier = Modifier) {
-    if (state != RideRealtimeSession.ConnectionState.RECONNECTING) return
-    HudBanner(
-        accent = DsColor.warning,
-        background = Color(0xF0241F14),
-        border = DsColor.warning.copy(alpha = 0.4f),
-        icon = null,
-        eyebrow = "RECONNECTING…",
-        message = null,
-        modifier = modifier,
-        leading = { CircularProgressIndicator(modifier = Modifier.size(16.dp), color = DsColor.warning, strokeWidth = 2.dp) },
-    )
-}
-
-/** Small "OFF ROUTE" chip while the rider has strayed from the line being followed. */
-@Composable
-fun OffRouteBanner(modifier: Modifier = Modifier) {
-    Row(
-        modifier
-            .clip(DsShape.pill)
-            .background(DsColor.dangerContainer)
-            .border(1.dp, DsColor.dangerBorder, DsShape.pill)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        Icon(Icons.Filled.Warning, null, tint = DsColor.danger, modifier = Modifier.size(13.dp))
-        Text("OFF ROUTE", style = DsType.badgeSmall, color = DsColor.danger)
-    }
-}
-
 private fun regroupAccentColor(type: String): Color = when (type) {
     "FUEL" -> DsColor.catFuel
     "FOOD" -> DsColor.catFood
@@ -348,19 +361,51 @@ private fun regroupLabelText(type: String): String = when (type) {
     else -> "Stop"
 }
 
-/** Transient "regroup called — head to X" toast for riders who didn't initiate it. */
+/**
+ * "Regroup called — head to X", with the two things a rider can do about it: look at the meet
+ * point, and say they have arrived. It stays until the regroup resolves, so the actions never
+ * vanish on a timer. Show is a peek, not a camera move: the map stays on the road until asked.
+ */
 @Composable
-fun RegroupToastBanner(type: String, modifier: Modifier = Modifier) {
+fun RegroupAlertBanner(
+    type: String,
+    hasArrived: Boolean,
+    onShow: () -> Unit,
+    onArrived: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val accent = regroupAccentColor(type)
-    HudBanner(
-        accent = accent,
-        background = accent.copy(alpha = 0.12f).compositeOverHud(),
-        border = accent.copy(alpha = 0.5f),
-        icon = Icons.Filled.Groups,
-        eyebrow = "REGROUP CALLED",
-        message = "Head to the ${regroupLabelText(type)}",
-        modifier = modifier,
-    )
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(DsShape.md)
+            .background(accent.copy(alpha = 0.12f).compositeOverHud())
+            .border(1.5.dp, accent.copy(alpha = 0.5f), DsShape.md)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.size(36.dp).clip(DsShape.sm).background(accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Groups, null, tint = accent, modifier = Modifier.size(20.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Text("REGROUP CALLED", style = DsType.badgeSmall, color = accent)
+                Text(
+                    "Head to the ${regroupLabelText(type)}",
+                    style = DsType.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = DsColor.textPrimary,
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            PillButton("Show", onShow, Modifier.weight(1f), tone = PillTone.Neutral, icon = Icons.Filled.MyLocation, height = DsSize.touchTarget)
+            if (hasArrived) {
+                PillButton("Waiting for others", onClick = null, modifier = Modifier.weight(1f), tone = PillTone.Neutral, icon = Icons.Filled.Schedule, height = DsSize.touchTarget)
+            } else {
+                PillButton("Mark as arrived", onArrived, Modifier.weight(1f), icon = Icons.Filled.CheckCircle, height = DsSize.touchTarget)
+            }
+        }
+    }
 }
 
 /** Transient "regroup complete" confirmation once the server resolves it. */
@@ -386,6 +431,7 @@ fun RegroupResolvedBanner(modifier: Modifier = Modifier) {
 fun EmergencyBanner(
     reporterName: String,
     message: String,
+    onShow: () -> Unit,
     onDismiss: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
@@ -398,12 +444,22 @@ fun EmergencyBanner(
         message = "$reporterName needs help — head to their location",
         detail = message.takeIf { it.isNotBlank() && it != "Emergency" },
         modifier = modifier,
-        trailing = onDismiss?.let { dismiss ->
-            {
+        trailing = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    Modifier.size(32.dp).clip(CircleShape).background(Color(0x1FFFFFFF)).dsClickable(onClick = dismiss),
+                    Modifier.size(DsSize.touchTarget).dsClickable(onClick = onShow),
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Filled.Close, "Dismiss", tint = DsColor.textPrimary, modifier = Modifier.size(16.dp)) }
+                ) { Icon(Icons.Filled.MyLocation, "Show emergency on map", tint = DsColor.danger, modifier = Modifier.size(20.dp)) }
+                if (onDismiss != null) {
+                    Box(
+                        Modifier.size(DsSize.touchTarget).dsClickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(Modifier.size(32.dp).clip(CircleShape).background(Color(0x1FFFFFFF)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Close, "Dismiss", tint = DsColor.textPrimary, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
             }
         },
     )
@@ -469,18 +525,6 @@ fun GroupSplitAlert(
     )
 }
 
-/** Primary "mark as arrived" pill shown while a regroup is active and I haven't arrived yet. */
-@Composable
-fun ArrivedButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    PillButton("Mark as arrived", onClick, modifier, icon = Icons.Filled.CheckCircle, height = 44.dp)
-}
-
-/** Quiet "waiting for others" pill after I've marked arrived, until the regroup resolves. */
-@Composable
-fun WaitingForOthersPill(modifier: Modifier = Modifier) {
-    PillButton("Waiting for others", onClick = null, modifier = modifier, tone = PillTone.Neutral, icon = Icons.Filled.Schedule)
-}
-
 /** RESUME capsule, shown once the rider has panned away from the follow camera. */
 @Composable
 fun ResumeNavigationPill(onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -521,4 +565,17 @@ fun NavControlButton(
             Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(22.dp))
         }
     }
+}
+
+/** Voice guidance on/off. Muting silences every prompt but emergencies; the choice is remembered. */
+@Composable
+fun VoiceToggleButton(modifier: Modifier = Modifier) {
+    val muted by VoiceAnnouncer.muted.collectAsState()
+    FloatingButton(
+        icon = if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+        contentDescription = if (muted) "Turn on voice guidance" else "Mute voice guidance",
+        onClick = { VoiceAnnouncer.setMuted(!muted) },
+        modifier = modifier,
+        tone = FloatingTone.OnDark,
+    )
 }

@@ -1,5 +1,17 @@
 package com.danglingmind.convotrack.ui.map
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.PanTool
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.Icons
 import com.danglingmind.convotrack.ui.designsystem.DsColor
 import com.danglingmind.convotrack.ui.designsystem.DsType
 
@@ -58,6 +70,14 @@ data class EdgeIndicator(
     val distanceMeters: Double,
 )
 
+/** Marker ids for the non-rider things worth an edge chip. They share the rider tap path. */
+object EdgeTarget {
+    const val REGROUP_ID = "regroup"
+    const val EMERGENCY_ID = "emergency"
+}
+
+enum class EdgeKind { RIDER, REGROUP, EMERGENCY }
+
 /** An [EdgeIndicator] joined with the rider's display metadata. */
 data class EdgeChipModel(
     val id: String,
@@ -67,6 +87,8 @@ data class EdgeChipModel(
     val edgeX: Float,
     val edgeY: Float,
     val distanceMeters: Double,
+    val kind: EdgeKind = EdgeKind.RIDER,
+    val regroupType: String? = null,
 )
 
 /** A group of chips that clamp to nearly the same screen position. */
@@ -83,7 +105,12 @@ data class EdgeCluster(
  * are seeded nearest-first so the closest rider anchors each cluster.
  */
 fun clusterIndicators(chips: List<EdgeChipModel>, radiusPx: Float): List<EdgeCluster> {
-    val sorted = chips.sortedBy { it.distanceMeters }
+    // The regroup point and the emergency are never folded into a rider count: they are what the
+    // rider is being asked to go to, so each keeps its own chip.
+    val special = chips.filter { it.kind != EdgeKind.RIDER }.map {
+        EdgeCluster(it.id, listOf(it), it.edgeX, it.edgeY, it.distanceMeters)
+    }
+    val sorted = chips.filter { it.kind == EdgeKind.RIDER }.sortedBy { it.distanceMeters }
     val assigned = mutableSetOf<String>()
     val clusters = mutableListOf<EdgeCluster>()
 
@@ -106,7 +133,7 @@ fun clusterIndicators(chips: List<EdgeChipModel>, radiusPx: Float): List<EdgeClu
             minDistance = members.minOf { it.distanceMeters },
         )
     }
-    return clusters
+    return clusters + special
 }
 
 /**
@@ -267,11 +294,31 @@ private fun formatEdgeDistance(meters: Double): String =
 @Composable
 fun EdgeChip(model: EdgeChipModel, modifier: Modifier = Modifier) {
     Column(
-        modifier.alpha(if (model.isOffline) 0.55f else 1f),
+        modifier
+            .alpha(if (model.isOffline) 0.55f else 1f)
+            .semantics(mergeDescendants = true) {
+                contentDescription = when (model.kind) {
+                    EdgeKind.RIDER -> "${model.name}, ${formatEdgeDistance(model.distanceMeters)} away"
+                    EdgeKind.REGROUP -> "Regroup point, ${formatEdgeDistance(model.distanceMeters)} away"
+                    EdgeKind.EMERGENCY -> "Emergency, ${formatEdgeDistance(model.distanceMeters)} away"
+                }
+                role = Role.Button
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Box(
+        if (model.kind != EdgeKind.RIDER) {
+            // A place, not a person: an icon in a solid disc.
+            val (icon, color, fg) = when (model.kind) {
+                EdgeKind.EMERGENCY -> Triple(Icons.Filled.Warning, DsColor.danger, Color.White)
+                else -> Triple(regroupEdgeIcon(model.regroupType), regroupEdgeColor(model.regroupType), DsColor.onAccent)
+            }
+            Box(
+                Modifier.size(34.dp).clip(CircleShape).background(color)
+                    .border(2.dp, Color.White.copy(alpha = 0.9f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { Icon(icon, null, tint = fg, modifier = Modifier.size(18.dp)) }
+        } else Box(
             Modifier.size(34.dp).clip(CircleShape).background(DsColor.avatar)
                 .border(2.dp, DsColor.success, CircleShape),
             contentAlignment = Alignment.Center,
@@ -331,4 +378,18 @@ fun ClusterChip(count: Int, distanceMeters: Double, modifier: Modifier = Modifie
             maxLines = 1,
         )
     }
+}
+
+private fun regroupEdgeIcon(type: String?) = when (type) {
+    "FUEL" -> Icons.Filled.LocalGasStation
+    "FOOD" -> Icons.Filled.Restaurant
+    "SCENIC" -> Icons.Filled.PhotoCamera
+    else -> Icons.Filled.PanTool
+}
+
+private fun regroupEdgeColor(type: String?) = when (type) {
+    "FUEL" -> DsColor.catFuel
+    "FOOD" -> DsColor.catFood
+    "SCENIC" -> DsColor.catScenic
+    else -> DsColor.catOther
 }

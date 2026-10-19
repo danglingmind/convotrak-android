@@ -4,7 +4,9 @@ import android.location.Location
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.danglingmind.convotrack.data.audio.SirenPlayer
+import com.danglingmind.convotrack.data.audio.NavVoiceGuide
 import com.danglingmind.convotrack.data.audio.VoiceAnnouncer
+import com.danglingmind.convotrack.data.audio.VoicePriority
 import com.danglingmind.convotrack.data.maps.DirectionsService
 import com.danglingmind.convotrack.data.maps.DirectionsStep
 import com.danglingmind.convotrack.data.net.LiveLeaderboardEntry
@@ -128,8 +130,38 @@ class NavigationViewModel : ViewModel() {
     private val _distanceToNextTurnMeters = MutableStateFlow(0.0)
     val distanceToNextTurnMeters: StateFlow<Double> = _distanceToNextTurnMeters.asStateFlow()
 
+    private val voiceGuide = NavVoiceGuide()
+
+    /** The maneuver after the one on the banner, set only when it follows within ~150 m. */
+    private val _thenManeuver = MutableStateFlow<String?>(null)
+    val thenManeuver: StateFlow<String?> = _thenManeuver.asStateFlow()
+
     private val _isOffRoute = MutableStateFlow(false)
     val isOffRoute: StateFlow<Boolean> = _isOffRoute.asStateFlow()
+
+    /** Flags the rider as off route; speaks once per episode, not on every fix that confirms it. */
+    private fun markOffRoute() {
+        if (_isOffRoute.value) return
+        _isOffRoute.value = true
+        VoiceAnnouncer.announce("Off route. Rerouting.", priority = VoicePriority.ALERT)
+    }
+
+    init {
+        // Switching voice back on repeats the next maneuver, so the rider hears that it took.
+        viewModelScope.launch {
+            var wasMuted = VoiceAnnouncer.muted.value
+            VoiceAnnouncer.muted.collect { muted ->
+                if (wasMuted && !muted) repeatInstruction()
+                wasMuted = muted
+            }
+        }
+    }
+
+    override fun onCleared() {
+        VoiceAnnouncer.stop()
+        voiceGuide.reset()
+        super.onCleared()
+    }
 
     /**
      * Live remaining travel time to the next stop, in seconds.
@@ -561,7 +593,7 @@ class NavigationViewModel : ViewModel() {
         if (needsInitialRouteCheck && navRoute.size >= 2) {
             needsInitialRouteCheck = false
             if (lastRouteOffsetMeters > OFF_ROUTE_THRESHOLD_METERS && !isRerouteInFlight) {
-                _isOffRoute.value = true
+                markOffRoute()
                 consecutiveOffCount = OFF_ROUTE_CONFIRM_COUNT
                 launchReroute(fix, validCourse(location))
             }
@@ -693,6 +725,33 @@ class NavigationViewModel : ViewModel() {
         _distanceToNextTurnMeters.value = max(0.0, banner.junctionDistanceAlongRoute - progress)
         _currentInstruction.value = banner.instruction
         _currentManeuver.value = banner.maneuver
+        _thenManeuver.value = banner.thenManeuver
+        speakNextManeuver(banner.thenManeuver)
+    }
+
+    /**
+     * Feeds the voice guide the maneuver being approached. A new route (reroute, edited ride) or a
+     * new step starts a fresh set of prompts.
+     */
+    private fun speakNextManeuver(then: String?) {
+        val instruction = _currentInstruction.value
+        if (instruction.isEmpty()) return
+        val sentence = voiceGuide.update(
+            NavVoiceGuide.Input(
+                key = _routeVersion.value * 10_000 + currentStepIndex,
+                distanceMeters = _distanceToNextTurnMeters.value,
+                speedKmh = _mySpeedKmh.value,
+                instruction = instruction,
+                maneuver = _currentManeuver.value,
+                thenManeuver = then,
+            ),
+        ) ?: return
+        VoiceAnnouncer.announce(sentence, priority = VoicePriority.TURN)
+    }
+
+    /** Voice was just switched back on: say where the next turn is so the rider knows it worked. */
+    private fun repeatInstruction() {
+        voiceGuide.repeatCurrent()?.let { VoiceAnnouncer.announce(it, priority = VoicePriority.TURN) }
     }
 
     /**
@@ -827,7 +886,7 @@ class NavigationViewModel : ViewModel() {
         // [isWrongWay] carries its own confirmation count, so it flags immediately rather than
         // waiting out a second three-fix debounce on top of the one it has already served.
         if (!_isOffRoute.value && (isWrongWay || consecutiveOffCount >= OFF_ROUTE_CONFIRM_COUNT)) {
-            _isOffRoute.value = true
+            markOffRoute()
         } else if (_isOffRoute.value && !isWrongWay && consecutiveOnCount >= ON_ROUTE_CLEAR_COUNT) {
             _isOffRoute.value = false
         }

@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.data.audio.NavVoiceGuide
 import android.location.Location
 import com.danglingmind.convotrack.data.maps.DirectionsStep
 import com.google.android.gms.maps.model.LatLng
@@ -317,6 +318,8 @@ data class TurnBanner(
     val instruction: String,
     val maneuver: String,
     val junctionDistanceAlongRoute: Double,
+    /** The maneuver after this one, only when it follows within [NavVoiceGuide.THEN_WITHIN_METERS]. */
+    val thenManeuver: String? = null,
 )
 
 /**
@@ -343,10 +346,19 @@ fun upcomingBanner(steps: List<DirectionsStep>, currentIndex: Int): TurnBanner {
     if (currentIndex + 1 < steps.size) {
         for (j in (currentIndex + 1) until steps.size) {
             if (steps[j].instruction.isNotEmpty()) {
+                val junction = steps[j - 1].endDistanceAlongRoute
+                // The maneuver after this one, when it follows closely enough to be worth a
+                // "then …" (a quick double turn the rider should be ready for).
+                val next = ((j + 1) until steps.size).firstOrNull { steps[it].instruction.isNotEmpty() }
+                val then = next
+                    ?.takeIf { steps[it - 1].endDistanceAlongRoute - junction <= NavVoiceGuide.THEN_WITHIN_METERS }
+                    ?.let { steps[it].maneuver }
+                    ?.takeIf { it.isNotEmpty() && it != "ARRIVE" }
                 return TurnBanner(
                     instruction = steps[j].instruction,
                     maneuver = steps[j].maneuver.orEmpty(),
-                    junctionDistanceAlongRoute = steps[j - 1].endDistanceAlongRoute,
+                    junctionDistanceAlongRoute = junction,
+                    thenManeuver = then,
                 )
             }
         }
