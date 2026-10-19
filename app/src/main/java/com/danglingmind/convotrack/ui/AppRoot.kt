@@ -3,6 +3,8 @@ package com.danglingmind.convotrack.ui
 import com.danglingmind.convotrack.ui.designsystem.DsColor
 
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.runtime.getValue
 import com.danglingmind.convotrack.ui.designsystem.DsTab
 
@@ -70,8 +72,32 @@ object Routes {
 fun AppRoot(
     deepLinkCode: String? = null,
     onDeepLinkConsumed: () -> Unit = {},
+    openRideId: String? = null,
+    onOpenRideConsumed: () -> Unit = {},
 ) {
     val nav = rememberNavController()
+
+    // Tap on the ride-status notification: jump into that ride's live navigation, but only when it
+    // is the ride this device is currently broadcasting for. Anything else (stale notification,
+    // unknown id, ride already over) is ignored. Waits while splash/auth are still on screen.
+    val backStack by nav.currentBackStackEntryAsState()
+    LaunchedEffect(openRideId, backStack) {
+        val id = openRideId ?: return@LaunchedEffect
+        val route = backStack?.destination?.route ?: return@LaunchedEffect
+        when {
+            route == Routes.SPLASH || route == Routes.AUTH || route.startsWith(Routes.VERIFY) -> Unit
+            route == "${Routes.RIDE_NAVIGATION}/{rideId}" &&
+                backStack?.arguments?.getString("rideId") == id -> onOpenRideConsumed()
+            route == Routes.MAIN || route == "${Routes.RIDE_LOBBY}/{rideId}" -> {
+                if (ServiceLocator.location.activeRideId.value == id) {
+                    if (route == Routes.MAIN) nav.navigate(Routes.rideGraph(id))
+                    nav.navigate(Routes.navigation(id))
+                }
+                onOpenRideConsumed()
+            }
+            else -> onOpenRideConsumed()
+        }
+    }
     Surface(modifier = Modifier.fillMaxSize(), color = DsColor.bgBase) {
         NavHost(navController = nav, startDestination = Routes.SPLASH) {
             composable(Routes.SPLASH) {

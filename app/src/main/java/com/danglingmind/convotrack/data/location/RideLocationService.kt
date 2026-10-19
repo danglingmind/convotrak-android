@@ -1,6 +1,7 @@
 package com.danglingmind.convotrack.data.location
 
 import android.app.Notification
+import android.app.PendingIntent
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
@@ -11,7 +12,6 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
-import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.danglingmind.convotrack.MainActivity
 import com.danglingmind.convotrack.R
@@ -22,6 +22,13 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Foreground service that streams the rider's GPS during an active ride and emits it over the
@@ -34,6 +41,10 @@ class RideLocationService : Service() {
         const val EXTRA_RIDE_ID = "rideId"
         private const val CHANNEL_ID = "ride_location"
         private const val NOTIF_ID = 42
+        private const val EMERGENCY_CHANNEL_ID = "ride_emergency"
+        private const val EMERGENCY_NOTIF_ID = 43
+        /** Routine status refreshes (countdown, gap) are coalesced to one per this interval. */
+        private const val STATUS_THROTTLE_MS = 5_000L
 
         private const val MAX_USABLE_ACCURACY_M = 100f
         private const val MAX_FIX_AGE_MS = 5_000L
@@ -49,6 +60,15 @@ class RideLocationService : Service() {
 
     private lateinit var fused: FusedLocationProviderClient
     private var rideId: String? = null
+
+    // Live-status notification state. Everything below runs on the main thread.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var statusJob: Job? = null
+    private var pendingPost: Job? = null
+    private var latestStatus: RideStatus? = null
+    private var lastPostedAt = 0L
+    private var lastPostedKey: String? = null
+    private var lastEmergencyName: String? = null
 
     // Where the last broadcast went out from, so a rider who has genuinely stopped can be told
     // apart from one merely reading 0 km/h between two fixes.
@@ -131,36 +151,181 @@ class RideLocationService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         rideId = intent?.getStringExtra(EXTRA_RIDE_ID) ?: rideId
         startAsForeground()
+        observeStatus()
         requestUpdates()
         return START_STICKY
     }
 
-    private fun startAsForeground() {
+    private fun ensureChannels() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID, "Live ride tracking", NotificationManager.IMPORTANCE_LOW,
-            ).apply { description = "Shows while your position is being shared during a ride." }
-            manager.createNotificationChannel(channel)
-        }
-        val open = android.app.PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            android.app.PendingIntent.FLAG_IMMUTABLE,
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, "Live ride tracking", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Next turn, arrival time and convoy status while a ride is live."
+                setSound(null, null)
+                enableVibration(false)
+            },
         )
-        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("ConvoTrack ride active")
-            .setContentText("Sharing your live location with the pack")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setOngoing(true)
-            .setContentIntent(open)
-            .build()
+        manager.createNotificationChannel(
+            NotificationChannel(EMERGENCY_CHANNEL_ID, "Ride emergencies", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Alerts when a rider in your convoy reports an emergency."
+            },
+        )
+    }
 
+    private fun startAsForeground() {
+        ensureChannels()
+        // Always renders the latest status: this also runs on every re-start of the service, and
+        // must not flash the generic text over a live one.
+        val notification = buildOngoing(latestStatus ?: RideStatusNotifier.status.value)
         ServiceCompat.startForeground(
             this, NOTIF_ID, notification,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
             } else 0,
         )
+    }
+
+    // MARK: - Live status
+
+    /** Tapping any of our notifications opens the app straight into this ride's navigation. */
+    private fun openRidePendingIntent(requestCode: Int): PendingIntent {
+        val intent = Intent(this, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_OPEN_RIDE_ID, rideId ?: latestStatus?.rideId)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        return PendingIntent.getActivity(
+            this, requestCode, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+    }
+
+    private fun observeStatus() {
+        if (statusJob != null) return
+        statusJob = scope.launch {
+            RideStatusNotifier.status.collect { status ->
+                latestStatus = status
+                onStatus(status)
+            }
+        }
+    }
+
+    /** Immediate on a step change or emergency start/end; otherwise at most once per throttle window. */
+    private fun onStatus(status: RideStatus?) {
+        handleEmergencyTransition(status?.emergencyName)
+        val key = "${status?.maneuverKey}|${status?.instruction}|${status?.emergencyName}|${status == null}"
+        val now = android.os.SystemClock.elapsedRealtime()
+        val urgent = key != lastPostedKey
+        val wait = STATUS_THROTTLE_MS - (now - lastPostedAt)
+        if (urgent || wait <= 0) {
+            pendingPost?.cancel(); pendingPost = null
+            postOngoing(status, key)
+        } else if (pendingPost == null) {
+            pendingPost = scope.launch {
+                delay(wait)
+                pendingPost = null
+                postOngoing(latestStatus, null)
+            }
+        }
+    }
+
+    private fun postOngoing(status: RideStatus?, keyOverride: String?) {
+        lastPostedAt = android.os.SystemClock.elapsedRealtime()
+        lastPostedKey = keyOverride
+            ?: "${status?.maneuverKey}|${status?.instruction}|${status?.emergencyName}|${status == null}"
+        try {
+            // Same id as the foreground notification: this updates it in place, it never restarts
+            // the service or the foreground state. Silently dropped if notifications are blocked.
+            getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildOngoing(status))
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun handleEmergencyTransition(name: String?) {
+        val manager = getSystemService(NotificationManager::class.java)
+        try {
+            if (name != null && lastEmergencyName == null) {
+                // The reporter already knows; the heads-up is for the rest of the pack.
+                if (name != "You") manager.notify(EMERGENCY_NOTIF_ID, buildEmergency(name))
+            } else if (name == null && lastEmergencyName != null) {
+                manager.cancel(EMERGENCY_NOTIF_ID)
+            }
+        } catch (_: Exception) {
+        }
+        lastEmergencyName = name
+    }
+
+    private fun buildEmergency(name: String): Notification {
+        val publicVersion = Notification.Builder(this, EMERGENCY_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_ride)
+            .setContentTitle("Emergency on your ride")
+            .build()
+        return Notification.Builder(this, EMERGENCY_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_ride)
+            .setContentTitle("Emergency - $name needs help")
+            .setContentText("Open ConvoTrack for their location")
+            .setCategory(Notification.CATEGORY_ALARM)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
+            .setAutoCancel(true)
+            .setContentIntent(openRidePendingIntent(2))
+            .build()
+    }
+
+    private fun buildOngoing(status: RideStatus?): Notification {
+        // Lock-screen version carries nothing about where the rider is or who needs help.
+        val publicVersion = Notification.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_ride)
+            .setContentTitle("ConvoTrack ride active")
+            .build()
+        val b = Notification.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_ride)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setCategory(Notification.CATEGORY_NAVIGATION)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
+            .setContentIntent(openRidePendingIntent(1))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            b.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+        }
+        if (status == null) {
+            return b.setContentTitle("ConvoTrack ride active")
+                .setContentText("Sharing your live location with the pack")
+                .build()
+        }
+
+        val turn = listOf(status.turnDistanceText, status.instruction).filter { it.isNotBlank() }.joinToString(" \u00B7 ")
+        val emergency = status.emergencyName?.let { if (it == "You") "Emergency raised" else "Emergency - $it needs help" }
+        val arrive = if (status.arrivalText.isBlank()) "" else "Arrive ${status.arrivalText} \u00B7 ${status.timeLeftText}"
+        b.setContentTitle(emergency ?: turn.ifBlank { "Ride in progress" })
+        b.setContentText(if (emergency != null && turn.isNotBlank()) turn else arrive)
+        b.setSubText(status.destinationName)
+        b.setLargeIcon(ManeuverGlyph.bitmap(status.maneuverKey))
+
+        if (Build.VERSION.SDK_INT >= 36) {
+            // Android 16 Live Update: progress bar along the route + arrival time as the chip text.
+            val text = listOf(if (emergency != null && turn.isNotBlank()) turn else arrive, status.convoyGapText)
+                .filter { it.isNotBlank() }.joinToString(" \u00B7 ")
+            b.setContentText(text)
+            b.setStyle(
+                Notification.ProgressStyle()
+                    .setStyledByProgress(false)
+                    .setProgressSegments(listOf(Notification.ProgressStyle.Segment(100)))
+                    .setProgress((status.progress.coerceIn(0f, 1f) * 100).toInt()),
+            )
+            if (status.arrivalShort.isNotBlank()) b.setShortCriticalText(status.arrivalShort)
+            // setRequestPromotedOngoing(true) isn't in compileSdk 36.0's android.jar (36.1+); the
+            // extra it sets is Notification.EXTRA_REQUEST_PROMOTED_ONGOING, so set it directly.
+            // Promotion is a request: the OS only honours it when the user allows it for this app.
+            val nm = getSystemService(NotificationManager::class.java)
+            if (nm.canPostPromotedNotifications()) {
+                b.addExtras(android.os.Bundle().apply { putBoolean("android.requestPromotedOngoing", true) })
+            }
+        } else {
+            val expanded = listOf(arrive, status.convoyGapText).filter { it.isNotBlank() }.joinToString("\n")
+            if (expanded.isNotBlank()) b.setStyle(Notification.BigTextStyle().bigText(expanded))
+        }
+        return b.build()
     }
 
     private fun requestUpdates() {
@@ -193,6 +358,9 @@ class RideLocationService : Service() {
     }
 
     override fun onDestroy() {
+        scope.cancel()
+        RideStatusNotifier.clear()
+        try { getSystemService(NotificationManager::class.java).cancel(EMERGENCY_NOTIF_ID) } catch (_: Exception) {}
         fused.removeLocationUpdates(callback)
         super.onDestroy()
     }
