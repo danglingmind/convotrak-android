@@ -1,5 +1,39 @@
 # Changelog
 
+## 2.0.0 (versionCode 9) — 2026-10-19
+
+### Added
+- A 3-day free trial: new accounts get 3 days from sign-in, and everyone gets 3 days once it is
+  switched on. A badge on Home and Profile shows how many days are left (TRIAL · 2D, amber on the
+  last day). During the trial you can ride up to 3 times with up to 5 riders.
+- After the trial, ConvoTrack Pro is needed to create or join rides. Create and Join show a lock
+  and open the plans; a ride already in progress can always be finished. Invite links and QR codes
+  open the plans first and carry on into the ride once you go Pro.
+- A plans screen after your first sign-in, a quiet Pro card on Home, and an occasional reminder
+  when you open the app — none of them during a ride.
+- Your rider limit is always shown while you plan a ride, the lobby shows how full the pack is,
+  and the ride summary offers Pro after a good ride.
+- Turn-by-turn voice guidance with "then" hints for quick double turns, a mute button that still
+  lets emergencies through, and spoken off-route, regroup and group-split alerts.
+- A live ride notification on the lock screen (Android 16 Live Updates), with arrival time.
+- The arrival stat shows the clock time you'll arrive, with time left beneath.
+
+### Changed
+- The plans screen leads with your free days and states that going Pro bills right away.
+- Prices and purchases always use the plan's standard price, never an introductory offer.
+- The Pro rider limit and plan terms come from the server, so they always match your plan.
+- One alert at a time during navigation, by priority, with a "+N more" chip; regroup no longer
+  moves the map.
+- The connection indicator is a colour-coded antenna that expands to show its state.
+- Photos and avatars load from one shared cache and stay available offline.
+- Reduce-motion is respected on the map and in animations; HUD labels have more contrast.
+
+### Fixed
+- A back swipe during live guidance no longer drops you out of navigation.
+- The convoy gap only shows once both riders have a position.
+- Group-split prompts name the rider who's behind and are spoken once per split.
+- Ride history thumbnails keep their destination photo offline.
+
 ## 1.2.0 (versionCode 8) — 2026-10-11
 
 ### Added
