@@ -16,9 +16,8 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 
 /**
- * Upsell funnel events (`POST /events`), iOS `PaywallAnalytics` parity. Fire-and-forget: batched
- * for a couple of seconds, and a failed send is dropped rather than retried — a lost funnel event
- * must never cost the rider anything.
+ * Upsell funnel events (`POST /events`), iOS `PaywallAnalytics` parity. Batched for a couple of
+ * seconds; a failed batch is kept (in memory) and goes out with the next one.
  */
 object PaywallAnalytics {
     enum class Event(val wire: String) {
@@ -54,12 +53,18 @@ object PaywallAnalytics {
         while (pending.isNotEmpty()) {
             val batch = pending.take(50)
             pending.subList(0, batch.size).clear()
-            runCatching {
+            val sent = runCatching {
                 apiCall {
                     ServiceLocator.api.sendEvents(
                         PaywallEventsRequest(platform = "android", appVersion = BuildConfig.VERSION_NAME, events = batch),
                     )
                 }
+            }.isSuccess
+            if (!sent) {
+                // Keep it for the next flush (iOS parity), capped so an offline rider can't grow it.
+                pending.addAll(0, batch)
+                while (pending.size > 200) pending.removeAt(pending.lastIndex)
+                return
             }
         }
     }
