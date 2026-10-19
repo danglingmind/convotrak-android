@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.data.imagecache.ImageCache
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -176,6 +177,8 @@ private fun EditRideForm(ride: Ride, onBack: () -> Unit, onSaved: () -> Unit, on
                 scope.launch {
                     try {
                         apiCall { api.deleteRide(ride.id) }
+                        // Its thumbnail, map and summary card can never be shown again.
+                        runCatching { ImageCache.evictOwner(ride.id) }
                         // The server broadcasts ride:deleted; every other rider's lobby surfaces
                         // "Ride Cancelled" off the back of it.
                         onDeleted()

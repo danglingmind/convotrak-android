@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.data.auth
 
+import com.danglingmind.convotrack.data.imagecache.ImageCache
 import android.app.Application
 import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
@@ -204,6 +205,9 @@ class ClerkAuthRepository(private val app: Application) : AuthRepository {
     override suspend fun signOut() {
         pendingCodeFlow = null
         Clerk.auth.signOut()
+        // Cached avatars, destination photos, maps and summary cards belong to this rider's
+        // account; none of it may be visible to whoever signs in next on this device.
+        runCatching { ImageCache.clearAll() }
         // Credential Manager remembers the account it last issued a token for and, because the SDK
         // asks with auto-select enabled, will hand back the same one WITHOUT showing the sheet on a
         // device with a single Google account — the very "it picks the previous account" behaviour

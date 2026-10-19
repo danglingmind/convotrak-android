@@ -48,7 +48,7 @@ fun rememberDestinationHero(
     val phase = remember { mutableStateOf<DestinationHeroPhase>(DestinationHeroPhase.Resolving) }
 
     LaunchedEffect(key) {
-        if (key.isEmpty()) {
+        if (key.isEmpty() || destinationName == null || lat == null || lng == null) {
             // No ride yet (or it isn't ours yet): stay blank rather than showing the fallback,
             // which would only be replaced a moment later.
             phase.value = DestinationHeroPhase.Resolving
@@ -56,7 +56,7 @@ fun rememberDestinationHero(
         }
         // Anything held for a different destination is stale the instant the key changes.
         phase.value = DestinationHeroPhase.Resolving
-        val fetched = PlacePhotoService.photo(destinationName!!, LatLng(lat!!, lng!!))
+        val fetched = PlacePhotoService.photo(destinationName, LatLng(lat, lng), ownerRideId = rideId)
         phase.value = fetched?.let { DestinationHeroPhase.Photo(it) } ?: DestinationHeroPhase.Unavailable
     }
 

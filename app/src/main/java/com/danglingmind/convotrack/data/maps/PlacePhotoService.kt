@@ -1,20 +1,12 @@
 package com.danglingmind.convotrack.data.maps
 
-import android.content.ComponentCallbacks2
-import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.util.LruCache
 import com.danglingmind.convotrack.BuildConfig
+import com.danglingmind.convotrack.data.imagecache.ImageCache
+import com.danglingmind.convotrack.data.imagecache.ImageCategory
+import com.danglingmind.convotrack.data.imagecache.ImageHttp
 import com.google.android.gms.maps.model.LatLng
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -23,9 +15,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.io.File
-import java.security.MessageDigest
-import kotlin.math.max
+import java.io.IOException
 import kotlin.math.roundToInt
 
 /** A representative photo for a ride's destination — the image Google Maps shows for that place. */
@@ -56,9 +46,11 @@ sealed interface DestinationHeroPhase {
     data object Unavailable : DestinationHeroPhase
 }
 
+
 /**
- * Fetches the photo Google Maps shows for a destination, for the ride lobby's hero image and the
- * home screen's active-ride card. Android port of iOS `GooglePlacePhotoService.swift`.
+ * Fetches the photo Google Maps shows for a destination, for the ride lobby's hero image, the
+ * history thumbnails and the home screen's active-ride card. Android port of iOS
+ * `GooglePlacePhotoService.swift`.
  *
  * The backend stores a destination as name + coordinate only (no place ID), so this resolves the
  * place itself: a Text Search biased to that coordinate, then the nearest candidate's first photo.
@@ -66,9 +58,12 @@ sealed interface DestinationHeroPhase {
  * fields we read) rather than the legacy endpoint [PlacesService] still uses — legacy Places is
  * closed to new customers and on a sunset path.
  *
- * Three tiers, cheapest first: an in-memory [LruCache], then a disk cache under `cacheDir`, then
- * the two billable network calls. A destination that is edited produces a different cache key, so
- * it misses all tiers and refetches without any explicit invalidation.
+ * Storage, de-duplication, decoding, expiry and eviction are [ImageCache]'s ([ImageCategory.PLACE_PHOTO]:
+ * 30-day photos, 7-day "no photo" markers). This file owns only the two billable network calls and
+ * the cache key. The photo reference from the search is stored with the entry, so once a photo
+ * expires it is re-requested directly (conditionally, if the server gave validators) instead of
+ * paying for the search again. The photographer credit is stored with it and returned with every
+ * hit — Google's policy requires it wherever the photo is shown.
  *
  * EVERY failure path returns null — empty name, no match, a match too far away, a place with no
  * photos, an HTTP error, a decode failure, non-image bytes — because the caller's contract is
@@ -96,151 +91,34 @@ object PlacePhotoService {
 
     private val client = OkHttpClient()
     private val json = Json { ignoreUnknownKeys = true }
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    /**
-     * Decoded-bitmap cache, bounded by BYTES rather than entry count — one hero bitmap is by far
-     * the largest image this app holds, so counting entries would bound nothing useful.
-     *
-     * Capped against the process heap as well as an absolute ceiling: on a low-memory device an
-     * unconditional 24MB is a large share of the heap.
-     */
-    private val memory: LruCache<String, DestinationPhoto> by lazy {
-        val maxBytes = minOf(24L * 1024 * 1024, Runtime.getRuntime().maxMemory() / 8).toInt()
-        object : LruCache<String, DestinationPhoto>(maxBytes) {
-            override fun sizeOf(key: String, value: DestinationPhoto): Int = value.bitmap.byteCount
-        }
-    }
-
-    /**
-     * Destinations known to have no photo, so a legitimately photo-less place doesn't re-run two
-     * billable requests on every appearance. Mirrored on disk, so it survives a relaunch too.
-     */
-    private val knownEmpty = mutableSetOf<String>()
-
-    /** De-duplicates concurrent lookups for the same destination, so the lobby and the home card
-     *  appearing together can't double-bill the search. */
-    private val inFlight = mutableMapOf<String, Deferred<FetchedPhoto?>>()
-    private val lock = Mutex()
-
-    @Volatile
-    private var didPrune = false
-
-    private var appContext: Context? = null
-
-    /**
-     * Called once from `ConvoTrackApp`. Also registers a memory-pressure listener: Android's
-     * [LruCache] has no equivalent of iOS `NSCache`'s automatic eviction, so without this the hero
-     * bitmaps would be held until the process dies.
-     */
-    fun init(context: Context) {
-        if (appContext != null) return
-        val app = context.applicationContext
-        appContext = app
-        app.registerComponentCallbacks(object : ComponentCallbacks2 {
-            override fun onTrimMemory(level: Int) {
-                if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) memory.evictAll()
-            }
-            override fun onConfigurationChanged(newConfig: Configuration) = Unit
-            @Deprecated("Deprecated in Java")
-            override fun onLowMemory() { memory.evictAll() }
-        })
-    }
-
-    private data class FetchedPhoto(val data: ByteArray, val attribution: String?)
-
-    /**
-     * Why a lookup produced nothing.
-     *
-     * [RESOLVED_NO_PHOTO] is a real answer about the place and is worth persisting. [TRANSIENT] is
-     * a statement about the network, and persisting it wrote a destination off as photo-less for
-     * the full 7-day empty TTL — so opening a lobby once in a tunnel meant the hero silently fell
-     * back to the route map on every relaunch for a week, on full signal.
-     */
-    private enum class MissReason { RESOLVED_NO_PHOTO, TRANSIENT }
 
     private data class Candidate(val photoName: String, val attribution: String?)
 
-    /** Set by the network path so [photo] can tell a resolved "no photo" from a failed request. */
-    @Volatile
-    private var lastMiss: MissReason = MissReason.RESOLVED_NO_PHOTO
-
-    // MARK: - Entry point
-
-    suspend fun photo(destinationName: String, coordinate: LatLng): DestinationPhoto? {
-        val query = destinationName.trim()
-        if (query.isEmpty()) return null
-        val key = cacheKey(query, coordinate)
-
-        memory.get(key)?.let { return it }
-        lock.withLock { if (knownEmpty.contains(key)) return null }
-
-        // Housekeeping once per process, before the first disk read.
-        if (!didPrune) {
-            didPrune = true
-            withContext(Dispatchers.IO) { DiskCache.prune(appContext) }
-        }
-
-        when (val entry = withContext(Dispatchers.IO) { DiskCache.load(appContext, key) }) {
-            is DiskCache.Entry.Empty -> {
-                lock.withLock { knownEmpty.add(key) }
-                return null
-            }
-            is DiskCache.Entry.Photo -> {
-                decodeAndRemember(entry.data, entry.attribution, key)?.let { return it }
-                // Unreadable file — drop it and fall through to the network rather than serving
-                // nothing for the next 30 days.
-                withContext(Dispatchers.IO) { DiskCache.remove(appContext, key) }
-            }
-            DiskCache.Entry.Miss -> Unit
-        }
-
-        // One network task per key, shared by every concurrent caller.
-        val task = lock.withLock {
-            inFlight[key] ?: scope.async { fetch(query, coordinate) }.also { inFlight[key] = it }
-        }
-        val fetched = try {
-            task.await()
-        } finally {
-            lock.withLock { if (inFlight[key] === task) inFlight.remove(key) }
-        }
-
-        if (fetched == null) {
-            // Only a resolved answer about the PLACE is remembered. A failed request says nothing
-            // about whether this destination has a photo, so it is retried on the next appearance.
-            if (lastMiss == MissReason.RESOLVED_NO_PHOTO) {
-                lock.withLock { knownEmpty.add(key) }
-                withContext(Dispatchers.IO) { DiskCache.storeEmpty(appContext, key) }
-            }
-            return null
-        }
-
-        withContext(Dispatchers.IO) { DiskCache.store(appContext, key, fetched.data, fetched.attribution) }
-        val photo = decodeAndRemember(fetched.data, fetched.attribution, key)
-        if (photo == null) {
-            // Bytes arrived but aren't a decodable image. Record it as empty so we don't pay for
-            // the same two requests on every appearance.
-            withContext(Dispatchers.IO) {
-                DiskCache.remove(appContext, key)
-                DiskCache.storeEmpty(appContext, key)
-            }
-            lock.withLock { knownEmpty.add(key) }
-        }
-        return photo
+    /** Outcome of the place search, kept distinct so a flaky network isn't recorded as "no photo". */
+    private sealed interface Search {
+        data class Found(val candidate: Candidate) : Search
+        data object None : Search
+        data object Error : Search
     }
 
-    private suspend fun decodeAndRemember(data: ByteArray, attribution: String?, key: String): DestinationPhoto? {
-        val bitmap = withContext(Dispatchers.IO) { downsample(data, MAX_DECODED_PIXEL_SIZE) } ?: return null
-        val photo = DestinationPhoto(bitmap, attribution)
-        memory.put(key, photo)
-        return photo
+    /**
+     * [ownerRideId] tags the cached photo with the ride it was shown for, so deleting or leaving
+     * that ride can drop it (the key itself is per destination, so two rides to one place share it).
+     */
+    suspend fun photo(destinationName: String, coordinate: LatLng, ownerRideId: String? = null): DestinationPhoto? {
+        val query = destinationName.trim()
+        if (query.isEmpty()) return null
+        val loaded = ImageCache.load(
+            ImageCategory.PLACE_PHOTO, cacheKey(query, coordinate), MAX_DECODED_PIXEL_SIZE, ownerRideId,
+        ) { reval -> fetch(query, coordinate, reval) } ?: return null
+        return DestinationPhoto(loaded.bitmap, loaded.extra)
     }
 
     /**
      * Coordinates are rounded to ~100 m so tiny differences in an otherwise identical destination
      * still hit the same entry, while a genuinely edited destination (a new name, or a move of more
      * than ~100 m) produces a new key and therefore a refetch — implicit invalidation, with nothing
-     * to remember to call.
+     * to remember to call. The size is part of the key because it changes what is downloaded.
      */
     private fun cacheKey(query: String, coordinate: LatLng): String {
         val lat = (coordinate.latitude * 1000).roundToInt() / 1000.0
@@ -248,181 +126,32 @@ object PlacePhotoService {
         return "${query.lowercase()}|$lat,$lng|$MAX_DECODED_PIXEL_SIZE"
     }
 
-    // MARK: - Decoding
-
-    /**
-     * Decodes close to the size we display, in two passes.
-     *
-     * Pass 1 reads only the header (`inJustDecodeBounds`) to learn the real dimensions without
-     * allocating the bitmap. Pass 2 decodes with `inSampleSize`, which downsamples DURING decode —
-     * so a 4000px original never materialises at full size. `inSampleSize` is powers of two only,
-     * so a final exact scale bounds the longest edge precisely at [maxPixelSize] while preserving
-     * the aspect ratio.
-     */
-    private fun downsample(data: ByteArray, maxPixelSize: Int): Bitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
-        val srcLongest = max(bounds.outWidth, bounds.outHeight)
-        if (srcLongest <= 0) return null
-
-        var sample = 1
-        while (srcLongest / (sample * 2) >= maxPixelSize) sample *= 2
-
-        val decoded = BitmapFactory.decodeByteArray(
-            data, 0, data.size,
-            // ARGB_8888 rather than RGB_565: this is a large photographic hero behind lime text,
-            // and 565's banding is very visible in the sky gradients these place photos are full of.
-            BitmapFactory.Options().apply {
-                inSampleSize = sample
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            },
-        ) ?: return null
-
-        val longest = max(decoded.width, decoded.height)
-        if (longest <= maxPixelSize) return decoded
-
-        val ratio = maxPixelSize.toFloat() / longest
-        val scaled = Bitmap.createScaledBitmap(
-            decoded,
-            (decoded.width * ratio).roundToInt().coerceAtLeast(1),
-            (decoded.height * ratio).roundToInt().coerceAtLeast(1),
-            true,
-        )
-        if (scaled !== decoded) decoded.recycle()
-        return scaled
-    }
-
-    // MARK: - Disk cache
-
-    /**
-     * Photos and "this place has no photo" markers persisted under `cacheDir`, so a relaunch costs
-     * no API calls. `cacheDir` is the correct home: the OS may evict it under storage pressure and
-     * it is excluded from backups, and everything here is re-derivable.
-     */
-    private object DiskCache {
-        /** Place photos are effectively static, so entries live a long time. Empty markers expire
-         *  sooner, since a place that has no photo today may gain one. */
-        private const val PHOTO_TTL_MS = 30L * 24 * 3600 * 1000
-        private const val EMPTY_TTL_MS = 7L * 24 * 3600 * 1000
-
-        /** Bounds the directory. Riders revisit few destinations, so this is generous. */
-        private const val MAX_ENTRIES = 20
-
-        @Serializable
-        private data class Meta(val attribution: String? = null, val isEmpty: Boolean = false)
-
-        sealed interface Entry {
-            data class Photo(val data: ByteArray, val attribution: String?) : Entry
-            data object Empty : Entry
-            data object Miss : Entry
-        }
-
-        private fun directory(context: Context?): File? {
-            val ctx = context ?: return null
-            val dir = File(ctx.cacheDir, "DestinationPhotos")
-            if (!dir.exists() && !dir.mkdirs()) return null
-            return dir
-        }
-
-        /**
-         * SHA-256 of the key. A JVM `hashCode()` is not usable as a filename here — it is only
-         * stable within a process for some types and collides far too readily for a shared
-         * namespace; a digest is stable across relaunches, which is the whole point of a disk cache.
-         */
-        private fun basename(key: String): String =
-            MessageDigest.getInstance("SHA-256")
-                .digest(key.toByteArray())
-                .joinToString("") { "%02x".format(it) }
-
-        fun load(context: Context?, key: String): Entry {
-            val dir = directory(context) ?: return Entry.Miss
-            val base = basename(key)
-            val metaFile = File(dir, "$base.json")
-            if (!metaFile.exists()) return Entry.Miss
-            val meta = runCatching { json.decodeFromString(Meta.serializer(), metaFile.readText()) }
-                .getOrNull() ?: return Entry.Miss
-
-            val age = System.currentTimeMillis() - metaFile.lastModified()
-            if (age >= (if (meta.isEmpty) EMPTY_TTL_MS else PHOTO_TTL_MS)) {
-                remove(context, key)
-                return Entry.Miss
-            }
-            if (meta.isEmpty) return Entry.Empty
-
-            val imageFile = File(dir, "$base.jpg")
-            val bytes = runCatching { imageFile.readBytes() }.getOrNull() ?: return Entry.Miss
-            return Entry.Photo(bytes, meta.attribution)
-        }
-
-        fun store(context: Context?, key: String, imageData: ByteArray, attribution: String?) {
-            val dir = directory(context) ?: return
-            val base = basename(key)
-            runCatching {
-                // The ORIGINAL bytes as served, never re-compressed: a re-encode would cost quality
-                // for nothing, since the decode-time downsample already bounds what we hold.
-                File(dir, "$base.jpg").writeBytes(imageData)
-                File(dir, "$base.json").writeText(
-                    json.encodeToString(Meta.serializer(), Meta(attribution, isEmpty = false)),
-                )
-            }
-        }
-
-        fun storeEmpty(context: Context?, key: String) {
-            val dir = directory(context) ?: return
-            runCatching {
-                File(dir, "${basename(key)}.json").writeText(
-                    json.encodeToString(Meta.serializer(), Meta(null, isEmpty = true)),
-                )
-            }
-        }
-
-        fun remove(context: Context?, key: String) {
-            val dir = directory(context) ?: return
-            val base = basename(key)
-            File(dir, "$base.jpg").delete()
-            File(dir, "$base.json").delete()
-        }
-
-        /** Drops expired entries, then the oldest beyond [MAX_ENTRIES]. Run once per process — a
-         *  destination the rider no longer visits would otherwise sit here forever. */
-        fun prune(context: Context?) {
-            val dir = directory(context) ?: return
-            val metas = dir.listFiles { f -> f.name.endsWith(".json") } ?: return
-
-            val live = mutableListOf<Pair<String, Long>>()
-            for (metaFile in metas) {
-                val base = metaFile.name.removeSuffix(".json")
-                val isEmpty = runCatching {
-                    json.decodeFromString(Meta.serializer(), metaFile.readText()).isEmpty
-                }.getOrDefault(false)
-                val ttl = if (isEmpty) EMPTY_TTL_MS else PHOTO_TTL_MS
-                if (System.currentTimeMillis() - metaFile.lastModified() >= ttl) {
-                    File(dir, "$base.jpg").delete()
-                    metaFile.delete()
-                } else {
-                    live += base to metaFile.lastModified()
-                }
-            }
-
-            if (live.size <= MAX_ENTRIES) return
-            live.sortedBy { it.second }.take(live.size - MAX_ENTRIES).forEach { (base, _) ->
-                File(dir, "$base.jpg").delete()
-                File(dir, "$base.json").delete()
-            }
-        }
-    }
-
     // MARK: - Network
 
-    private suspend fun fetch(query: String, coordinate: LatLng): FetchedPhoto? {
-        lastMiss = MissReason.RESOLVED_NO_PHOTO
-        val candidate = searchPlace(query, coordinate) ?: return null
-        val data = photoData(candidate.photoName) ?: return null
-        return FetchedPhoto(data, candidate.attribution)
+    private suspend fun fetch(query: String, coordinate: LatLng, reval: ImageCache.Revalidation?): ImageCache.Fetch {
+        // An expired entry already knows which photo it is: ask for that one again (conditionally)
+        // and skip the billable search. If the reference no longer resolves, fall through and search.
+        val ref = reval?.ref
+        if (ref != null) {
+            when (val r = photoData(ref, reval)) {
+                is ImageCache.Fetch.Bytes -> return r.copy(extra = reval.extra, ref = ref)
+                ImageCache.Fetch.NotModified, ImageCache.Fetch.Failed -> return r
+                ImageCache.Fetch.NotFound -> Unit
+            }
+        }
+        val candidate = when (val s = searchPlace(query, coordinate)) {
+            is Search.Found -> s.candidate
+            Search.None -> return ImageCache.Fetch.NotFound
+            Search.Error -> return ImageCache.Fetch.Failed
+        }
+        return when (val r = photoData(candidate.photoName, null)) {
+            is ImageCache.Fetch.Bytes -> r.copy(extra = candidate.attribution, ref = candidate.photoName)
+            else -> r
+        }
     }
 
     /** Nearest place to [coordinate] matching [query] that actually has a photo. */
-    private suspend fun searchPlace(query: String, coordinate: LatLng): Candidate? = withContext(Dispatchers.IO) {
+    private suspend fun searchPlace(query: String, coordinate: LatLng): Search = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("textQuery", query)
             put("maxResultCount", 5)
@@ -454,20 +183,19 @@ object PlacePhotoService {
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
 
-        runCatching {
+        try {
             client.newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     // 5xx / 429 is Google having a bad moment; a 4xx is a real answer about this
                     // query and may legitimately mean there is nothing to find.
-                    if (resp.code >= 500 || resp.code == 429) lastMiss = MissReason.TRANSIENT
-                    return@use null
+                    return@use if (resp.code >= 500 || resp.code == 429) Search.Error else Search.None
                 }
                 val text = resp.body?.string().orEmpty()
                 // A query with no results returns `{}`, so `places` is legitimately absent.
                 val parsed = json.decodeFromString(SearchResponse.serializer(), text)
-                val places = parsed.places ?: return@use null
+                val places = parsed.places ?: return@use Search.None
 
-                places.mapNotNull { place ->
+                val best = places.mapNotNull { place ->
                     val loc = place.location ?: return@mapNotNull null
                     val photo = place.photos?.firstOrNull() ?: return@mapNotNull null
                     val out = FloatArray(1)
@@ -479,8 +207,14 @@ object PlacePhotoService {
                     val author = photo.authorAttributions?.firstNotNullOfOrNull { it.displayName }
                     distance to Candidate(photo.name, author)
                 }.minByOrNull { it.first }?.second
+                if (best != null) Search.Found(best) else Search.None
             }
-        }.onFailure { lastMiss = MissReason.TRANSIENT }.getOrNull()
+        } catch (e: IOException) {
+            Search.Error
+        } catch (e: Exception) {
+            // A malformed body: treat as a failed lookup rather than a definitive "no photo".
+            Search.Error
+        }
     }
 
     /**
@@ -488,19 +222,12 @@ object PlacePhotoService {
      * `maxWidthPx` keeps the DOWNLOAD small — the decode-time downsample then bounds the longest
      * edge, which is what protects us from a tall portrait original.
      */
-    private suspend fun photoData(photoName: String): ByteArray? = withContext(Dispatchers.IO) {
-        val url = "https://places.googleapis.com/v1/$photoName/media" +
-            "?maxWidthPx=$MAX_DECODED_PIXEL_SIZE&key=${BuildConfig.MAPS_API_KEY}"
-        runCatching {
-            client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
-                if (!resp.isSuccessful) {
-                    if (resp.code >= 500 || resp.code == 429) lastMiss = MissReason.TRANSIENT
-                    return@use null
-                }
-                resp.body?.bytes()
-            }
-        }.onFailure { lastMiss = MissReason.TRANSIENT }.getOrNull()
-    }
+    private suspend fun photoData(photoName: String, reval: ImageCache.Revalidation?): ImageCache.Fetch =
+        withContext(Dispatchers.IO) {
+            val url = "https://places.googleapis.com/v1/$photoName/media" +
+                "?maxWidthPx=$MAX_DECODED_PIXEL_SIZE&key=${BuildConfig.MAPS_API_KEY}"
+            ImageHttp.get(url, reval)
+        }
 
     // MARK: - Response models
 

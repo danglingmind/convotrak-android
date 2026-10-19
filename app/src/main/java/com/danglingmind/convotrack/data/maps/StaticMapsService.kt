@@ -1,14 +1,14 @@
 package com.danglingmind.convotrack.data.maps
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import com.danglingmind.convotrack.BuildConfig
+import com.danglingmind.convotrack.data.imagecache.ImageCache
+import com.danglingmind.convotrack.data.imagecache.ImageCategory
+import com.danglingmind.convotrack.data.imagecache.ImageHttp
 import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import kotlin.math.PI
 import kotlin.math.ln
 import kotlin.math.max
@@ -24,15 +24,23 @@ import kotlin.math.sin
  */
 object StaticMapsService {
 
-    private val client = OkHttpClient()
+    /** Static Maps caps each dimension at 640 (x2 with `scale=2`), so nothing here is ever downscaled. */
+    private const val MAX_DECODED_PIXEL_SIZE = 1280
 
     /** Static Maps caps each dimension at 640, so the hero renders at 390×420 and `scale=2` gives
      *  it a 780×840 pixel buffer — enough to stay sharp on any phone the card is viewed on. */
+    /**
+     * Cached ([ImageCategory.STATIC_MAP]) under the request URL minus the API key — i.e. the full
+     * parameter set: size, scale, map type, every style rule and the encoded path. Any change to the
+     * route or the look is therefore a different key; the key itself is deliberately NOT part of it,
+     * so rotating the API key doesn't orphan the cache. [ownerRideId] lets deleting the ride drop it.
+     */
     suspend fun snapshot(
         routeCoordinates: List<LatLng>,
         widthDp: Int = 390,
         heightDp: Int = 420,
         scale: Int = 2,
+        ownerRideId: String? = null,
     ): Bitmap? = withContext(Dispatchers.IO) {
         if (routeCoordinates.isEmpty()) return@withContext null
 
@@ -58,15 +66,13 @@ object StaticMapsService {
             // Route: bold accent (lime, DsColor.accent), the hero of the card. With a `path` and no explicit center/zoom,
             // Static Maps fits the path for us — which is exactly what we want here.
             .addQueryParameter("path", "color:0xcdef1eff|weight:5|enc:$encoded")
-            .addQueryParameter("key", BuildConfig.MAPS_API_KEY)
             .build()
 
-        runCatching {
-            client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
-                if (!resp.isSuccessful) return@use null
-                resp.body?.bytes()?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
-            }
-        }.getOrNull()
+        val cacheKey = url.toString()
+        val request = url.newBuilder().addQueryParameter("key", BuildConfig.MAPS_API_KEY).build().toString()
+        ImageCache.load(ImageCategory.STATIC_MAP, cacheKey, MAX_DECODED_PIXEL_SIZE, ownerRideId) { reval ->
+            ImageHttp.get(request, reval)
+        }?.bitmap
     }
 
     /** Evenly samples [points] down to at most [maxPoints], always keeping the ends. */

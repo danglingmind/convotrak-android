@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.data.imagecache.ImageCache
 import android.content.Intent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -292,6 +293,7 @@ fun RideLobbyScreen(
                 scope.launch {
                     try {
                         apiCall { api.leaveRide(rideId) }
+                        runCatching { ImageCache.evictOwner(rideId) }
                         // Confirmation-FIRST, deliberately: tearing the session down optimistically
                         // would drop the socket before the server's ride:participant_left broadcast —
                         // the very event every other rider's roster and map pin removal hangs off.

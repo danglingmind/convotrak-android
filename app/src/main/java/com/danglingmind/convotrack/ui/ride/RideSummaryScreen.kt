@@ -193,12 +193,14 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
                             try {
                                 val r = ride ?: runCatching { apiCall { api.getRide(rideId) } }.getOrNull()
                                 val title = r?.title ?: "ConvoTrack ride"
-                                // A card made on an earlier share is reused as-is: no re-render and
-                                // no Directions or Static Maps calls.
-                                val card = ShareSummaryCard.cachedCard(ctx, rideId) ?: run {
+                                // A card made on an earlier share of THIS summary data is reused as-is:
+                                // no re-render and no Directions or Static Maps calls. Changed data
+                                // (or an edited route) hashes to a new key and re-renders.
+                                val cardKey = ShareSummaryCard.cacheKey(title, summary, r)
+                                val card = ShareSummaryCard.cachedCard(cardKey) ?: run {
                                     val route = r?.let { runCatching { rideRoute(it) }.getOrNull() }.orEmpty()
                                     val bitmap = ShareSummaryCard.render(rideTitle = title, summary = summary, routeCoordinates = route)
-                                    ShareSummaryCard.saveCard(ctx, rideId, bitmap)
+                                    ShareSummaryCard.saveCard(cardKey, rideId, bitmap)
                                 }
                                 ShareSummaryCard.share(ctx, card, title)
                             } catch (e: CancellationException) {

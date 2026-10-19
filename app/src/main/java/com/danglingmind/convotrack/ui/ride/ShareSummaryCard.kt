@@ -12,7 +12,10 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import androidx.core.content.FileProvider
 import androidx.compose.ui.graphics.toArgb
+import com.danglingmind.convotrack.data.imagecache.ImageCache
+import com.danglingmind.convotrack.data.imagecache.ImageCategory
 import com.danglingmind.convotrack.data.maps.StaticMapsService
+import com.danglingmind.convotrack.data.net.Ride
 import com.danglingmind.convotrack.data.net.RideSummary
 import com.danglingmind.convotrack.ui.common.RideDuration
 import com.danglingmind.convotrack.ui.common.encodeQrBitmap
@@ -20,7 +23,7 @@ import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.Date
@@ -86,7 +89,7 @@ object ShareSummaryCard {
         // distance previously sat right on top of it, which is the same legibility problem as
         // fading it out.
         val contentTop = heroH + 100f
-        val map = runCatching { StaticMapsService.snapshot(routeCoordinates) }.getOrNull()
+        val map = runCatching { StaticMapsService.snapshot(routeCoordinates, ownerRideId = summary.rideId) }.getOrNull()
         if (map != null) {
             val src = Rect(0, 0, map.width, map.height)
             val dst = RectF(0f, 0f, W.toFloat(), heroH)
@@ -191,61 +194,46 @@ object ShareSummaryCard {
     }
 
     /**
-     * Bumped when the poster's layout changes, so cards cached by an older build are re-rendered
-     * instead of being shared in the old design.
+     * Bumped when the poster's layout changes. It is part of every cache key, so cards cached by an
+     * older build are never matched again (and age out of the LRU) instead of being shared in the
+     * old design.
      */
     private const val CARD_VERSION = 3
 
-    /** How many rides' cards to keep. Each is ~0.5–1 MB; older ones are dropped first. */
-    private const val MAX_CACHED_CARDS = 20
-
     /**
-     * Cached cards live in the one directory the FileProvider exposes (`res/xml/file_paths.xml`), so
-     * a cached card can be shared as-is. `cacheDir` is right for them: the OS may evict it under
-     * storage pressure, and a card is always cheap to render again.
+     * What identifies a card's pixels: the ride, the layout version, the title, EVERY field of the
+     * summary the card is drawn from, and the inputs that decide its route — the ride's stored
+     * polyline and waypoints. Using the route's inputs rather than the fetched route means a cache
+     * hit needs no Directions call, while an edited route (or a recomputed summary) is a new key and
+     * can never show the old card.
+     *
+     * The poster is a fixed 1080x1920 px canvas, so device density does not alter it and is not part
+     * of the key; the embedded map's `scale` is part of the map's own key.
      */
-    private fun cardDir(context: Context) = File(context.cacheDir, "shared").apply { mkdirs() }
-
-    /**
-     * One file per ride. A finished ride's summary can't change (completed rides aren't editable),
-     * so the card rendered once is the card forever — and because the name carries the ride id, two
-     * different rides never share a content:// URI, which is what stopped a receiver that cached by
-     * URI from re-sending the previous ride's card.
-     */
-    private fun cardFile(context: Context, rideId: String) =
-        File(cardDir(context), "ride-summary-v$CARD_VERSION-${rideId.filter { it.isLetterOrDigit() || it == '-' }}.png")
-
-    /** The previously generated card for [rideId], or null if it hasn't been made (or was evicted). */
-    suspend fun cachedCard(context: Context, rideId: String): File? = withContext(Dispatchers.IO) {
-        cardFile(context, rideId).takeIf { it.isFile && it.length() > 0 }
+    fun cacheKey(rideTitle: String, summary: RideSummary, ride: Ride?): String {
+        val route = ride?.let { r ->
+            r.routePolyline.orEmpty() + "|" + r.waypoints.sortedBy { it.order }
+                .joinToString(";") { "${it.order},${it.lat},${it.lng}" }
+        }.orEmpty()
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest("$rideTitle\u0000$summary\u0000$route".toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        return "ride-summary|${summary.rideId}|v$CARD_VERSION|$digest"
     }
 
+    /** The previously generated card for [key], or null if it hasn't been made (or was evicted). */
+    suspend fun cachedCard(key: String): File? = ImageCache.cachedFile(ImageCategory.SUMMARY, key)
+
     /**
-     * Writes [bitmap] as [rideId]'s card. Written to a temp file and renamed so an interrupted write
-     * never leaves a truncated PNG that a later share would pick up as valid.
+     * Stores [bitmap] as the card for [key]. The file lives in the one cache folder the FileProvider
+     * exposes, and its name is derived from the key — so two rides, or two versions of one ride's
+     * summary, never share a content:// URI (which is what stopped a receiver that cached by URI
+     * from re-sending a previous card).
      */
-    suspend fun saveCard(context: Context, rideId: String, bitmap: Bitmap): File = withContext(Dispatchers.IO) {
-        val target = cardFile(context, rideId)
-        val temp = File(target.parentFile, "${target.name}.tmp")
-        FileOutputStream(temp).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        if (!temp.renameTo(target)) {
-            temp.copyTo(target, overwrite = true)
-            temp.delete()
+    suspend fun saveCard(key: String, rideId: String, bitmap: Bitmap): File =
+        ImageCache.storeFile(ImageCategory.SUMMARY, key, owner = rideId) {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
-        pruneCache(target.parentFile!!)
-        target
-    }
-
-    /** Keeps the newest [MAX_CACHED_CARDS] cards and drops leftovers from older builds. */
-    private fun pruneCache(dir: File) {
-        val files = dir.listFiles().orEmpty()
-        files.filter { !it.name.startsWith("ride-summary-v$CARD_VERSION-") || it.name.endsWith(".tmp") }
-            .forEach { it.delete() }
-        files.filter { it.exists() && it.name.endsWith(".png") }
-            .sortedByDescending { it.lastModified() }
-            .drop(MAX_CACHED_CARDS)
-            .forEach { it.delete() }
-    }
 
     /** Hands a saved card to the share sheet. */
     suspend fun share(context: Context, card: File, rideTitle: String) {
