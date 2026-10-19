@@ -40,6 +40,8 @@ import com.danglingmind.convotrack.ui.ride.RideLobbyScreen
 import com.danglingmind.convotrack.ui.ride.RideNavigationScreen
 import com.danglingmind.convotrack.ui.ride.RideSummaryScreen
 import com.danglingmind.convotrack.ui.splash.SplashScreen
+import com.danglingmind.convotrack.ui.common.Paywall
+import com.danglingmind.convotrack.ui.common.PaywallSource
 
 // Top-level navigation. Mirrors the iOS launch flow:
 // Splash (3.5s) -> Auth -> MainTab, with the ride flow pushed on top.
@@ -54,6 +56,7 @@ object Routes {
     const val RIDE_SUMMARY = "ride_summary"
     const val EDIT_RIDE = "edit_ride"
     const val MEMBERSHIP = "membership"
+    fun membership(source: PaywallSource) = "$MEMBERSHIP?source=${source.name}"
 
     // The whole ride flow lives inside one nested graph so the lobby and the navigation screen
     // share a single RideSessionViewModel (and therefore one socket session + roster) that
@@ -81,6 +84,16 @@ fun AppRoot(
     // is the ride this device is currently broadcasting for. Anything else (stale notification,
     // unknown id, ride already over) is ignored. Waits while splash/auth are still on screen.
     val backStack by nav.currentBackStackEntryAsState()
+
+    // The one paywall entry point (iOS `PaywallPresenter`): any screen calls `Paywall.present`.
+    // A second request while the paywall is already up is dropped rather than stacking another.
+    LaunchedEffect(Unit) {
+        Paywall.requests.collect { source ->
+            if (nav.currentDestination?.route?.startsWith(Routes.MEMBERSHIP) != true) {
+                nav.navigate(Routes.membership(source))
+            }
+        }
+    }
     LaunchedEffect(openRideId, backStack) {
         val id = openRideId ?: return@LaunchedEffect
         val route = backStack?.destination?.route ?: return@LaunchedEffect
@@ -155,7 +168,7 @@ fun AppRoot(
                     onCreateRide = { nav.navigate(Routes.CREATE_RIDE) },
                     onOpenLobby = { rideId -> nav.navigate(Routes.rideGraph(rideId)) },
                     onOpenSummary = { rideId -> nav.navigate(Routes.summary(rideId)) },
-                    onOpenMembership = { nav.navigate(Routes.MEMBERSHIP) },
+                    onOpenMembership = { Paywall.present(PaywallSource.Profile) },
                     onSignOut = {
                         ServiceLocator.socket.disconnect()
                         nav.navigate(Routes.AUTH) {
@@ -166,7 +179,7 @@ fun AppRoot(
             }
             composable(Routes.CREATE_RIDE) {
                 CreateRideScreen(
-                    onOpenMembership = { nav.navigate(Routes.MEMBERSHIP) },
+                    onOpenMembership = { Paywall.present(PaywallSource.RiderCap) },
                     onBack = { nav.popBackStack() },
                     onCreated = { rideId ->
                         nav.navigate(Routes.rideGraph(rideId)) {
@@ -224,6 +237,8 @@ fun AppRoot(
                         onEndRide = {
                             // The ride is over — drop the realtime connection before the summary.
                             sessionVm.endSession()
+                            // A finished ride is the free-plan nudge's best moment (`UpsellPolicy`).
+                            ServiceLocator.upsell.recordRideCompleted()
                             nav.navigate(Routes.summary(rideId)) {
                                 popUpTo(Routes.MAIN)
                             }
@@ -238,7 +253,7 @@ fun AppRoot(
                     val sessionVm = rideSessionViewModel(nav, entry, rideId)
                     EditRideScreen(
                         rideId = rideId,
-                        onOpenMembership = { nav.navigate(Routes.MEMBERSHIP) },
+                        onOpenMembership = { Paywall.present(PaywallSource.RiderCap) },
                         onBack = { nav.popBackStack() },
                         onSaved = {
                             sessionVm.refreshRide()
@@ -272,8 +287,14 @@ fun AppRoot(
                     },
                 )
             }
-            composable(Routes.MEMBERSHIP) {
-                MembershipScreen(onClose = { nav.popBackStack() })
+            composable(
+                route = "${Routes.MEMBERSHIP}?source={source}",
+                arguments = listOf(navArgument("source") { type = NavType.StringType; nullable = true; defaultValue = null }),
+            ) { entry ->
+                MembershipScreen(
+                    source = PaywallSource.fromRoute(entry.arguments?.getString("source")),
+                    onClose = { nav.popBackStack() },
+                )
             }
         }
     }

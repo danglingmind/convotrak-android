@@ -232,6 +232,29 @@ data class MembershipPlanInfo(
     val endsAt: String? = null,
 )
 
+/**
+ * App-level free trial from `GET /users/me` (iOS `TrialInfo`). Display only — the server's 403
+ * `TRIAL_EXPIRED` is what actually decides whether a rider may create or join.
+ */
+@Serializable
+data class TrialInfo(
+    /** ISO-8601 end of the trial; null = not started (enforcement off, or a Pro rider). */
+    val endsAt: String? = null,
+    val isActive: Boolean = false,
+    /** false = informational only; rides aren't blocked when it ends. */
+    val enforced: Boolean = false,
+) {
+    val endsAtMillis: Long?
+        get() = endsAt?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
+}
+
+@Serializable
+data class UsageInfo(
+    val ridesUsedThisMonth: Int = 0,
+    /** null = unlimited. */
+    val monthlyLimit: Int? = null,
+)
+
 @Serializable
 data class UserMeResponse(
     val userId: String,
@@ -245,6 +268,9 @@ data class UserMeResponse(
     val emailContactVisible: Boolean = false,
     val notifyNearbyRides: Boolean = true,
     val plan: MembershipPlanInfo,
+    /** null from servers that predate the app-level trial. */
+    val trial: TrialInfo? = null,
+    val usage: UsageInfo? = null,
 )
 
 @Serializable

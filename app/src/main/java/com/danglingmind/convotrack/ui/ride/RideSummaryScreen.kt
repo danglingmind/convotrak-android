@@ -1,5 +1,11 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.designsystem.PromoBanner
+import com.danglingmind.convotrack.ui.common.rememberPlanState
+import com.danglingmind.convotrack.ui.common.PlanState
+import com.danglingmind.convotrack.ui.common.PaywallSource
+import com.danglingmind.convotrack.ui.common.Paywall
+import com.danglingmind.convotrack.ui.common.Access
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,6 +90,7 @@ import java.util.Locale
 @Composable
 fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
     val api = remember { ServiceLocator.api }
+    val plan = rememberPlanState()
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     var state by remember { mutableStateOf<UiState<RideSummary>>(UiState.Loading) }
@@ -147,6 +154,15 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
                         is UiState.Loading -> LoadingState()
                         is UiState.Error -> ErrorState(s.message, onRetry = { scope.launch { load() } })
                         is UiState.Success -> SummaryContent(s.data)
+                    }
+                    // Right after a ride is when Pro is easiest to want.
+                    if (!plan.isPremium) {
+                        Spacer(Modifier.height(20.dp))
+                        PromoBanner(
+                            message = summaryPromoMessage(plan),
+                            actionLabel = "Go Pro",
+                            onAction = { Paywall.present(PaywallSource.RideSummary) },
+                        )
                     }
                 }
             }
@@ -346,4 +362,13 @@ private fun AwardRow(p: SummaryParticipant) {
             }
         }
     }
+}
+
+
+private fun summaryPromoMessage(plan: PlanState): String = when (plan.access) {
+    is Access.Trial -> plan.trialDaysLeft?.takeIf { it > 1 }
+        ?.let { "Good ride. $it days left in your trial — go Pro to keep riding." }
+        ?: "Good ride. Your free trial ends today — go Pro to keep riding."
+    Access.TrialExpired -> "Good ride. Go Pro to start the next one."
+    Access.Pro, Access.Free -> "Bigger packs and every ride kept, with Pro."
 }

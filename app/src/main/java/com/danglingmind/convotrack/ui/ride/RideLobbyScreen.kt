@@ -1,5 +1,11 @@
 package com.danglingmind.convotrack.ui.ride
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material.icons.filled.Lock
+import com.danglingmind.convotrack.ui.common.rememberPlanState
+import com.danglingmind.convotrack.ui.common.PaywallSource
+import com.danglingmind.convotrack.ui.common.Paywall
 import com.danglingmind.convotrack.data.imagecache.ImageCache
 import android.content.Intent
 import androidx.compose.foundation.Image
@@ -370,6 +376,7 @@ private fun LobbyContent(
     onShowQr: (String) -> Unit,
 ) {
     val api = remember { ServiceLocator.api }
+    val plan = rememberPlanState()
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     val session = sessionVm.session
@@ -449,6 +456,9 @@ private fun LobbyContent(
                                 }
                             }
                             Text(readyStatusText, style = DsType.badgeSmall, color = DsColor.textMuted, maxLines = 1)
+                            if (amLeader && !plan.isPremium && riders.isNotEmpty()) {
+                                RiderCapCount(riders.size, ride.maxAllowedParticipants)
+                            }
                         }
                         SquareIconButton(Icons.Filled.Link, "Share invite", { shareInvite(ctx, ride.inviteCode, ride.title) }, size = 36.dp)
                         SquareIconButton(Icons.Filled.QrCode2, "Show QR code", { onShowQr(ride.inviteCode) }, size = 36.dp)
@@ -848,3 +858,21 @@ private fun shareInvite(ctx: android.content.Context, inviteCode: String, title:
     ctx.startActivity(Intent.createChooser(intent, "Share invite"))
 }
 
+
+
+/** Free leader only: how full the ride is against the plan's cap. Within one seat of the cap it
+ *  turns lime and opens the paywall for bigger packs (iOS parity). */
+@Composable
+private fun RiderCapCount(count: Int, cap: Int) {
+    val nearCap = count >= cap - 1
+    Row(
+        Modifier
+            .then(if (nearCap) Modifier.dsClickable { Paywall.present(PaywallSource.RiderCap) } else Modifier)
+            .semantics(mergeDescendants = true) { contentDescription = "$count of $cap riders" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (nearCap) Icon(Icons.Filled.Lock, null, tint = DsColor.accent, modifier = Modifier.size(11.dp))
+        Text("$count/$cap RIDERS", style = DsType.badgeSmall, color = if (nearCap) DsColor.accent else DsColor.textMuted, maxLines = 1)
+    }
+}

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -50,6 +51,7 @@ import com.danglingmind.convotrack.data.net.InviteCodeResponse
 import com.danglingmind.convotrack.data.net.UserFacingError
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.isNotFoundError
+import com.danglingmind.convotrack.data.net.isPlanLimit
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.designsystem.DsColor
@@ -74,6 +76,8 @@ fun JoinRideSheet(
     onJoined: (rideId: String) -> Unit,
     onScanQr: () -> Unit,
     prefillCode: String = "",
+    /** The join was refused for a plan reason; the host closes this sheet and opens the paywall. */
+    onSeePro: (code: String) -> Unit = {},
 ) {
     // Seeded from a deep link when present; the LaunchedEffect(code) below then auto-verifies it,
     // mirroring iOS JoinRideView(prefillCode:).
@@ -82,6 +86,8 @@ fun JoinRideSheet(
     var lookingUp by remember { mutableStateOf(false) }
     var joining by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    /** The last join was refused for a plan reason (trial over / monthly rides used up). */
+    var blockedByPlan by remember { mutableStateOf(false) }
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
 
@@ -91,6 +97,7 @@ fun JoinRideSheet(
     LaunchedEffect(code) {
         preview = null
         error = null
+        blockedByPlan = false
         if (code.length == 6) {
             lookingUp = true
             delay(250) // debounce
@@ -120,6 +127,7 @@ fun JoinRideSheet(
                     onJoined(p.rideId)
                 } else {
                     error = e.riderMessage
+                    blockedByPlan = e.isPlanLimit
                     joining = false
                 }
             } catch (e: Exception) {
@@ -142,6 +150,9 @@ fun JoinRideSheet(
                 PrimaryButton("Join ride", onClick = { join() }, icon = Icons.Filled.PersonAdd, loading = joining)
             }
             if (error != null) InlineError(error!!)
+            if (blockedByPlan) {
+                PrimaryButton("See Pro plans", onClick = { onSeePro(code) }, icon = Icons.Filled.WorkspacePremium)
+            }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeading("Enter invite code", compact = true)

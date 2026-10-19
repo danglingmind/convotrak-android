@@ -30,6 +30,8 @@ object UserFacingError {
     fun messageForCode(code: String): String? = when (code) {
 
         // Plan limits
+        "TRIAL_EXPIRED" ->
+            "Your free trial has ended. Go Pro to keep creating and joining rides."
         "QUOTA_EXCEEDED" ->
             "You've hit your plan's ride limit. Your enthusiasm is outriding your subscription — upgrade to keep the convoys coming."
 
@@ -133,7 +135,7 @@ object UserFacingError {
     /** Every code we have wording for, used for substring matching when a code arrives wrapped in
      *  other text. Kept next to [messageForCode] so the two can't drift. */
     val KNOWN_CODES = listOf(
-        "QUOTA_EXCEEDED", "NOT_LEADER", "NOT_AUTHORIZED", "UNAUTHORIZED", "INVALID_TOKEN",
+        "TRIAL_EXPIRED", "QUOTA_EXCEEDED", "NOT_LEADER", "NOT_AUTHORIZED", "UNAUTHORIZED", "INVALID_TOKEN",
         "NOT_IN_RIDE", "NOT_A_PARTICIPANT", "CANNOT_REMOVE_LEADER", "LEADER_CANNOT_LEAVE",
         "RIDE_FULL", "ALREADY_JOINED", "INVITE_CODE_NOT_FOUND", "RIDE_NOT_FOUND", "RIDE_ENDED",
         "RIDE_NOT_COMPLETED", "RIDE_NOT_ACTIVE_OR_PAUSED", "RIDE_NOT_ACTIVE", "RIDE_NOT_IN_LOBBY",
@@ -169,6 +171,13 @@ val Throwable.riderMessage: String
         is IOException -> UserFacingError.OFFLINE
         else -> UserFacingError.GENERIC
     }
+
+/**
+ * True when the server refused a create/join because of the rider's plan — the trial ended or the
+ * monthly rides ran out (iOS `isPlanLimit`). Callers offer the paywall instead of a dead end.
+ */
+val Throwable.isPlanLimit: Boolean
+    get() = this is ApiException && message.orEmpty().let { it.contains("TRIAL_EXPIRED") || it.contains("QUOTA_EXCEEDED") }
 
 /**
  * `apiCall` collapses IOExceptions into `ApiException(e.message)`, so by the time a connectivity

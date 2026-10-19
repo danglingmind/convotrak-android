@@ -22,7 +22,16 @@ import com.danglingmind.convotrack.ui.home.HomeScreen
 import com.danglingmind.convotrack.ui.join.JoinRideSheet
 import com.danglingmind.convotrack.ui.profile.ProfileScreen
 import com.danglingmind.convotrack.ui.scan.QRScannerScreen
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.collectAsState
+import com.danglingmind.convotrack.data.net.isPlanLimit
+import com.danglingmind.convotrack.data.upsell.AppForeground
+import com.danglingmind.convotrack.data.upsell.UpsellPolicy
+import com.danglingmind.convotrack.ui.common.Paywall
+import com.danglingmind.convotrack.ui.common.PaywallSource
+import com.danglingmind.convotrack.ui.common.PlanGate
+import com.danglingmind.convotrack.ui.common.rememberPlanState
 
 @Composable
 fun MainScreen(
@@ -40,9 +49,23 @@ fun MainScreen(
     var activeTab by rememberSaveable { mutableStateOf(DsTab.Home) }
     var showJoin by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
+    var showNudge by remember { mutableStateOf(false) }
     var prefillCode by remember { mutableStateOf("") }
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
+    val plan = rememberPlanState()
+
+    /** Invite link / QR / manual join. Once the trial is over the paywall comes first; the code is
+     *  kept so going Pro drops the rider straight into the join sheet (iOS `openJoin`). */
+    fun openJoin(code: String) {
+        if (plan.mustUpgradeToRide) {
+            PlanGate.joinAfterUpgradeCode = code.ifEmpty { null }
+            Paywall.present(PaywallSource.JoinBlocked)
+        } else {
+            prefillCode = code
+            showJoin = true
+        }
+    }
 
     // A ride-invite deep link (convotrack://join/CODE or the https App Link)
     // opens the join sheet with the code prefilled. Consumed once so rotation
@@ -50,9 +73,41 @@ fun MainScreen(
     LaunchedEffect(initialInviteCode) {
         val code = initialInviteCode
         if (!code.isNullOrEmpty()) {
+            openJoin(code)
+            onInviteConsumed()
+        }
+    }
+
+    // A rider who went Pro from a blocked invite carries straight on into that ride.
+    LaunchedEffect(plan.isPremium) {
+        val code = PlanGate.joinAfterUpgradeCode
+        if (plan.isPremium && code != null) {
+            PlanGate.joinAfterUpgradeCode = null
             prefillCode = code
             showJoin = true
-            onInviteConsumed()
+        }
+    }
+
+    // Refresh plan/trial on every foreground; on a real app open, consider the nudge once the
+    // server state is fresh (iOS `MainTabView.handleForeground`).
+    val foregrounds by AppForeground.foregrounds.collectAsState()
+    LaunchedEffect(foregrounds) {
+        PlanGate.refresh()
+        if (!AppForeground.consumeAppOpen()) return@LaunchedEffect
+        delay(1500)
+        val busy = showJoin || showScanner || showNudge || initialInviteCode != null ||
+            ServiceLocator.location.activeRideId.value != null
+        if (busy) return@LaunchedEffect
+        val upsell = ServiceLocator.upsell
+        // Read the freshest access, not the value captured when this effect started.
+        val access = PlanGate.access(
+            isPremium = ServiceLocator.billing.isPremium.value || PlanGate.serverPlan.value?.isPremium == true,
+            trial = PlanGate.trial.value,
+            nowMillis = System.currentTimeMillis(),
+        )
+        if (UpsellPolicy.shouldShowAppOpenNudge(upsell.inputs(access))) {
+            upsell.recordNudgeShown()
+            showNudge = true
         }
     }
 
@@ -67,8 +122,10 @@ fun MainScreen(
         when (activeTab) {
             DsTab.History -> RideHistoryScreen(onOpenSummary = onOpenSummary, onOpenRide = onOpenLobby)
             DsTab.Home -> HomeScreen(
-                onCreateRide = onCreateRide,
-                onJoinRide = { showJoin = true },
+                onCreateRide = {
+                    if (plan.mustUpgradeToRide) Paywall.present(PaywallSource.CreateBlocked) else onCreateRide()
+                },
+                onJoinRide = { openJoin("") },
                 onOpenRide = onOpenLobby,
                 onSeeAllHistory = { activeTab = DsTab.History },
                 onOpenSummary = onOpenSummary,
@@ -97,6 +154,32 @@ fun MainScreen(
                     showJoin = false
                     showScanner = true
                 },
+                onSeePro = { code ->
+                    showJoin = false
+                    prefillCode = ""
+                    PlanGate.joinAfterUpgradeCode = code.takeIf { it.length == 6 }
+                    Paywall.present(PaywallSource.JoinBlocked)
+                },
+            )
+        }
+    }
+
+    if (showNudge) {
+        // A swipe-down counts as "not now".
+        DsBottomSheet(onDismiss = {
+            showNudge = false
+            ServiceLocator.upsell.recordNudgeDismissed()
+        }) {
+            ProNudgeContent(
+                plan = plan,
+                onSeePlans = {
+                    showNudge = false
+                    Paywall.present(PaywallSource.AppOpen)
+                },
+                onNotNow = {
+                    showNudge = false
+                    ServiceLocator.upsell.recordNudgeDismissed()
+                },
             )
         }
     }
@@ -108,12 +191,24 @@ fun MainScreen(
             onCode = { code ->
                 showScanner = false
                 scope.launch {
-                    val rideId = runCatching {
+                    if (plan.mustUpgradeToRide) {
+                        openJoin(code)
+                        return@launch
+                    }
+                    val result = runCatching {
                         val ride = apiCall { api.getRideByInviteCode(code) }
                         apiCall { api.joinRide(ride.rideId) }
                         ride.rideId
-                    }.getOrNull()
-                    if (rideId != null) onOpenLobby(rideId) else showJoin = true
+                    }
+                    val rideId = result.getOrNull()
+                    when {
+                        rideId != null -> onOpenLobby(rideId)
+                        result.exceptionOrNull()?.isPlanLimit == true -> {
+                            PlanGate.joinAfterUpgradeCode = code
+                            Paywall.present(PaywallSource.JoinBlocked)
+                        }
+                        else -> showJoin = true
+                    }
                 }
             },
         )

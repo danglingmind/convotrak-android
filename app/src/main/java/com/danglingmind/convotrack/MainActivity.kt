@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack
 
+import com.danglingmind.convotrack.ui.common.PlanGate
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -30,6 +31,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         deepLinkCode.value = inviteCodeFrom(intent)
         openRideId.value = intent?.getStringExtra(EXTRA_OPEN_RIDE_ID)
+        // Debug only: `adb shell am start -n …/.MainActivity --es paywallState trial|lastday|expired|pro|free`
+        // forces an access state for design review (iOS `-paywallState`).
+        if (BuildConfig.DEBUG) PlanGate.debugAccessOverride = intent?.getStringExtra("paywallState")
         setContent {
             ConvoTrackTheme {
                 AppRoot(

@@ -51,6 +51,11 @@ import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
+import com.danglingmind.convotrack.ui.common.Access
+import com.danglingmind.convotrack.ui.common.PaywallSource
+import com.danglingmind.convotrack.ui.common.PlanBadgeButton
+import com.danglingmind.convotrack.ui.common.PlanState
+import com.danglingmind.convotrack.ui.common.rememberPlanState
 import com.danglingmind.convotrack.ui.common.UiState
 import com.danglingmind.convotrack.ui.common.formatKm
 import com.danglingmind.convotrack.ui.common.rememberAvatarPhoto
@@ -118,8 +123,7 @@ fun ProfileScreen(
                     name = me.name.ifBlank { me.username ?: "Rider" },
                     avatarUrl = me.avatarUrl,
                     userId = me.userId,
-                    subtitle = (if (premium) "CONVOTRACK PRO" else "FREE PLAN") +
-                        " · $count RIDE" + (if (count == 1) "" else "S"),
+                    subtitle = "$count RIDE" + (if (count == 1) "" else "S"),
                     isPremium = premium,
                     rides = count,
                     totalKm = formatKm(rides.sumOf { it.distanceMeters }),
@@ -132,6 +136,7 @@ fun ProfileScreen(
     }
 
     LaunchedEffect(Unit) { load() }
+    val plan = rememberPlanState()
 
     DsScreen {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -154,6 +159,7 @@ fun ProfileScreen(
                         is UiState.Error -> ErrorState(s.message, onRetry = { scope.launch { load() } })
                         is UiState.Success -> ProfileContent(
                             data = s.data,
+                            plan = plan,
                             onOpenMembership = onOpenMembership,
                             onSignOut = { scope.launch { auth.signOut(); onSignedOut() } },
                             onDeleteAccount = { showDeleteConfirm = true },
@@ -202,9 +208,19 @@ fun ProfileScreen(
     }
 }
 
+/** The trial leads; the generic pitch is only for riders with no enforced trial (iOS parity). */
+private fun profilePromoMessage(plan: PlanState): String = when (plan.access) {
+    Access.Pro -> "Your membership is active"
+    is Access.Trial -> plan.trialDaysLeft?.takeIf { it > 1 }?.let { "$it days left in your free trial" }
+        ?: "Your free trial ends today"
+    Access.TrialExpired -> "Your free trial has ended. Go Pro to keep riding."
+    Access.Free -> "Unlimited rides & bigger packs"
+}
+
 @Composable
 private fun ProfileContent(
     data: ProfileData,
+    plan: PlanState,
     onOpenMembership: () -> Unit,
     onSignOut: () -> Unit,
     onDeleteAccount: () -> Unit,
@@ -218,7 +234,10 @@ private fun ProfileContent(
         Spacer(Modifier.height(14.dp))
         Text(data.name, style = DsType.titleLarge, color = DsColor.textPrimary, textAlign = TextAlign.Center)
         Spacer(Modifier.height(4.dp))
-        Text(data.subtitle, style = DsType.badgeSmall, color = DsColor.textMuted)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PlanBadgeButton(plan, PaywallSource.Profile)
+            Text(data.subtitle, style = DsType.badgeSmall, color = DsColor.textMuted)
+        }
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -242,15 +261,15 @@ private fun ProfileContent(
             Text("CONVOTRACK PRO", style = DsType.fieldLabel, color = DsColor.accent)
             Spacer(Modifier.height(2.dp))
             Text(
-                if (data.isPremium) "Your membership is active" else "Unlimited rides & advanced telemetry",
+                profilePromoMessage(plan),
                 style = DsType.bodySmall,
                 color = DsColor.textPrimary,
             )
         }
         PillButton(
-            if (data.isPremium) "Active" else "Upgrade",
+            if (plan.isPremium) "Active" else "Go Pro",
             onClick = onOpenMembership,
-            tone = if (data.isPremium) PillTone.Tonal else PillTone.Primary,
+            tone = if (plan.isPremium) PillTone.Tonal else PillTone.Primary,
         )
     }
 

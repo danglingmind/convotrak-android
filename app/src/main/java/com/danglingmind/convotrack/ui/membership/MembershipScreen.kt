@@ -58,6 +58,10 @@ import com.danglingmind.convotrack.data.billing.DisplayPlan
 import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.UserFacingError
 import com.danglingmind.convotrack.di.ServiceLocator
+import com.danglingmind.convotrack.ui.common.Access
+import com.danglingmind.convotrack.ui.common.PaywallSource
+import com.danglingmind.convotrack.ui.common.PlanState
+import com.danglingmind.convotrack.ui.common.rememberPlanState
 import com.danglingmind.convotrack.ui.designsystem.DsColor
 import com.danglingmind.convotrack.ui.designsystem.DsScreen
 import com.danglingmind.convotrack.ui.designsystem.DsShape
@@ -85,7 +89,8 @@ private val benefits = listOf(
 )
 
 @Composable
-fun MembershipScreen(onClose: () -> Unit) {
+fun MembershipScreen(onClose: () -> Unit, source: PaywallSource = PaywallSource.Profile) {
+    val planState = rememberPlanState()
     val context = LocalContext.current
     val billing = remember { ServiceLocator.billing }
     var selectedProductId by remember { mutableStateOf<String?>(null) }
@@ -141,7 +146,7 @@ fun MembershipScreen(onClose: () -> Unit) {
                     Modifier.navigationBarsPadding().padding(horizontal = DsSpace.gutter).padding(bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(22.dp),
                 ) {
-                    HeroSection()
+                    HeroSection(heroTitle(planState), heroSubtitle(planState, source))
                     BenefitsGrid()
                     PlansSection(
                         plans = plans,
@@ -151,6 +156,7 @@ fun MembershipScreen(onClose: () -> Unit) {
                         onSelect = { selectedProductId = it },
                     )
                     CtaStack(
+                        terms = trialTerms(planState),
                         selected = plans.firstOrNull { it.productId == selectedProductId },
                         error = error ?: restoreNotice,
                         restoring = restoring,
@@ -185,12 +191,55 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
+// The trial leads: while it runs the headline is the countdown, once it ends it's the wall. Monthly
+// rides and the rider cap are secondary and only surface through the subtitle (iOS parity).
+private fun heroTitle(plan: PlanState): String = when (plan.access) {
+    is Access.Trial -> plan.trialDaysLeft?.takeIf { it > 1 }?.let { "$it days left in your free trial" }
+        ?: "Your free trial ends today"
+    Access.TrialExpired -> "Your free trial has ended"
+    Access.Pro, Access.Free -> "ConvoTrack Pro"
+}
+
+private fun heroSubtitle(plan: PlanState, source: PaywallSource): String {
+    // A limit the rider just ran into explains itself better than the generic pitch.
+    when (source) {
+        PaywallSource.RiderCap -> return "Pro lifts the ${plan.freePlan?.maxRidersPerRide ?: plan.riderCap}-rider limit. Bring your whole crew."
+        PaywallSource.QuotaExceeded -> plan.freePlan?.monthlyLimit?.let {
+            return "You've used your $it rides this month. Pro has no monthly limit."
+        }
+        else -> Unit
+    }
+    return when (plan.access) {
+        is Access.Trial -> "Go Pro to keep creating and joining rides after your trial."
+        Access.TrialExpired -> "Go Pro to keep creating and joining rides with your crew."
+        Access.Pro, Access.Free -> "Your rides. No limits."
+    }
+}
+
+/** The trial's terms, from the server — secondary, under the purchase button. */
+private fun trialTerms(plan: PlanState): String? {
+    val free = plan.freePlan
+    return when (plan.access) {
+        Access.TrialExpired -> "Creating and joining rides needs Pro now that your free trial has ended."
+        is Access.Trial -> if (free?.monthlyLimit != null) {
+            "The free trial includes up to ${free.monthlyLimit} rides and ${free.maxRidersPerRide} riders per ride. Creating and joining rides needs Pro once it ends."
+        } else {
+            "Creating and joining rides needs Pro once the free trial ends."
+        }
+        Access.Free -> free?.let { p ->
+            p.monthlyLimit?.let { "Free plan: $it rides a month, up to ${p.maxRidersPerRide} riders per ride." }
+                ?: "Free plan: up to ${p.maxRidersPerRide} riders per ride."
+        }
+        Access.Pro -> null
+    }
+}
+
 @Composable
-private fun HeroSection() {
+private fun HeroSection(title: String, subtitle: String) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         IconDisc(Icons.Filled.WorkspacePremium, size = 72.dp, iconSize = 34.dp, background = DsColor.accentTint)
-        Text("ConvoTrack Pro", style = DsType.heroTitleCompact, color = DsColor.textPrimary)
-        Text("Your rides. No limits.", style = DsType.body, color = DsColor.textSecondary)
+        Text(title, style = DsType.heroTitleCompact, color = DsColor.textPrimary, textAlign = TextAlign.Center)
+        Text(subtitle, style = DsType.body, color = DsColor.textSecondary, textAlign = TextAlign.Center)
     }
 }
 
@@ -303,6 +352,7 @@ private fun PlanCard(
 
 @Composable
 private fun CtaStack(
+    terms: String?,
     selected: DisplayPlan?,
     error: String?,
     restoring: Boolean,
@@ -322,6 +372,7 @@ private fun CtaStack(
         if (error != null) InlineError(error)
         // Disabled until a plan is actually loaded and selected.
         PrimaryButton(ctaLabel, onClick = onPurchase, enabled = selected != null)
+        if (terms != null) Text(terms, style = DsType.helper, color = DsColor.textMuted, textAlign = TextAlign.Center)
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(Icons.Filled.VerifiedUser, null, tint = DsColor.textMuted, modifier = Modifier.size(14.dp))

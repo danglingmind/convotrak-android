@@ -18,6 +18,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.HourglassBottom
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +36,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -317,4 +324,110 @@ fun DetailsList(rows: List<DetailRow>, modifier: Modifier = Modifier) {
 fun Modifier.accentBar(color: Color = DsColor.accent): Modifier = this.drawWithContent {
     drawContent()
     drawRect(color, size = Size(3.dp.toPx(), size.height))
+}
+
+// MARK: - Plan badge / promo banner
+
+/** Membership state at a glance (iOS `DSPlanBadge`). */
+sealed interface PlanBadgeKind {
+    data object Pro : PlanBadgeKind
+    /** [daysLeft] 1 = last day (amber). */
+    data class Trial(val daysLeft: Int) : PlanBadgeKind
+    data object GoPro : PlanBadgeKind
+}
+
+/**
+ * PRO (earned: quiet lime outline), TRIAL · 2D (countdown; amber on the last day) or GO PRO (the
+ * one filled variant — it's an invitation, not a label). Pass [onClick] to make it a 48dp target.
+ */
+@Composable
+fun PlanBadge(kind: PlanBadgeKind, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    val lastDay = kind is PlanBadgeKind.Trial && kind.daysLeft <= 1
+    val (label, icon) = when (kind) {
+        PlanBadgeKind.Pro -> "PRO" to Icons.Filled.WorkspacePremium
+        is PlanBadgeKind.Trial -> (if (lastDay) "TRIAL · TODAY" else "TRIAL · ${kind.daysLeft}D") to Icons.Filled.HourglassBottom
+        PlanBadgeKind.GoPro -> "GO PRO" to Icons.Filled.AutoAwesome
+    }
+    val ink = when (kind) {
+        PlanBadgeKind.Pro -> DsColor.accent
+        is PlanBadgeKind.Trial -> if (lastDay) DsColor.warning else DsColor.textPrimary
+        PlanBadgeKind.GoPro -> DsColor.onAccent
+    }
+    val fill = when (kind) {
+        PlanBadgeKind.Pro -> DsColor.accentTint
+        is PlanBadgeKind.Trial -> if (lastDay) DsColor.warningTint else DsColor.card
+        PlanBadgeKind.GoPro -> DsColor.accent
+    }
+    val stroke = when (kind) {
+        PlanBadgeKind.Pro -> DsColor.accentBorder
+        is PlanBadgeKind.Trial -> if (lastDay) DsColor.warning.copy(alpha = 0.45f) else DsColor.borderSubtle
+        PlanBadgeKind.GoPro -> Color.Transparent
+    }
+    val description = when (kind) {
+        PlanBadgeKind.Pro -> "ConvoTrack Pro"
+        is PlanBadgeKind.Trial -> if (lastDay) "Free trial, ends today" else "Free trial, ${kind.daysLeft} days left"
+        PlanBadgeKind.GoPro -> "Go Pro"
+    }
+    Box(
+        modifier
+            .then(if (onClick != null) Modifier.heightIn(min = 48.dp).dsClickable(onClick = onClick) else Modifier)
+            .semantics(mergeDescendants = true) { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            Modifier
+                .heightIn(min = 26.dp)
+                .clip(DsShape.pill)
+                .background(fill)
+                .border(1.dp, stroke, DsShape.pill)
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(icon, null, tint = ink, modifier = Modifier.size(13.dp))
+            Text(label, style = DsType.badgeSmall, color = ink, maxLines = 1)
+        }
+    }
+}
+
+
+/**
+ * "CONVOTRACK PRO · message · [ACTION]" tinted card (iOS `DSPromoBanner`). [onDismiss] adds a close
+ * button; leave it null for banners the rider shouldn't hide.
+ */
+@Composable
+fun PromoBanner(
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+    eyebrow: String = "CONVOTRACK PRO",
+    subscribed: Boolean = false,
+    onDismiss: (() -> Unit)? = null,
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .glassSurface(DsShape.lg, DsColor.accentTint, DsColor.accentBorder)
+            .dsClickable(pressedScale = 0.99f, onClick = onAction)
+            .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = if (onDismiss != null) 4.dp else 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        IconDisc(Icons.Filled.WorkspacePremium, size = 40.dp, background = DsColor.accentTonal)
+        Column(Modifier.weight(1f)) {
+            Text(eyebrow, style = DsType.fieldLabel, color = DsColor.accent, maxLines = 1)
+            Spacer(Modifier.height(2.dp))
+            Text(message, style = DsType.bodySmall, color = DsColor.textPrimary)
+        }
+        PillButton(actionLabel, onClick = onAction, tone = if (subscribed) PillTone.Tonal else PillTone.Primary)
+        if (onDismiss != null) {
+            Box(
+                Modifier.size(width = 36.dp, height = 48.dp).dsClickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Close, "Hide", tint = DsColor.textMuted, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
 }

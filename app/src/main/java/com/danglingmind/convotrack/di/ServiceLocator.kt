@@ -9,6 +9,8 @@ import com.danglingmind.convotrack.data.location.LocationController
 import com.danglingmind.convotrack.data.net.ApiClient
 import com.danglingmind.convotrack.data.net.ApiService
 import com.danglingmind.convotrack.data.socket.SocketService
+import com.danglingmind.convotrack.data.upsell.AppForeground
+import com.danglingmind.convotrack.data.upsell.UpsellState
 
 /**
  * Tiny manual DI. Holds the app-wide auth + networking singletons so composables can reach
@@ -33,11 +35,16 @@ object ServiceLocator {
     lateinit var billing: BillingManager
         private set
 
+    lateinit var upsell: UpsellState
+        private set
+
     fun init(app: Application) {
         Clerk.initialize(app, CLERK_PUBLISHABLE_KEY)
         auth = ClerkAuthRepository(app)
         api = ApiClient.create(auth)
         socket = SocketService(auth)
         billing = BillingManager(app, api)
+        upsell = UpsellState(app)
+        AppForeground.start(upsell)
     }
 }

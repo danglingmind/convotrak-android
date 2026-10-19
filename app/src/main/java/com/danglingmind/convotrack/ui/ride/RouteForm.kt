@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsScore
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.LocationOn
@@ -65,7 +66,6 @@ import com.danglingmind.convotrack.data.maps.PlaceResult
 import com.danglingmind.convotrack.data.maps.PlacesService
 import com.danglingmind.convotrack.data.maps.RouteOption
 import com.danglingmind.convotrack.data.net.CreateWaypoint
-import com.danglingmind.convotrack.ui.common.PRO_RIDER_CAP
 import com.danglingmind.convotrack.ui.common.RiderCap
 import com.danglingmind.convotrack.ui.common.formatKm
 import com.danglingmind.convotrack.ui.designsystem.DsColor
@@ -278,6 +278,29 @@ internal fun RouteFormSections(
             AnimatedVisibility(visible = atCap && !riderCap.isPremium) {
                 UpgradeBanner(onUpgrade)
             }
+            // The limit is always visible, not only once the rider walks into it (iOS parity).
+            if (!(atCap && !riderCap.isPremium)) RiderPlanLine(riderCap, onUpgrade)
+        }
+    }
+}
+
+/** "🔒 Up to 5 riders on your plan · Bigger packs with Pro" for free riders; Pro sees its own cap. */
+@Composable
+private fun RiderPlanLine(riderCap: RiderCap, onUpgrade: () -> Unit) {
+    if (riderCap.isPremium) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(Icons.Filled.WorkspacePremium, null, tint = DsColor.textMuted, modifier = Modifier.size(14.dp))
+            Text("Pro · up to ${riderCap.cap} riders", style = DsType.helper, color = DsColor.textMuted)
+        }
+    } else {
+        Row(
+            Modifier.heightIn(min = 48.dp).dsClickable(onClick = onUpgrade),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(Icons.Filled.Lock, null, tint = DsColor.textMuted, modifier = Modifier.size(13.dp))
+            Text("Up to ${riderCap.cap} riders on your plan", style = DsType.helper, color = DsColor.textMuted)
+            Text("Bigger packs with Pro", style = DsType.helper, color = DsColor.accent)
         }
     }
 }
@@ -297,7 +320,7 @@ private fun UpgradeBanner(onUpgrade: () -> Unit) {
     ) {
         Icon(Icons.Filled.WorkspacePremium, null, tint = DsColor.accent, modifier = Modifier.size(18.dp))
         Text(
-            "Pro unlocks bigger packs — up to $PRO_RIDER_CAP riders",
+            "Pro unlocks bigger packs",
             style = DsType.bodySmall,
             color = DsColor.textPrimary,
             modifier = Modifier.weight(1f),

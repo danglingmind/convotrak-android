@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,7 +35,10 @@ import com.danglingmind.convotrack.R
 import com.danglingmind.convotrack.data.maps.DirectionsService
 import com.danglingmind.convotrack.data.net.CreateRideRequest
 import com.danglingmind.convotrack.data.net.apiCall
+import com.danglingmind.convotrack.data.net.isPlanLimit
 import com.danglingmind.convotrack.data.net.riderMessage
+import com.danglingmind.convotrack.ui.common.Paywall
+import com.danglingmind.convotrack.ui.common.PaywallSource
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.rememberRiderCap
 import com.danglingmind.convotrack.ui.designsystem.DsColor
@@ -57,6 +61,8 @@ fun CreateRideScreen(
     val form = remember { RouteFormState() }
     var creating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    /** The last create was refused for a plan reason (trial over / monthly rides used up). */
+    var blockedByPlan by remember { mutableStateOf(false) }
     val canCreate = form.title.isNotBlank() && form.allResolved && form.preview != null && !creating
     val riderCap = rememberRiderCap()
     // Never start a new ride above the plan's limit (the server would silently trim it).
@@ -66,6 +72,13 @@ fun CreateRideScreen(
         RouteFormSections(form, riderCap, onUpgrade = onOpenMembership)
 
         if (error != null) InlineError(error!!)
+        if (blockedByPlan) {
+            PrimaryButton(
+                "See Pro plans",
+                onClick = { Paywall.present(PaywallSource.CreateBlocked) },
+                icon = Icons.Filled.WorkspacePremium,
+            )
+        }
 
         PrimaryButton(
             text = "Create ride",
@@ -94,6 +107,7 @@ fun CreateRideScreen(
                         onCreated(resp.rideId)
                     } catch (e: Exception) {
                         error = e.riderMessage
+                        blockedByPlan = e.isPlanLimit
                         creating = false
                     }
                 }

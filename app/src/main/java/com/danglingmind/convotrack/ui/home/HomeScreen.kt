@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Schedule
@@ -59,6 +60,13 @@ import com.danglingmind.convotrack.ui.common.RideRowCard
 import com.danglingmind.convotrack.ui.common.RideRowSkeleton
 import com.danglingmind.convotrack.ui.common.UiState
 import com.danglingmind.convotrack.ui.common.formatKm
+import com.danglingmind.convotrack.ui.common.Access
+import com.danglingmind.convotrack.ui.common.Paywall
+import com.danglingmind.convotrack.ui.common.PaywallSource
+import com.danglingmind.convotrack.ui.common.PlanBadgeButton
+import com.danglingmind.convotrack.ui.common.PlanState
+import com.danglingmind.convotrack.ui.common.rememberPlanState
+import com.danglingmind.convotrack.ui.designsystem.PromoBanner
 import com.danglingmind.convotrack.ui.common.rememberDestinationHero
 import com.danglingmind.convotrack.ui.designsystem.AvatarStack
 import com.danglingmind.convotrack.ui.designsystem.ConnectionStatusButton
@@ -118,12 +126,16 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { load() }
 
+    val plan = rememberPlanState()
+    val upsell = remember { ServiceLocator.upsell }
+    var cardSnoozed by remember { mutableStateOf(upsell.isHomeCardSnoozed()) }
+
     DsScreen {
         LazyColumn(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = bottomNavClearance()),
         ) {
-            item { HomeHero(onCreateRide = onCreateRide, onJoinRide = onJoinRide) }
+            item { HomeHero(plan = plan, onCreateRide = onCreateRide, onJoinRide = onJoinRide) }
 
             when (val s = state) {
                 is UiState.Loading -> items(2) {
@@ -135,6 +147,24 @@ fun HomeScreen(
                 is UiState.Success -> {
                     val active = s.data.firstOrNull { !it.isCompletedRide() }
                     val recent = s.data.filter { it.rideId != active?.rideId }.take(5)
+                    // One quiet Pro card under the hero — never while a ride is on.
+                    val card = if (active == null) homeCard(plan, cardSnoozed) else null
+                    if (card != null) {
+                        item {
+                            PromoBanner(
+                                message = card.message,
+                                actionLabel = card.action,
+                                onAction = { Paywall.present(PaywallSource.HomeCard) },
+                                onDismiss = if (card.dismissible) {
+                                    {
+                                        upsell.snoozeHomeCard(inTrial = plan.access is Access.Trial)
+                                        cardSnoozed = true
+                                    }
+                                } else null,
+                                modifier = Modifier.padding(horizontal = DsSpace.gutter).padding(top = 22.dp),
+                            )
+                        }
+                    }
                     if (active != null) {
                         item {
                             ActiveRideSection(
@@ -190,9 +220,26 @@ private fun statusLabel(status: String): String = when (status) {
     else -> status
 }
 
-/** Riders photo, logo + connection, eyebrow, serif headline, subtitle and the two actions. */
+private data class HomeCard(val message: String, val action: String, val dismissible: Boolean)
+
+/** The trial countdown leads; the last day and the ended trial can't be hidden (iOS parity). */
+private fun homeCard(plan: PlanState, snoozed: Boolean): HomeCard? = when (plan.access) {
+    Access.Pro -> null
+    is Access.Trial -> {
+        val days = plan.trialDaysLeft
+        if (days != null && days > 1) {
+            if (snoozed) null else HomeCard("$days days left in your free trial", "Go Pro", dismissible = true)
+        } else {
+            HomeCard("Your free trial ends today", "Go Pro", dismissible = false)
+        }
+    }
+    Access.TrialExpired -> HomeCard("Your free trial has ended. Go Pro to keep riding.", "See plans", dismissible = false)
+    Access.Free -> if (snoozed) null else HomeCard("Bigger packs and no monthly ride limit", "Upgrade", dismissible = true)
+}
+
+/** Riders photo, logo + plan badge + connection, eyebrow, serif headline, subtitle and the two actions. */
 @Composable
-private fun HomeHero(onCreateRide: () -> Unit, onJoinRide: () -> Unit) {
+private fun HomeHero(plan: PlanState, onCreateRide: () -> Unit, onJoinRide: () -> Unit) {
     Box {
         PhotoBackdrop(height = 430.dp, drawable = R.drawable.hero_riders, verticalBias = 0.8f, sideFade = true)
         Column(
@@ -204,6 +251,8 @@ private fun HomeHero(onCreateRide: () -> Unit, onJoinRide: () -> Unit) {
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 LogoBadge()
+                Spacer(Modifier.size(10.dp))
+                PlanBadgeButton(plan, PaywallSource.HomeBadge)
                 Spacer(Modifier.weight(1f))
                 ConnectionStatusButton()
             }
@@ -214,14 +263,15 @@ private fun HomeHero(onCreateRide: () -> Unit, onJoinRide: () -> Unit) {
             Spacer(Modifier.height(12.dp))
             Text("Plan, join and track rides with your tribe.", style = DsType.heroSubtitle, color = DsColor.textSecondary)
             Spacer(Modifier.height(24.dp))
-            ActionButtonPair(onCreateRide, onJoinRide)
+            ActionButtonPair(onCreateRide, onJoinRide, locked = plan.mustUpgradeToRide)
         }
     }
 }
 
-/** CREATE RIDE (accent, dark plus disc) / JOIN RIDE (glass). */
+/** CREATE RIDE (accent, dark plus disc) / JOIN RIDE (glass). [locked]: both need Pro first —
+ *  the icons become locks and the buttons open the paywall rather than going dead. */
 @Composable
-private fun ActionButtonPair(onCreateRide: () -> Unit, onJoinRide: () -> Unit) {
+private fun ActionButtonPair(onCreateRide: () -> Unit, onJoinRide: () -> Unit, locked: Boolean = false) {
     val view = LocalView.current
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
@@ -236,7 +286,7 @@ private fun ActionButtonPair(onCreateRide: () -> Unit, onJoinRide: () -> Unit) {
             horizontalArrangement = Arrangement.Center,
         ) {
             Box(Modifier.size(26.dp).clip(CircleShape).background(DsColor.onAccent), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Add, null, tint = DsColor.accent, modifier = Modifier.size(18.dp))
+                Icon(if (locked) Icons.Filled.Lock else Icons.Filled.Add, null, tint = DsColor.accent, modifier = Modifier.size(if (locked) 15.dp else 18.dp))
             }
             Spacer(Modifier.size(12.dp))
             Text("CREATE RIDE", style = DsType.buttonWide, color = DsColor.onAccent, maxLines = 1)
@@ -252,7 +302,7 @@ private fun ActionButtonPair(onCreateRide: () -> Unit, onJoinRide: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            Icon(Icons.Outlined.PersonAddAlt, null, tint = DsColor.textPrimary, modifier = Modifier.size(22.dp))
+            Icon(if (locked) Icons.Filled.Lock else Icons.Outlined.PersonAddAlt, null, tint = DsColor.textPrimary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.size(10.dp))
             Text("JOIN RIDE", style = DsType.buttonWide, color = DsColor.textPrimary, maxLines = 1)
         }
