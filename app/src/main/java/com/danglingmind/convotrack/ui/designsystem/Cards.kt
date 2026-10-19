@@ -382,14 +382,16 @@ fun PlanBadge(kind: PlanBadgeKind, modifier: Modifier = Modifier, onClick: (() -
     ) {
         if (kind == PlanBadgeKind.GoPro) {
             // Glass-like chip with gold type, rim, glint and breathing glow (iOS parity).
-            GoProSurface(shape = DsShape.pill, modifier = Modifier.heightIn(min = 26.dp)) {
+            // Sized like the iOS chip (11 pt bold mono, 14 pt sparkle, a little more air) so the
+            // gold reads at a glance next to the logo.
+            GoProSurface(shape = DsShape.pill, modifier = Modifier.heightIn(min = 30.dp)) {
                 Row(
-                    Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Icon(icon, null, tint = DsPro.gold, modifier = Modifier.size(13.dp))
-                    Text(label, style = DsType.badgeSmall.gold(), maxLines = 1)
+                    Icon(icon, null, tint = DsPro.gold, modifier = Modifier.size(15.dp))
+                    Text(label, style = DsType.badgeSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.ExtraBold).gold(), maxLines = 1)
                 }
             }
         } else {

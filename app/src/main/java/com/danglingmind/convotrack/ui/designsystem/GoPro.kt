@@ -1,5 +1,8 @@
 package com.danglingmind.convotrack.ui.designsystem
 
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -25,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -100,11 +102,24 @@ fun GoProSurface(
     val glintProgress = (sweep / 0.35f).takeIf { moving && it <= 1f }
     val glintAlpha = if (glass) 0.5f else 0.14f
 
+    val glowRadius = (if (glass) 6f else 10f) + (if (glass) 6f else 8f) * breathe
     Box(
         modifier
-            .shadow((if (glass) 10 else 14).dp, shape, ambientColor = DsPro.glow.copy(alpha = glowAlpha), spotColor = DsPro.glow.copy(alpha = glowAlpha))
+            // A real blurred gold halo (elevation shadows barely show colour on a dark screen).
+            // Drawn before the clip so it can spill outside the shape, like the iOS glow.
+            .drawBehind {
+                val outline = shape.createOutline(size, layoutDirection, this)
+                val corner = (outline as? androidx.compose.ui.graphics.Outline.Rounded)?.roundRect?.topLeftCornerRadius?.x ?: 0f
+                drawIntoCanvas { canvas ->
+                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        color = DsPro.glow.copy(alpha = glowAlpha).toArgb()
+                        maskFilter = android.graphics.BlurMaskFilter(glowRadius.dp.toPx(), android.graphics.BlurMaskFilter.Blur.NORMAL)
+                    }
+                    canvas.nativeCanvas.drawRoundRect(0f, 0f, size.width, size.height, corner, corner, paint)
+                }
+            }
             .clip(shape)
-            .background(DsColor.bgBase.copy(alpha = if (glass) 0.55f else 0f))
+            .background(DsColor.bgBase.copy(alpha = if (glass) 0.62f else 0f))
             .background(fill)
             .drawBehind {
                 val p = glintProgress ?: return@drawBehind

@@ -61,6 +61,9 @@ object PlanGate {
     /** Debug builds only (set from `MainActivity`): trial|lastday|expired|pro|free. */
     var debugAccessOverride: String? = null
 
+    /** Debug builds only: show the app-open nudge once on this launch, skipping the cadence. */
+    var debugForceNudge: Boolean = false
+
     suspend fun refresh() {
         val me = runCatching { apiCall { ServiceLocator.api.fetchMe() } }.getOrNull() ?: return
         _serverPlan.value = me.plan

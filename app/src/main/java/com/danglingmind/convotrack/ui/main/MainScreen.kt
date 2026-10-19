@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.main
 
+import com.danglingmind.convotrack.ui.common.Access
 import com.danglingmind.convotrack.data.upsell.PaywallAnalytics
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -94,10 +95,14 @@ fun MainScreen(
     val foregrounds by AppForeground.foregrounds.collectAsState()
     LaunchedEffect(foregrounds) {
         PlanGate.refresh()
-        if (!AppForeground.consumeAppOpen()) return@LaunchedEffect
+        // Debug `forceNudge` (iOS parity): once per launch, skipping the cadence and the ride check.
+        // Read, not cleared here: this effect restarts when `foregrounds` ticks during launch, and
+        // clearing early would lose the request. Cleared once the nudge is actually shown.
+        val forced = PlanGate.debugForceNudge
+        if (!AppForeground.consumeAppOpen() && !forced) return@LaunchedEffect
         delay(1500)
         val busy = showJoin || showScanner || showNudge || initialInviteCode != null ||
-            ServiceLocator.location.activeRideId.value != null
+            (!forced && ServiceLocator.location.activeRideId.value != null)
         if (busy) return@LaunchedEffect
         val upsell = ServiceLocator.upsell
         // Read the freshest access, not the value captured when this effect started.
@@ -106,7 +111,8 @@ fun MainScreen(
             trial = PlanGate.trial.value,
             nowMillis = System.currentTimeMillis(),
         )
-        if (UpsellPolicy.shouldShowAppOpenNudge(upsell.inputs(access))) {
+        if ((forced && access != Access.Pro) || UpsellPolicy.shouldShowAppOpenNudge(upsell.inputs(access))) {
+            PlanGate.debugForceNudge = false
             upsell.recordNudgeShown()
             PaywallAnalytics.log(PaywallAnalytics.Event.NudgeShown, PaywallSource.AppOpen, access)
             showNudge = true

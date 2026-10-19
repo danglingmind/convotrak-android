@@ -33,7 +33,11 @@ class MainActivity : ComponentActivity() {
         openRideId.value = intent?.getStringExtra(EXTRA_OPEN_RIDE_ID)
         // Debug only: `adb shell am start -n …/.MainActivity --es paywallState trial|lastday|expired|pro|free`
         // forces an access state for design review (iOS `-paywallState`).
-        if (BuildConfig.DEBUG) PlanGate.debugAccessOverride = intent?.getStringExtra("paywallState")
+        if (BuildConfig.DEBUG) {
+            PlanGate.debugAccessOverride = intent?.getStringExtra("paywallState")
+            // `--ez forceNudge true` shows the app-open nudge on this launch (iOS `-forceNudge`).
+            PlanGate.debugForceNudge = intent?.getBooleanExtra("forceNudge", false) == true
+        }
         setContent {
             ConvoTrackTheme {
                 AppRoot(
