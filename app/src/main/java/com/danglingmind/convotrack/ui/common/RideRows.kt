@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.common
 
+import com.danglingmind.convotrack.data.imagecache.RideDestinationStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,7 +59,23 @@ object RideDetailsCache {
         rides[rideId] ?: runCatching { apiCall { ServiceLocator.api.getRide(rideId) } }.getOrNull()?.also { rides[rideId] = it }
 
     /** Drop a ride whose details changed (edited, ended). */
-    fun invalidate(rideId: String) { rides.remove(rideId) }
+    fun invalidate(rideId: String) {
+        rides.remove(rideId)
+        RideDestinationStore.forget(rideId)
+    }
+
+    /**
+     * Where the ride was going. Online, the fetched ride wins (and is remembered on disk); offline,
+     * the last remembered destination still finds its cached photo.
+     */
+    suspend fun destination(rideId: String): RideDestinationStore.Destination? {
+        get(rideId)?.takeIf { it.destinationName.isNotEmpty() }?.let { ride ->
+            val d = RideDestinationStore.Destination(ride.destinationName, ride.destinationLat, ride.destinationLng)
+            RideDestinationStore.put(rideId, d)
+            return d
+        }
+        return RideDestinationStore.get(rideId)
+    }
 }
 
 /** "Oct 6, 2026" from the best available timestamp, or "" when unknown. */
@@ -81,13 +98,13 @@ fun RideThumbnail(
     height: Dp = 50.dp,
     onAttribution: (String?) -> Unit = {},
 ) {
-    var ride by remember(rideId) { mutableStateOf<Ride?>(null) }
-    LaunchedEffect(rideId) { ride = RideDetailsCache.get(rideId) }
+    var destination by remember(rideId) { mutableStateOf<RideDestinationStore.Destination?>(null) }
+    LaunchedEffect(rideId) { destination = RideDetailsCache.destination(rideId) }
     val phase by rememberDestinationHero(
-        rideId = ride?.id,
-        destinationName = ride?.destinationName,
-        lat = ride?.destinationLat,
-        lng = ride?.destinationLng,
+        rideId = destination?.let { rideId },
+        destinationName = destination?.name,
+        lat = destination?.lat,
+        lng = destination?.lng,
     )
     LaunchedEffect(phase) { onAttribution((phase as? DestinationHeroPhase.Photo)?.photo?.attribution) }
     Box(

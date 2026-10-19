@@ -49,6 +49,9 @@ data class NavLeaderboardRow(
     val avatarUrl: String?,
     val distanceToGoalKm: Double,
     val isMe: Boolean,
+    /** False for a row seeded from the roster: that rider has not posted a location yet, so their
+     *  `distanceToGoalKm` is the full route length and says nothing about where they are. */
+    val hasPosition: Boolean = true,
 )
 
 /**
@@ -131,6 +134,7 @@ class NavigationViewModel : ViewModel() {
     val distanceToNextTurnMeters: StateFlow<Double> = _distanceToNextTurnMeters.asStateFlow()
 
     private val voiceGuide = NavVoiceGuide()
+    private var destinationName = ""
 
     /** The maneuver after the one on the banner, set only when it follows within ~150 m. */
     private val _thenManeuver = MutableStateFlow<String?>(null)
@@ -340,6 +344,7 @@ class NavigationViewModel : ViewModel() {
         this.myUserId = myUserId
         this.leaderId = ride.leaderId
         this.staticParticipants = ride.participants
+        this.destinationName = ride.destinationName
         this.totalDistanceMeters = ride.distanceMeters
 
         seedGeometry(ride.waypoints)
@@ -350,6 +355,7 @@ class NavigationViewModel : ViewModel() {
             NavLeaderboardRow(
                 id = p.userId, rank = index + 1, name = p.name, avatarUrl = p.avatarUrl,
                 distanceToGoalKm = ride.distanceMeters / 1000, isMe = p.userId == myUserId,
+                hasPosition = false,
             )
         }
         _myDistanceToGoalKm.value = ride.distanceMeters / 1000
@@ -426,6 +432,7 @@ class NavigationViewModel : ViewModel() {
                     rows += NavLeaderboardRow(
                         id = p.userId, rank = nextRank, name = p.name, avatarUrl = p.avatarUrl,
                         distanceToGoalKm = totalDistanceMeters / 1000, isMe = p.userId == myUserId,
+                        hasPosition = false,
                     )
                     nextRank++
                 }
@@ -496,7 +503,7 @@ class NavigationViewModel : ViewModel() {
 
         // Attention siren, then a spoken cue once the siren has cleared the audio session.
         SirenPlayer.play(SirenPlayer.Sound.REGROUP)
-        VoiceAnnouncer.announce("Ride updated, rerouting", delayMs = 1_800)
+        VoiceAnnouncer.announce("Ride updated, rerouting", delayMs = SirenPlayer.Sound.REGROUP.durationMs + 200)
 
         viewModelScope.launch { calculateRoute(updatedRide) }
     }
@@ -745,6 +752,7 @@ class NavigationViewModel : ViewModel() {
                 instruction = instruction,
                 maneuver = _currentManeuver.value,
                 thenManeuver = then,
+                destinationName = destinationName,
             ),
         ) ?: return
         VoiceAnnouncer.announce(sentence, priority = VoicePriority.TURN)

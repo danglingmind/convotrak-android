@@ -149,6 +149,13 @@ class RideLocationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // A null intent with no ride id is the system restarting this service after it killed the
+        // whole process. The realtime session that feeds location to the pack died with it, so
+        // carrying on would show a notification that tracks nothing; stop instead.
+        if (intent == null && rideId == null) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         rideId = intent?.getStringExtra(EXTRA_RIDE_ID) ?: rideId
         startAsForeground()
         observeStatus()
@@ -160,15 +167,15 @@ class RideLocationService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Live ride tracking", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Next turn, arrival time and convoy status while a ride is live."
+            NotificationChannel(CHANNEL_ID, getString(R.string.notif_channel_ride), NotificationManager.IMPORTANCE_LOW).apply {
+                description = getString(R.string.notif_channel_ride_desc)
                 setSound(null, null)
                 enableVibration(false)
             },
         )
         manager.createNotificationChannel(
-            NotificationChannel(EMERGENCY_CHANNEL_ID, "Ride emergencies", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Alerts when a rider in your convoy reports an emergency."
+            NotificationChannel(EMERGENCY_CHANNEL_ID, getString(R.string.notif_channel_emergency), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = getString(R.string.notif_channel_emergency_desc)
             },
         )
     }
@@ -256,12 +263,12 @@ class RideLocationService : Service() {
     private fun buildEmergency(name: String): Notification {
         val publicVersion = Notification.Builder(this, EMERGENCY_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_ride)
-            .setContentTitle("Emergency on your ride")
+            .setContentTitle(getString(R.string.notif_emergency_public))
             .build()
         return Notification.Builder(this, EMERGENCY_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_ride)
-            .setContentTitle("Emergency - $name needs help")
-            .setContentText("Open ConvoTrack for their location")
+            .setContentTitle(getString(R.string.notif_emergency_title, name))
+            .setContentText(getString(R.string.notif_emergency_text))
             .setCategory(Notification.CATEGORY_ALARM)
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .setPublicVersion(publicVersion)
@@ -274,7 +281,7 @@ class RideLocationService : Service() {
         // Lock-screen version carries nothing about where the rider is or who needs help.
         val publicVersion = Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_ride)
-            .setContentTitle("ConvoTrack ride active")
+            .setContentTitle(getString(R.string.notif_ride_active))
             .build()
         val b = Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_ride)
@@ -289,15 +296,15 @@ class RideLocationService : Service() {
             b.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
         }
         if (status == null) {
-            return b.setContentTitle("ConvoTrack ride active")
-                .setContentText("Sharing your live location with the pack")
+            return b.setContentTitle(getString(R.string.notif_ride_active))
+                .setContentText(getString(R.string.notif_sharing_location))
                 .build()
         }
 
         val turn = listOf(status.turnDistanceText, status.instruction).filter { it.isNotBlank() }.joinToString(" \u00B7 ")
-        val emergency = status.emergencyName?.let { if (it == "You") "Emergency raised" else "Emergency - $it needs help" }
-        val arrive = if (status.arrivalText.isBlank()) "" else "Arrive ${status.arrivalText} \u00B7 ${status.timeLeftText}"
-        b.setContentTitle(emergency ?: turn.ifBlank { "Ride in progress" })
+        val emergency = status.emergencyName?.let { if (it == "You") getString(R.string.notif_emergency_raised) else getString(R.string.notif_emergency_title, it) }
+        val arrive = if (status.arrivalText.isBlank()) "" else getString(R.string.notif_arrive, status.arrivalText, status.timeLeftText)
+        b.setContentTitle(emergency ?: turn.ifBlank { getString(R.string.notif_ride_in_progress) })
         b.setContentText(if (emergency != null && turn.isNotBlank()) turn else arrive)
         b.setSubText(status.destinationName)
         b.setLargeIcon(ManeuverGlyph.bitmap(status.maneuverKey))

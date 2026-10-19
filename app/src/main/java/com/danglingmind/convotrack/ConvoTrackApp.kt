@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack
 
+import com.danglingmind.convotrack.data.imagecache.RideDestinationStore
 import android.app.Application
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -19,6 +20,7 @@ class ConvoTrackApp : Application() {
         VoiceAnnouncer.init(this)
         // Gives the image cache an app context and registers its memory-pressure listener.
         ImageCache.init(this)
+        RideDestinationStore.init(this)
 
         // App-level presence: when the app goes to the background, drop the socket so other
         // riders see us go offline promptly (a backgrounded Android process otherwise keeps the

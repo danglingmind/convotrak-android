@@ -76,7 +76,11 @@ object VoiceAnnouncer {
         tts = TextToSpeech(app) { status ->
             if (status != TextToSpeech.SUCCESS) return@TextToSpeech
             tts?.apply {
-                language = Locale.US
+                // The prompts are English, so the voice is too, but in the rider's own accent when
+                // the engine has one (en-IN, en-GB, en-AU, ...); US English otherwise.
+                val regional = Locale("en", Locale.getDefault().country)
+                language = if (Locale.getDefault().country.isNotEmpty() &&
+                    isLanguageAvailable(regional) >= TextToSpeech.LANG_COUNTRY_AVAILABLE) regional else Locale.US
                 setAudioAttributes(guidanceAttributes)
                 setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String) {

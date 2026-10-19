@@ -331,7 +331,7 @@ fun LiveLeaderboardCard(
         Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
             Text(firstName, style = DsType.bodySmall.copy(fontWeight = FontWeight.Bold), color = DsColor.textPrimary, maxLines = 1, softWrap = false)
             // The gap is the point of the card: where is this rider relative to me?
-            val second = if (row.isMe) "You" else gapText
+            val second = if (row.isMe) "You" else (gapText ?: "--")
             if (second != null) {
                 Text(second, style = DsType.dataMono, color = if (row.isMe) DsColor.accent else DsColor.textSecondary, maxLines = 1, softWrap = false)
             }

@@ -107,7 +107,9 @@ private fun LeaderboardStrip(
                     isOffline = !row.isMe && !onlineIds.contains(row.id),
                     compact = compact,
                     // Ahead of me = less distance left to the goal than I have.
-                    gapMeters = if (row.isMe || me == null) null else (me.distanceToGoalKm - row.distanceToGoalKm) * 1000,
+                    // Until both riders have posted a position the gap is two copies of the route length.
+                    gapMeters = if (row.isMe || me == null || !row.hasPosition || !me.hasPosition) null
+                    else (me.distanceToGoalKm - row.distanceToGoalKm) * 1000,
                     onClick = { onSelectRider(row.id) },
                 )
             }

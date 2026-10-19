@@ -25,6 +25,8 @@ class NavVoiceGuide {
         val maneuver: String,
         /** The maneuver after this one, only when it follows closely ([THEN_WITHIN_METERS]). */
         val thenManeuver: String? = null,
+        /** Named in the arrival prompts ("You have arrived at Nandi Hills"); blank = "your destination". */
+        val destinationName: String = "",
     )
 
     private enum class Level { FAR, MID, NEAR, NOW }
@@ -55,7 +57,7 @@ class NavVoiceGuide {
         return text(level, input)
     }
 
-    /** The current maneuver again, for when voice is switched back on. Always a full sentence. */
+    /** The current maneuver again, for when voice is switched back on: at least the main prompt, never the bare far heads-up. */
     fun repeatCurrent(): String? {
         val input = last ?: return null
         val level = levelFor(input).let { if (it.ordinal < Level.MID.ordinal) Level.MID else it }
@@ -78,16 +80,17 @@ class NavVoiceGuide {
 
     private fun text(level: Level, input: Input): String {
         val arriving = input.maneuver == "ARRIVE"
+        val place = input.destinationName.trim().ifEmpty { "your destination" }
         return when (level) {
             Level.FAR, Level.MID ->
                 "In ${spokenDistance(input.distanceMeters)}, " +
-                    if (arriving) "you will arrive at your destination" else lowerFirst(input.instruction)
+                    if (arriving) "you will arrive at $place" else lowerFirst(input.instruction)
             Level.NEAR -> when {
-                arriving -> "Your destination is just ahead"
+                arriving -> "${upperFirst(place)} is just ahead"
                 else -> input.instruction + (input.thenManeuver?.let(::phrase)?.let { ", then $it" } ?: "")
             }
             Level.NOW ->
-                if (arriving) "You have arrived at your destination"
+                if (arriving) "You have arrived at $place"
                 else upperFirst(phrase(input.maneuver) ?: input.instruction)
         }
     }

@@ -24,7 +24,11 @@ import kotlin.math.sin
  */
 object SirenPlayer {
 
-    enum class Sound { EMERGENCY, REGROUP }
+    /** [durationMs] is how long each plays (3 repeats), so a spoken cue can start just after it ends. */
+    enum class Sound(val durationMs: Long) {
+        EMERGENCY(2_700),   // 3 wails of 0.9 s
+        REGROUP(1_680),     // 3 cycles of two 0.28 s tones
+    }
 
     private const val SAMPLE_RATE = 44_100
 

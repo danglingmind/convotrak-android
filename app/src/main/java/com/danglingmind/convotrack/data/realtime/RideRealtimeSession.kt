@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.data.realtime
 
+import com.danglingmind.convotrack.data.imagecache.RideDestinationStore
+import com.danglingmind.convotrack.data.imagecache.ImageCache
 import com.danglingmind.convotrack.data.auth.AuthRepository
 import com.danglingmind.convotrack.data.net.RegroupEvent
 import com.danglingmind.convotrack.data.net.RideParticipant
@@ -71,6 +73,14 @@ class RideRealtimeSession(
     val splitActive: StateFlow<Boolean> = _splitActive.asStateFlow()
 
     /** Latest `ride:split_detected` payload (gap, leader, last rider); null once it resolves. */
+    /**
+     * True from a `ride:split_detected` until a screen announces it. The split STATE replays every
+     * time a screen subscribes, so a screen asks [takeSplitVoicePending] before speaking: the
+     * announcement then happens once per split, not once per visit to the navigation screen.
+     */
+    private val splitVoicePending = java.util.concurrent.atomic.AtomicBoolean(false)
+    fun takeSplitVoicePending(): Boolean = splitVoicePending.getAndSet(false)
+
     private val _split = MutableStateFlow<SplitEvent?>(null)
     val split: StateFlow<SplitEvent?> = _split.asStateFlow()
 
@@ -327,15 +337,26 @@ class RideRealtimeSession(
         collect(socket.participantReady) { userId -> updateParticipantStatus(userId, "READY") }
 
         collect(socket.rideUpdated) { event -> _rideUpdated.value = event }
-        collect(socket.rideDeleted) { _wasDeleted.value = true }
+        collect(socket.rideDeleted) {
+            _wasDeleted.value = true
+            // The leader deleted the ride on their phone; drop this phone's copy of its map,
+            // summary card and remembered destination too, same as when we delete or leave.
+            val deletedId = rideId
+            if (deletedId.isNotEmpty()) {
+                ImageCache.evictOwner(deletedId)
+                RideDestinationStore.forget(deletedId)
+            }
+        }
 
         collect(socket.splitDetected) { event ->
             _splitActive.value = true
             _split.value = event
+            splitVoicePending.set(true)
         }
         collect(socket.splitResolved) {
             _splitActive.value = false
             _split.value = null
+            splitVoicePending.set(false)
         }
         collect(socket.regroupStarted) { event -> _latestRegroup.value = event }
         collect(socket.regroupResolved) { id -> _latestRegroupResolvedId.value = id }

@@ -389,7 +389,7 @@ fun RideNavigationScreen(
                 "SCENIC" -> "the scenic stop"
                 else -> "the meeting point"
             }
-            VoiceAnnouncer.announce("Regroup called. Head to $stop.", delayMs = 1_800, priority = VoicePriority.ALERT)
+            VoiceAnnouncer.announce("Regroup called. Head to $stop.", delayMs = SirenPlayer.Sound.REGROUP.durationMs + 200, priority = VoicePriority.ALERT)
         }
     }
 
@@ -415,7 +415,7 @@ fun RideNavigationScreen(
         activeEmergency = ev
         VoiceAnnouncer.announce(
             "Emergency. ${vm.emergencyReporterName(ev)} needs help.",
-            delayMs = 1_800,
+            delayMs = SirenPlayer.Sound.EMERGENCY.durationMs + 200,
             priority = VoicePriority.EMERGENCY,
         )
     }
@@ -423,11 +423,17 @@ fun RideNavigationScreen(
     // whose banner is hidden behind a regroup, should still hear that the pack has spread out.
     LaunchedEffect(split) {
         val ev = split ?: return@LaunchedEffect
+        // Once per split: the split state replays whenever this screen is entered again.
+        if (!session.takeSplitVoicePending()) return@LaunchedEffect
         val info = splitAlertInfo(ev, leaderboardRows, participants, myId)
-        VoiceAnnouncer.announce(
-            "Group split. ${info.riderName} is ${NavVoiceGuide.spokenDistance(info.gapMeters)} behind the leader.",
-            priority = VoicePriority.ALERT,
-        )
+        val gap = NavVoiceGuide.spokenDistance(info.gapMeters)
+        // The rider who is behind hears it as a nudge, not as news about someone else.
+        val sentence = if (ev.lastRiderId == myId) {
+            "Group split. You're falling behind. The group is $gap ahead."
+        } else {
+            "Group split. ${info.riderName} is $gap behind the leader."
+        }
+        VoiceAnnouncer.announce(sentence, priority = VoicePriority.ALERT)
     }
     LaunchedEffect(sessionEmergencyResolvedId) {
         val id = sessionEmergencyResolvedId ?: return@LaunchedEffect

@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ConvoTrack</string>
+
+    <!-- Ride status notification -->
+    <string name="notif_channel_ride">Live ride tracking</string>
+    <string name="notif_channel_ride_desc">Next turn, arrival time and convoy status while a ride is live.</string>
+    <string name="notif_channel_emergency">Ride emergencies</string>
+    <string name="notif_channel_emergency_desc">Alerts when a rider in your convoy reports an emergency.</string>
+    <string name="notif_ride_active">ConvoTrack ride active</string>
+    <string name="notif_sharing_location">Sharing your live location with the pack</string>
+    <string name="notif_ride_in_progress">Ride in progress</string>
+    <string name="notif_arrive">Arrive %1$s · %2$s</string>
+    <string name="notif_emergency_public">Emergency on your ride</string>
+    <string name="notif_emergency_title">Emergency - %1$s needs help</string>
+    <string name="notif_emergency_raised">Emergency raised</string>
+    <string name="notif_emergency_text">Open ConvoTrack for their location</string>
 </resources>
