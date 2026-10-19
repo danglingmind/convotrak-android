@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.home
 
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -222,7 +224,7 @@ private fun statusLabel(status: String): String = when (status) {
 
 private data class HomeCard(val message: String, val action: String, val dismissible: Boolean)
 
-/** The trial countdown leads; the last day and the ended trial can't be hidden (iOS parity). */
+/** The trial countdown leads; the last day can't be hidden; none once the trial has ended (iOS parity). */
 private fun homeCard(plan: PlanState, snoozed: Boolean): HomeCard? = when (plan.access) {
     Access.Pro -> null
     is Access.Trial -> {
@@ -233,8 +235,9 @@ private fun homeCard(plan: PlanState, snoozed: Boolean): HomeCard? = when (plan.
             HomeCard("Your free trial ends today", "Go Pro", dismissible = false)
         }
     }
-    Access.TrialExpired -> HomeCard("Your free trial has ended. Go Pro to keep riding.", "See plans", dismissible = false)
-    Access.Free -> if (snoozed) null else HomeCard("Bigger packs and no monthly ride limit", "Upgrade", dismissible = true)
+    // The locked buttons, the badge and the app-open nudge already carry this state (design review).
+    Access.TrialExpired -> null
+    Access.Free -> if (snoozed) null else HomeCard("Bigger packs and no monthly ride limit", "Go Pro", dismissible = true)
 }
 
 /** Riders photo, logo + plan badge + connection, eyebrow, serif headline, subtitle and the two actions. */
@@ -281,7 +284,8 @@ private fun ActionButtonPair(onCreateRide: () -> Unit, onJoinRide: () -> Unit, l
                 .shadow(14.dp, DsShape.md, ambientColor = DsColor.accentGlow, spotColor = DsColor.accent)
                 .clip(DsShape.md)
                 .background(DsColor.accent)
-                .dsClickable { view.dsHaptic(DsHaptic.Primary); onCreateRide() },
+                .dsClickable { view.dsHaptic(DsHaptic.Primary); onCreateRide() }
+                .semantics { if (locked) stateDescription = "Locked" },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -298,6 +302,7 @@ private fun ActionButtonPair(onCreateRide: () -> Unit, onJoinRide: () -> Unit, l
                 .clip(DsShape.md)
                 .background(Color(0x12FFFFFF))
                 .border(1.dp, Color(0x24FFFFFF), DsShape.md)
+                .semantics { if (locked) stateDescription = "Locked" }
                 .dsClickable(onClick = onJoinRide),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,

@@ -74,7 +74,7 @@ fun CreateRideScreen(
         if (error != null) InlineError(error!!)
         if (blockedByPlan) {
             PrimaryButton(
-                "See Pro plans",
+                "Go Pro",
                 onClick = { Paywall.present(PaywallSource.CreateBlocked) },
                 icon = Icons.Filled.WorkspacePremium,
             )

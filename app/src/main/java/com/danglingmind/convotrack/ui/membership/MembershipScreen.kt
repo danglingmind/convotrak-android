@@ -221,11 +221,13 @@ private fun trialTerms(plan: PlanState): String? {
     val free = plan.freePlan
     return when (plan.access) {
         Access.TrialExpired -> "Creating and joining rides needs Pro now that your free trial has ended."
-        is Access.Trial -> if (free?.monthlyLimit != null) {
-            "The free trial includes up to ${free.monthlyLimit} rides and ${free.maxRidersPerRide} riders per ride. Creating and joining rides needs Pro once it ends."
-        } else {
-            "Creating and joining rides needs Pro once the free trial ends."
-        }
+        // The trial is the app's, not Play's: buying now isn't deferred to the trial's end.
+        is Access.Trial -> "Going Pro starts your subscription today — it doesn't wait for the trial to end. " +
+            if (free?.monthlyLimit != null) {
+                "The free trial includes up to ${free.monthlyLimit} rides and ${free.maxRidersPerRide} riders per ride. Creating and joining rides needs Pro once it ends."
+            } else {
+                "Creating and joining rides needs Pro once the free trial ends."
+            }
         Access.Free -> free?.let { p ->
             p.monthlyLimit?.let { "Free plan: $it rides a month, up to ${p.maxRidersPerRide} riders per ride." }
                 ?: "Free plan: up to ${p.maxRidersPerRide} riders per ride."

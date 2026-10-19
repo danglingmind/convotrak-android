@@ -151,7 +151,7 @@ fun JoinRideSheet(
             }
             if (error != null) InlineError(error!!)
             if (blockedByPlan) {
-                PrimaryButton("See Pro plans", onClick = { onSeePro(code) }, icon = Icons.Filled.WorkspacePremium)
+                PrimaryButton("Go Pro", onClick = { onSeePro(code) }, icon = Icons.Filled.WorkspacePremium)
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

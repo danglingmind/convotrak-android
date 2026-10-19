@@ -325,7 +325,7 @@ private fun UpgradeBanner(onUpgrade: () -> Unit) {
             color = DsColor.textPrimary,
             modifier = Modifier.weight(1f),
         )
-        Text("UPGRADE →", style = DsType.buttonPill, color = DsColor.accent)
+        Text("GO PRO →", style = DsType.buttonPill, color = DsColor.accent)
     }
 }
 

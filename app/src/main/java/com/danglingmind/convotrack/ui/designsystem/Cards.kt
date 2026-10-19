@@ -343,9 +343,15 @@ sealed interface PlanBadgeKind {
 @Composable
 fun PlanBadge(kind: PlanBadgeKind, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val lastDay = kind is PlanBadgeKind.Trial && kind.daysLeft <= 1
+    // At large font scales the label drops "TRIAL ·" (the hourglass says it) so the badge can't
+    // crowd the header; the content description keeps the full sentence.
+    val compact = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.5f
     val (label, icon) = when (kind) {
         PlanBadgeKind.Pro -> "PRO" to Icons.Filled.WorkspacePremium
-        is PlanBadgeKind.Trial -> (if (lastDay) "TRIAL · TODAY" else "TRIAL · ${kind.daysLeft}D") to Icons.Filled.HourglassBottom
+        is PlanBadgeKind.Trial -> when {
+            lastDay -> if (compact) "TODAY" else "TRIAL · TODAY"
+            else -> if (compact) "${kind.daysLeft}D" else "TRIAL · ${kind.daysLeft}D"
+        } to Icons.Filled.HourglassBottom
         PlanBadgeKind.GoPro -> "GO PRO" to Icons.Filled.AutoAwesome
     }
     val ink = when (kind) {
@@ -423,7 +429,7 @@ fun PromoBanner(
         PillButton(actionLabel, onClick = onAction, tone = if (subscribed) PillTone.Tonal else PillTone.Primary)
         if (onDismiss != null) {
             Box(
-                Modifier.size(width = 36.dp, height = 48.dp).dsClickable(onClick = onDismiss),
+                Modifier.size(48.dp).dsClickable(onClick = onDismiss),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Icons.Filled.Close, "Hide", tint = DsColor.textMuted, modifier = Modifier.size(16.dp))
