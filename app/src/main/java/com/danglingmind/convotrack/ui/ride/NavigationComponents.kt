@@ -61,7 +61,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.danglingmind.convotrack.data.realtime.RideRealtimeSession
 import com.danglingmind.convotrack.ui.common.rememberAvatarPhoto
 import com.danglingmind.convotrack.ui.designsystem.Avatar
 import com.danglingmind.convotrack.data.net.RideParticipant
@@ -72,8 +71,6 @@ import com.danglingmind.convotrack.ui.designsystem.DsShape
 import com.danglingmind.convotrack.ui.designsystem.DsType
 import com.danglingmind.convotrack.ui.designsystem.PillButton
 import com.danglingmind.convotrack.ui.designsystem.PillTone
-import com.danglingmind.convotrack.ui.designsystem.PulseDot
-import com.danglingmind.convotrack.ui.designsystem.TagChip
 import com.danglingmind.convotrack.ui.designsystem.TextAction
 import com.danglingmind.convotrack.ui.designsystem.TextActionTone
 import com.danglingmind.convotrack.ui.designsystem.dsClickable
@@ -231,7 +228,7 @@ fun BarStat(
         },
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(label, style = DsType.hudStatLabel, color = DsColor.textMuted)
+        Text(label, style = DsType.hudStatLabel, color = DsColor.textSecondary)
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 value,
@@ -239,9 +236,9 @@ fun BarStat(
                 color = DsColor.textPrimary,
                 maxLines = 1,
             )
-            if (unit != null) Text(unit, style = DsType.hudStatLabel, color = DsColor.textMuted, maxLines = 1, modifier = Modifier.padding(bottom = 3.dp))
+            if (unit != null) Text(unit, style = DsType.hudStatLabel, color = DsColor.textSecondary, maxLines = 1, modifier = Modifier.padding(bottom = 3.dp))
         }
-        if (sub != null) Text(sub, style = DsType.hudStatLabel, color = DsColor.textMuted, maxLines = 1)
+        if (sub != null) Text(sub, style = DsType.hudStatLabel, color = DsColor.textSecondary, maxLines = 1)
     }
 }
 
@@ -268,7 +265,6 @@ fun BarDivider(isLandscape: Boolean) {
     Box(Modifier.width(1.dp).height(if (isLandscape) 26.dp else 30.dp).background(DsColor.divider))
 }
 
-/** Live rider count, presence-based so it can never disagree with the greyed leaderboard rows. */
 /**
  * One leaderboard card. No rank number: the strip is already ordered by position. The rank still
  * drives the leader highlight.
@@ -354,7 +350,10 @@ private fun Color.compositeOverHud(): Color {
     )
 }
 
-/** Shared banner frame: icon disc, eyebrow + message, optional trailing content. */
+/**
+ * Shared banner frame: icon disc, eyebrow + message, optional trailing content, and an optional
+ * [actions] row beneath the header (full-width controls such as Show / Mark as arrived).
+ */
 @Composable
 private fun HudBanner(
     accent: Color,
@@ -367,29 +366,35 @@ private fun HudBanner(
     detail: String? = null,
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
+    actions: (@Composable () -> Unit)? = null,
 ) {
-    Row(
+    Column(
         modifier
             .fillMaxWidth()
             .clip(DsShape.md)
             .background(background)
             .border(1.5.dp, border, DsShape.md)
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        when {
-            leading != null -> leading()
-            icon != null -> Box(Modifier.size(36.dp).clip(DsShape.sm).background(accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                Icon(icon, null, tint = accent, modifier = Modifier.size(20.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            when {
+                leading != null -> leading()
+                icon != null -> Box(Modifier.size(36.dp).clip(DsShape.sm).background(accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                    Icon(icon, null, tint = accent, modifier = Modifier.size(20.dp))
+                }
             }
+            Column(Modifier.weight(1f)) {
+                Text(eyebrow, style = DsType.badgeSmall, color = accent)
+                if (message != null) Text(message, style = DsType.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = DsColor.textPrimary)
+                if (!detail.isNullOrBlank()) Text(detail, style = DsType.helper, color = DsColor.textSecondary)
+            }
+            trailing?.invoke()
         }
-        Column(Modifier.weight(1f)) {
-            Text(eyebrow, style = DsType.badgeSmall, color = accent)
-            if (message != null) Text(message, style = DsType.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = DsColor.textPrimary)
-            if (!detail.isNullOrBlank()) Text(detail, style = DsType.helper, color = DsColor.textSecondary)
-        }
-        trailing?.invoke()
+    actions?.invoke()
     }
 }
 
@@ -421,37 +426,25 @@ fun RegroupAlertBanner(
     modifier: Modifier = Modifier,
 ) {
     val accent = regroupAccentColor(type)
-    Column(
-        modifier
-            .fillMaxWidth()
-            .clip(DsShape.md)
-            .background(accent.copy(alpha = 0.12f).compositeOverHud())
-            .border(1.5.dp, accent.copy(alpha = 0.5f), DsShape.md)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.size(36.dp).clip(DsShape.sm).background(accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Groups, null, tint = accent, modifier = Modifier.size(20.dp))
+    HudBanner(
+        accent = accent,
+        background = accent.copy(alpha = 0.12f).compositeOverHud(),
+        border = accent.copy(alpha = 0.5f),
+        icon = Icons.Filled.Groups,
+        eyebrow = "REGROUP CALLED",
+        message = "Head to the ${regroupLabelText(type)}",
+        modifier = modifier,
+        actions = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                PillButton("Show", onShow, Modifier.weight(1f), tone = PillTone.Neutral, icon = Icons.Filled.MyLocation, height = DsSize.touchTarget)
+                if (hasArrived) {
+                    PillButton("Waiting for others", onClick = null, modifier = Modifier.weight(1f), tone = PillTone.Neutral, icon = Icons.Filled.Schedule, height = DsSize.touchTarget)
+                } else {
+                    PillButton("Mark as arrived", onArrived, Modifier.weight(1f), icon = Icons.Filled.CheckCircle, height = DsSize.touchTarget)
+                }
             }
-            Column(Modifier.weight(1f)) {
-                Text("REGROUP CALLED", style = DsType.badgeSmall, color = accent)
-                Text(
-                    "Head to the ${regroupLabelText(type)}",
-                    style = DsType.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = DsColor.textPrimary,
-                )
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            PillButton("Show", onShow, Modifier.weight(1f), tone = PillTone.Neutral, icon = Icons.Filled.MyLocation, height = DsSize.touchTarget)
-            if (hasArrived) {
-                PillButton("Waiting for others", onClick = null, modifier = Modifier.weight(1f), tone = PillTone.Neutral, icon = Icons.Filled.Schedule, height = DsSize.touchTarget)
-            } else {
-                PillButton("Mark as arrived", onArrived, Modifier.weight(1f), icon = Icons.Filled.CheckCircle, height = DsSize.touchTarget)
-            }
-        }
-    }
+        },
+    )
 }
 
 /** Transient "regroup complete" confirmation once the server resolves it. */

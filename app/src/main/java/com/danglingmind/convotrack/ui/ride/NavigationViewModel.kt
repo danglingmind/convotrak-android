@@ -379,8 +379,8 @@ class NavigationViewModel : ViewModel() {
      * [handleStateUpdate] reconciles both the leaderboard and the rider pins against the roster
      * already — but only inside `if (leaderboard.isNotEmpty())`, and the server's leaderboard is
      * empty for the entire window between a ride starting and the first location tick landing. A
-     * rider leaving inside that window would otherwise stay in everyone else's leaderboard, live
-     * rider count, map pins and off-screen indicators until somebody's GPS moved.
+     * rider leaving inside that window would otherwise stay in everyone else's leaderboard,
+     * map pins and off-screen indicators until somebody's GPS moved.
      */
     private fun pruneDepartedRiders(roster: List<RideParticipant>) {
         // An empty roster is a transient socket state (a reconnect mid-flight), not "everyone
@@ -1062,17 +1062,6 @@ class NavigationViewModel : ViewModel() {
      *  the same rule); everyone else sees the persistent pin + siren until one of them dismisses. */
     fun canDismissEmergency(emergency: SocketEmergency): Boolean =
         emergency.userId == myUserId || amILeader
-
-    /**
-     * Live rider count for the top-bar pill.
-     *
-     * Uses the SAME presence rule as the leaderboard rows (self is always live; every other rider
-     * must have a current heartbeat), so the number can never disagree with the greyed-out rows.
-     * Derived from the roster + presence rather than the fluctuating ride:state_update participant
-     * array, which only carries riders that have posted a location tick.
-     */
-    fun liveRiderCount(onlineUserIds: Set<String>): Int =
-        _leaderboardRows.value.count { it.isMe || onlineUserIds.contains(it.id) }
 }
 
 /**

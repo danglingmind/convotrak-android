@@ -24,12 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -200,9 +195,17 @@ fun RideNavigationScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
+    val reduceMotion = com.danglingmind.convotrack.ui.designsystem.rememberReduceMotion()
+
     fun issueCamera(build: (Long) -> MapCamera) {
         cameraCommandId += 1
-        cameraCommand = build(cameraCommandId)
+        val command = build(cameraCommandId)
+        // "Remove animations": every camera move (follow, resume, peek, focus, fit) jumps instead.
+        cameraCommand = if (!reduceMotion) command else when (command) {
+            is MapCamera.Navigate -> command.copy(animated = false)
+            is MapCamera.Fit -> command.copy(animated = false)
+            else -> command
+        }
     }
 
     // Zoom for the guidance camera, pulled back slightly when a maneuver is approaching so the

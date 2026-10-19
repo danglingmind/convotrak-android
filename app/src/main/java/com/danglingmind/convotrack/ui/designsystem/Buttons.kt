@@ -4,6 +4,8 @@ import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -56,7 +58,12 @@ fun Modifier.dsClickable(
 ): Modifier {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed && enabled) pressedScale else 1f, label = "press")
+    val reduceMotion = rememberReduceMotion()
+    val scale by animateFloatAsState(
+        if (pressed && enabled) pressedScale else 1f,
+        animationSpec = if (reduceMotion) snap() else spring(),
+        label = "press",
+    )
     return this
         .scale(scale)
         .clickable(

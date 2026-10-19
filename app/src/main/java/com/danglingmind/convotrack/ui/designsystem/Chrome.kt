@@ -151,7 +151,8 @@ fun LiveIndicator(text: String, modifier: Modifier = Modifier, color: Color = Ds
 
 @Composable
 fun PulseDot(color: Color, size: Dp = 7.dp, pulse: Boolean = true) {
-    val alpha = if (pulse) {
+    val reduceMotion = rememberReduceMotion()
+    val alpha = if (pulse && !reduceMotion) {
         val t = rememberInfiniteTransition(label = "pulse")
         t.animateFloat(1f, 0.35f, infiniteRepeatable(tween(1000), RepeatMode.Reverse), label = "a").value
     } else 1f

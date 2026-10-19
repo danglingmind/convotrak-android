@@ -2,6 +2,7 @@ package com.danglingmind.convotrack.ui.ride
 
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import com.danglingmind.convotrack.ui.designsystem.dsClickable
+import com.danglingmind.convotrack.ui.designsystem.rememberReduceMotion
 import com.danglingmind.convotrack.ui.designsystem.DsSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.semantics.semantics
@@ -25,7 +26,6 @@ import androidx.compose.ui.graphics.Color
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,14 +44,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,17 +56,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.data.realtime.RideRealtimeSession
 import com.danglingmind.convotrack.data.socket.SocketEmergency
 
-/**
- * Everything the HUD shows, in one parameter list, so portrait and landscape can be driven from the
- * identical set. They differ in arrangement and scale only — never in what they show.
- */
+// Portrait and landscape HUDs are driven from the identical parameter set: they differ in
+// arrangement and scale only — never in what they show.
 private const val BUTTON_SIZE_PORTRAIT = 50
 private const val BUTTON_SIZE_LANDSCAPE = 44
 
@@ -94,9 +87,12 @@ private fun LeaderboardStrip(
         horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp),
     ) {
         val listState = rememberLazyListState()
+        val reduceMotion = rememberReduceMotion()
         LaunchedEffect(selectedRiderId) {
             val idx = rows.indexOfFirst { it.id == selectedRiderId }
-            if (idx >= 0) runCatching { listState.animateScrollToItem(idx) }
+            if (idx >= 0) runCatching {
+                if (reduceMotion) listState.scrollToItem(idx) else listState.animateScrollToItem(idx)
+            }
         }
         LazyRow(
             modifier = Modifier.weight(1f),
@@ -121,7 +117,6 @@ private fun LeaderboardStrip(
     }
 }
 
-/** Banners, alerts and the arrived control — everything that appears only sometimes. */
 /**
  * One banner at a time, chosen by priority: emergency > group split > regroup called > regroup
  * complete. When more than one is live a "+N more" chip under the banner steps through the rest,
@@ -225,12 +220,12 @@ private fun NavigationPreviewBar(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("DESTINATION", style = DsType.fieldLabel, color = DsColor.textMuted)
+                Text("DESTINATION", style = DsType.fieldLabel, color = DsColor.textSecondary)
                 Text(destinationName, style = DsType.cardTitle, color = DsColor.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     if (myDistanceKm > 0) String.format(java.util.Locale.US, "%.1f km", myDistanceKm) + (arrival?.let { " · ${it.timeLeft}" }.orEmpty()) else "Calculating route…",
                     style = DsType.bodySmall,
-                    color = DsColor.textMuted,
+                    color = DsColor.textSecondary,
                 )
             }
             Spacer(Modifier.width(16.dp))
@@ -241,9 +236,9 @@ private fun NavigationPreviewBar(
                     horizontalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     Text(arrival?.time ?: "--", style = DsType.hudEta, color = DsColor.textPrimary)
-                    arrival?.period?.let { Text(it, style = DsType.hudStatLabel, color = DsColor.textMuted, modifier = Modifier.padding(bottom = 3.dp)) }
+                    arrival?.period?.let { Text(it, style = DsType.hudStatLabel, color = DsColor.textSecondary, modifier = Modifier.padding(bottom = 3.dp)) }
                 }
-                Text("ARRIVAL", style = DsType.hudStatLabel, color = DsColor.textMuted)
+                Text("ARRIVAL", style = DsType.hudStatLabel, color = DsColor.textSecondary)
             }
         }
         PrimaryButton("Start navigation", onStartNavigation, icon = Icons.Filled.Navigation)
@@ -300,9 +295,8 @@ fun PortraitHud(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (isNavigationActive) {
-                // The turn banner has the row to itself. The back button and the rider-count pill
-                // that used to flank it are gone: exiting now happens through the end-ride
-                // confirmation, and the count moved into the leaderboard row below.
+                // The turn banner has the row to itself: exiting happens through the end-ride
+                // confirmation in the bottom bar.
                 TurnInstructionCard(
                     instruction = instruction,
                     maneuver = maneuver,
@@ -334,7 +328,7 @@ fun PortraitHud(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Text("TO", style = DsType.badgeSmall, color = DsColor.textMuted)
+                        Text("TO", style = DsType.badgeSmall, color = DsColor.textSecondary)
                         Text(destinationName, style = DsType.bodyStrong, color = DsColor.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
@@ -599,9 +593,8 @@ fun LandscapeHud(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (isNavigationActive) {
-                    // 1 — turn-by-turn, alone on its row. The rider count that used to share it
-                    // moved into the leaderboard row below, which is what lets the banner run the
-                    // full width of the panel at a size readable from a mount.
+                    // 1 — turn-by-turn, alone on its row at the full width of the panel, a size
+                    // readable from a mount.
                     TurnInstructionCard(
                         instruction = instruction,
                         maneuver = maneuver,
@@ -613,7 +606,7 @@ fun LandscapeHud(
                         modifier = Modifier.fillMaxWidth(),
                     )
 
-                    // 2 — leaderboard, horizontally scrolled, count pinned trailing.
+                    // 2 — leaderboard, horizontally scrolled.
                     LeaderboardStrip(
                         rows = leaderboardRows,
                         onlineIds = onlineIds,
