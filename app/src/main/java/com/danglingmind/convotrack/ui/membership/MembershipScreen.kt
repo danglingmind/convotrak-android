@@ -1,5 +1,8 @@
 package com.danglingmind.convotrack.ui.membership
 
+import com.danglingmind.convotrack.ui.designsystem.gold
+import com.danglingmind.convotrack.ui.designsystem.GoProButton
+import com.danglingmind.convotrack.ui.designsystem.DsPro
 import com.danglingmind.convotrack.ui.designsystem.TextActionTone
 import com.danglingmind.convotrack.ui.designsystem.TextAction
 import androidx.activity.compose.BackHandler
@@ -168,7 +171,7 @@ fun MembershipScreen(
             Modifier
                 .fillMaxWidth()
                 .height(420.dp)
-                .background(Brush.verticalGradient(listOf(DsColor.accent.copy(alpha = 0.12f), DsColor.accent.copy(alpha = 0f)))),
+                .background(DsPro.aura),
         )
 
         AnimatedVisibility(visible = showSuccess, enter = fadeIn() + scaleIn(initialScale = 0.96f)) {
@@ -304,7 +307,11 @@ private fun HeroSection(title: String, subtitle: String, placeholder: Boolean = 
     // Placeholder keeps the layout (no jump when the text lands) but hides the words.
     val textAlpha = if (placeholder) 0f else 1f
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        IconDisc(Icons.Filled.WorkspacePremium, size = 72.dp, iconSize = 34.dp, background = DsColor.accentTint)
+        IconDisc(
+            Icons.Filled.WorkspacePremium, size = 72.dp, iconSize = 34.dp,
+            background = DsPro.gold.copy(alpha = 0.14f), tint = DsPro.gold,
+            modifier = Modifier.border(1.dp, DsPro.goldLight.copy(alpha = 0.55f), CircleShape),
+        )
         Text(title, style = DsType.heroTitleCompact, color = DsColor.textPrimary.copy(alpha = textAlpha), textAlign = TextAlign.Center)
         Text(subtitle, style = DsType.body, color = DsColor.textSecondary.copy(alpha = textAlpha), textAlign = TextAlign.Center)
     }
@@ -320,7 +327,7 @@ private fun BenefitsGrid(proRiderCap: Int) {
                         Modifier.weight(1f).glassSurface(DsShape.lg).padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        IconDisc(b.icon, size = 36.dp, iconSize = 18.dp, background = DsColor.accentTint)
+                        IconDisc(b.icon, size = 36.dp, iconSize = 18.dp, background = DsPro.gold.copy(alpha = 0.14f), tint = DsPro.gold)
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(b.title, style = DsType.fieldLabel, color = DsColor.textPrimary)
                             Text(b.detail, style = DsType.helper, color = DsColor.textMuted)
@@ -369,7 +376,7 @@ private fun PlansSection(
                         "SAVE $savings%",
                         style = DsType.badgeSmall,
                         color = DsColor.onAccent,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(end = 14.dp).clip(DsShape.xs).background(DsColor.accent).padding(horizontal = 9.dp, vertical = 5.dp),
+                        modifier = Modifier.align(Alignment.TopEnd).padding(end = 14.dp).clip(DsShape.xs).background(DsPro.brush).padding(horizontal = 9.dp, vertical = 5.dp),
                     )
                 }
             }
@@ -391,8 +398,8 @@ private fun PlanCard(
         modifier
             .fillMaxWidth()
             .clip(DsShape.lg)
-            .background(if (isSelected) DsColor.accentTint else DsColor.card)
-            .border(if (isSelected) 1.5.dp else 1.dp, if (isSelected) DsColor.accentBorder else DsColor.borderSubtle, DsShape.lg)
+            .background(if (isSelected) DsPro.gold.copy(alpha = 0.12f) else DsColor.card)
+            .border(if (isSelected) 1.5.dp else 1.dp, if (isSelected) DsPro.goldLight.copy(alpha = 0.6f) else DsColor.borderSubtle, DsShape.lg)
             .dsClickable(pressedScale = 0.99f, onClick = onSelect)
             .padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -400,10 +407,10 @@ private fun PlanCard(
     ) {
         // Radio
         Box(
-            Modifier.size(22.dp).clip(CircleShape).border(if (isSelected) 2.dp else 1.5.dp, if (isSelected) DsColor.accent else DsColor.borderStrong, CircleShape),
+            Modifier.size(22.dp).clip(CircleShape).border(if (isSelected) 2.dp else 1.5.dp, if (isSelected) DsPro.gold else DsColor.borderStrong, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            if (isSelected) Box(Modifier.size(11.dp).clip(CircleShape).background(DsColor.accent))
+            if (isSelected) Box(Modifier.size(11.dp).clip(CircleShape).background(DsPro.gold))
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(title, style = DsType.fieldLabel, color = if (isSelected) DsColor.textPrimary else DsColor.textSecondary)
@@ -440,7 +447,7 @@ private fun CtaStack(
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (error != null) InlineError(error)
         // Disabled until a plan is actually loaded and selected.
-        PrimaryButton(ctaLabel, onClick = onPurchase, enabled = selected != null)
+        GoProButton(ctaLabel, onClick = onPurchase, enabled = selected != null, icon = Icons.Filled.WorkspacePremium)
         if (secondaryLabel != null) TextAction(secondaryLabel, onClick = onSecondary, tone = TextActionTone.Dismiss)
         if (terms != null) Text(terms, style = DsType.helper, color = DsColor.textMuted, textAlign = TextAlign.Center)
 
@@ -500,12 +507,12 @@ private fun SuccessOverlay(onDone: () -> Unit) {
         Spacer(Modifier.weight(1f))
         IconDisc(Icons.Filled.Check, size = 88.dp, iconSize = 44.dp, background = DsColor.successTint, tint = DsColor.success)
         Spacer(Modifier.height(24.dp))
-        Text("You're in", style = DsType.heroTitle, color = DsColor.accent)
+        Text("You're in", style = DsType.heroTitle.gold())
         Spacer(Modifier.height(6.dp))
         Text("Welcome to ConvoTrack Pro.", style = DsType.bodyStrong, color = DsColor.textPrimary)
         Text("Your rides, no limits.", style = DsType.body, color = DsColor.textSecondary)
         Spacer(Modifier.weight(1f))
-        PrimaryButton("Let's ride", onClick = onDone)
+        GoProButton("Let's ride", onClick = onDone)
         Spacer(Modifier.height(16.dp))
     }
 }

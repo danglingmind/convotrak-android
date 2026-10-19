@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.designsystem.gold
+import com.danglingmind.convotrack.ui.designsystem.PromoBanner
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -300,7 +302,7 @@ private fun RiderPlanLine(riderCap: RiderCap, onUpgrade: () -> Unit) {
         ) {
             Icon(Icons.Filled.Lock, null, tint = DsColor.textMuted, modifier = Modifier.size(13.dp))
             Text("Up to ${riderCap.cap} riders on your plan", style = DsType.helper, color = DsColor.textMuted)
-            Text("Bigger packs with Pro", style = DsType.helper, color = DsColor.accent)
+            Text("Bigger packs with Pro", style = DsType.helper.gold())
         }
     }
 }
@@ -308,25 +310,13 @@ private fun RiderPlanLine(riderCap: RiderCap, onUpgrade: () -> Unit) {
 /** "Pro unlocks bigger packs · UPGRADE →" under the stepper once a free rider hits the cap. */
 @Composable
 private fun UpgradeBanner(onUpgrade: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 2.dp)
-            .glassSurface(DsShape.sm, DsColor.accentTint, DsColor.accentBorder)
-            .dsClickable(pressedScale = 0.99f, onClick = onUpgrade)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(Icons.Filled.WorkspacePremium, null, tint = DsColor.accent, modifier = Modifier.size(18.dp))
-        Text(
-            "Pro unlocks bigger packs",
-            style = DsType.bodySmall,
-            color = DsColor.textPrimary,
-            modifier = Modifier.weight(1f),
-        )
-        Text("GO PRO →", style = DsType.buttonPill, color = DsColor.accent)
-    }
+    PromoBanner(
+        message = "Pro unlocks bigger packs",
+        actionLabel = "Go Pro",
+        onAction = onUpgrade,
+        goProStyle = true,
+        modifier = Modifier.padding(top = 2.dp),
+    )
 }
 
 // MARK: - Route timeline

@@ -158,6 +158,7 @@ fun HomeScreen(
                                 message = card.message,
                                 actionLabel = card.action,
                                 onAction = { Paywall.present(PaywallSource.HomeCard) },
+                                goProStyle = true,
                                 onDismiss = if (card.dismissible) {
                                     {
                                         PaywallAnalytics.log(PaywallAnalytics.Event.HomeCardDismissed, PaywallSource.HomeCard, plan.access)

@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.join
 
+import com.danglingmind.convotrack.ui.designsystem.GoProButton
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -151,7 +152,7 @@ fun JoinRideSheet(
             }
             if (error != null) InlineError(error!!)
             if (blockedByPlan) {
-                PrimaryButton("Go Pro", onClick = { onSeePro(code) }, icon = Icons.Filled.WorkspacePremium)
+                GoProButton("Go Pro", onClick = { onSeePro(code) }, icon = Icons.Filled.WorkspacePremium)
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

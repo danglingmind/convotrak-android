@@ -228,7 +228,7 @@ fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
 
 // MARK: - Pills
 
-enum class PillTone { Primary, Tonal, Neutral, Danger }
+enum class PillTone { Primary, Tonal, Neutral, Danger, Gold }
 
 /** Compact inline action: RESUME, UPGRADE, RETRY, REGROUP, MARK AS ARRIVED. */
 @Composable
@@ -247,6 +247,7 @@ fun PillButton(
         PillTone.Tonal -> Triple(DsColor.accentTonal, DsColor.accent, Color.Transparent)
         PillTone.Neutral -> Triple(DsColor.card, DsColor.textSecondary, DsColor.border)
         PillTone.Danger -> Triple(DsColor.dangerTint, DsColor.danger, DsColor.dangerBorder)
+        PillTone.Gold -> Triple(DsPro.gold.copy(alpha = 0.14f), DsPro.gold, DsPro.goldLight.copy(alpha = 0.6f))
     }
     Row(
         modifier = modifier
@@ -264,7 +265,8 @@ fun PillButton(
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
     ) {
         if (icon != null) Icon(icon, null, tint = fg, modifier = Modifier.size(18.dp))
-        Text(text.uppercase(), style = DsType.buttonPill, color = fg, maxLines = 1)
+        if (tone == PillTone.Gold) Text(text.uppercase(), style = DsType.buttonPill.gold(), maxLines = 1)
+        else Text(text.uppercase(), style = DsType.buttonPill, color = fg, maxLines = 1)
     }
 }
 

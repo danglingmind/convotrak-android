@@ -1,5 +1,8 @@
 package com.danglingmind.convotrack.ui.main
 
+import com.danglingmind.convotrack.ui.designsystem.gold
+import com.danglingmind.convotrack.ui.designsystem.GoProButton
+import com.danglingmind.convotrack.ui.designsystem.DsPro
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,11 +61,11 @@ fun ProNudgeContent(plan: PlanState, onSeePlans: () -> Unit, onNotNow: () -> Uni
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (days != null) {
-                Text("$days", style = DsType.heroTitle, color = DsColor.accent, modifier = Modifier.clearAndSetSemantics {})
+                Text("$days", style = DsType.heroTitle.gold(), modifier = Modifier.clearAndSetSemantics {})
             } else {
                 IconDisc(
                     if (plan.access == Access.TrialExpired) Icons.Filled.Lock else Icons.Filled.WorkspacePremium,
-                    size = 56.dp, iconSize = 26.dp, background = DsColor.accentTint,
+                    size = 56.dp, iconSize = 26.dp, background = DsPro.gold.copy(alpha = 0.14f), tint = DsPro.gold,
                 )
             }
             Text(
@@ -86,7 +89,7 @@ fun ProNudgeContent(plan: PlanState, onSeePlans: () -> Unit, onNotNow: () -> Uni
         }
 
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            PrimaryButton("See plans", onClick = onSeePlans)
+            GoProButton("See plans", onClick = onSeePlans, icon = Icons.Filled.WorkspacePremium)
             TextAction("Not now", onClick = onNotNow, tone = TextActionTone.Dismiss)
         }
     }
@@ -95,7 +98,7 @@ fun ProNudgeContent(plan: PlanState, onSeePlans: () -> Unit, onNotNow: () -> Uni
 @Composable
 private fun Benefit(icon: ImageVector, text: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        IconDisc(icon, size = 32.dp, iconSize = 16.dp, background = DsColor.accentTint)
+        IconDisc(icon, size = 32.dp, iconSize = 16.dp, background = DsPro.gold.copy(alpha = 0.14f), tint = DsPro.gold)
         Text(text, style = DsType.bodySmall, color = DsColor.textPrimary)
     }
 }

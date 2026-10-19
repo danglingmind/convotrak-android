@@ -162,6 +162,7 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
                             message = summaryPromoMessage(plan),
                             actionLabel = "Go Pro",
                             onAction = { Paywall.present(PaywallSource.RideSummary) },
+                            goProStyle = true,
                         )
                     }
                 }

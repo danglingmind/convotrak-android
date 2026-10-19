@@ -380,18 +380,32 @@ fun PlanBadge(kind: PlanBadgeKind, modifier: Modifier = Modifier, onClick: (() -
             .semantics(mergeDescendants = true) { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        Row(
-            Modifier
-                .heightIn(min = 26.dp)
-                .clip(DsShape.pill)
-                .background(fill)
-                .border(1.dp, stroke, DsShape.pill)
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            Icon(icon, null, tint = ink, modifier = Modifier.size(13.dp))
-            Text(label, style = DsType.badgeSmall, color = ink, maxLines = 1)
+        if (kind == PlanBadgeKind.GoPro) {
+            // Glass-like chip with gold type, rim, glint and breathing glow (iOS parity).
+            GoProSurface(shape = DsShape.pill, modifier = Modifier.heightIn(min = 26.dp)) {
+                Row(
+                    Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Icon(icon, null, tint = DsPro.gold, modifier = Modifier.size(13.dp))
+                    Text(label, style = DsType.badgeSmall.gold(), maxLines = 1)
+                }
+            }
+        } else {
+            Row(
+                Modifier
+                    .heightIn(min = 26.dp)
+                    .clip(DsShape.pill)
+                    .background(fill)
+                    .border(1.dp, stroke, DsShape.pill)
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Icon(icon, null, tint = ink, modifier = Modifier.size(13.dp))
+                Text(label, style = DsType.badgeSmall, color = ink, maxLines = 1)
+            }
         }
     }
 }
@@ -409,24 +423,52 @@ fun PromoBanner(
     modifier: Modifier = Modifier,
     eyebrow: String = "CONVOTRACK PRO",
     subscribed: Boolean = false,
+    /** The Go Pro gold card (animated rim/glint/glow, gold type) — never for subscribers. */
+    goProStyle: Boolean = false,
     onDismiss: (() -> Unit)? = null,
 ) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .glassSurface(DsShape.lg, DsColor.accentTint, DsColor.accentBorder)
-            .dsClickable(pressedScale = 0.99f, onClick = onAction)
-            .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = if (onDismiss != null) 4.dp else 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        IconDisc(Icons.Filled.WorkspacePremium, size = 40.dp, background = DsColor.accentTonal)
+    val gold = goProStyle && !subscribed
+    val row: @Composable (Modifier) -> Unit = { surface ->
+        Row(
+            surface
+                .fillMaxWidth()
+                .dsClickable(pressedScale = 0.99f, onClick = onAction)
+                .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = if (onDismiss != null) 4.dp else 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            BannerContent(message, actionLabel, onAction, eyebrow, subscribed, gold, onDismiss)
+        }
+    }
+    if (gold) {
+        // Content, not chrome: the card surface (no glass), like iOS.
+        GoProSurface(shape = DsShape.lg, glass = false, modifier = modifier.fillMaxWidth()) { row(Modifier) }
+    } else {
+        row(modifier.glassSurface(DsShape.lg, DsColor.accentTint, DsColor.accentBorder))
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.BannerContent(
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    eyebrow: String,
+    subscribed: Boolean,
+    gold: Boolean,
+    onDismiss: (() -> Unit)?,
+) {
+        IconDisc(
+            Icons.Filled.WorkspacePremium, size = 40.dp,
+            background = if (gold) DsPro.gold.copy(alpha = 0.16f) else DsColor.accentTonal,
+            tint = if (gold) DsPro.gold else DsColor.accent,
+        )
         Column(Modifier.weight(1f)) {
-            Text(eyebrow, style = DsType.fieldLabel, color = DsColor.accent, maxLines = 1)
+            Text(eyebrow, style = if (gold) DsType.fieldLabel.gold() else DsType.fieldLabel, color = if (gold) Color.Unspecified else DsColor.accent, maxLines = 1)
             Spacer(Modifier.height(2.dp))
             Text(message, style = DsType.bodySmall, color = DsColor.textPrimary)
         }
-        PillButton(actionLabel, onClick = onAction, tone = if (subscribed) PillTone.Tonal else PillTone.Primary)
+        PillButton(actionLabel, onClick = onAction, tone = if (subscribed) PillTone.Tonal else if (gold) PillTone.Gold else PillTone.Primary)
         if (onDismiss != null) {
             Box(
                 Modifier.size(48.dp).dsClickable(onClick = onDismiss),
@@ -435,5 +477,4 @@ fun PromoBanner(
                 Icon(Icons.Filled.Close, "Hide", tint = DsColor.textMuted, modifier = Modifier.size(16.dp))
             }
         }
-    }
 }

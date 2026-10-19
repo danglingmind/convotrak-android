@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.profile
 
+import com.danglingmind.convotrack.ui.designsystem.PromoBanner
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.background
@@ -52,8 +53,6 @@ import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.Access
-import com.danglingmind.convotrack.ui.common.PaywallSource
-import com.danglingmind.convotrack.ui.common.PlanBadgeButton
 import com.danglingmind.convotrack.ui.common.PlanState
 import com.danglingmind.convotrack.ui.common.rememberPlanState
 import com.danglingmind.convotrack.ui.common.UiState
@@ -69,12 +68,9 @@ import com.danglingmind.convotrack.ui.designsystem.DsShape
 import com.danglingmind.convotrack.ui.designsystem.DsSpace
 import com.danglingmind.convotrack.ui.designsystem.DsType
 import com.danglingmind.convotrack.ui.designsystem.ErrorState
-import com.danglingmind.convotrack.ui.designsystem.IconDisc
 import com.danglingmind.convotrack.ui.designsystem.LoadingState
 import com.danglingmind.convotrack.ui.designsystem.LogoBadge
 import com.danglingmind.convotrack.ui.designsystem.PhotoBackdrop
-import com.danglingmind.convotrack.ui.designsystem.PillButton
-import com.danglingmind.convotrack.ui.designsystem.PillTone
 import com.danglingmind.convotrack.ui.designsystem.StatusBarScrim
 import com.danglingmind.convotrack.ui.designsystem.bottomNavClearance
 import com.danglingmind.convotrack.ui.designsystem.dsClickable
@@ -85,7 +81,6 @@ private data class ProfileData(
     val name: String,
     val avatarUrl: String?,
     val userId: String,
-    val subtitle: String,
     val isPremium: Boolean,
     val rides: Int,
     val totalKm: String,
@@ -123,7 +118,6 @@ fun ProfileScreen(
                     name = me.name.ifBlank { me.username ?: "Rider" },
                     avatarUrl = me.avatarUrl,
                     userId = me.userId,
-                    subtitle = "$count RIDE" + (if (count == 1) "" else "S"),
                     isPremium = premium,
                     rides = count,
                     totalKm = formatKm(rides.sumOf { it.distanceMeters }),
@@ -233,11 +227,6 @@ private fun ProfileContent(
         Avatar(data.name, size = 96.dp, photo = photo, colorKey = data.userId, ring = DsColor.accent)
         Spacer(Modifier.height(14.dp))
         Text(data.name, style = DsType.titleLarge, color = DsColor.textPrimary, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PlanBadgeButton(plan, PaywallSource.Profile)
-            Text(data.subtitle, style = DsType.badgeSmall, color = DsColor.textMuted)
-        }
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -246,32 +235,15 @@ private fun ProfileContent(
         ProfileStat(Icons.Outlined.Groups, data.led.toString(), "Rides led", Modifier.weight(1f))
     }
 
-    // Membership banner
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .glassSurface(DsShape.lg, DsColor.accentTint, DsColor.accentBorder)
-            .dsClickable(pressedScale = 0.99f, onClick = onOpenMembership)
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        IconDisc(Icons.Filled.WorkspacePremium, size = 40.dp, background = DsColor.accentTonal)
-        Column(Modifier.weight(1f)) {
-            Text("CONVOTRACK PRO", style = DsType.fieldLabel, color = DsColor.accent)
-            Spacer(Modifier.height(2.dp))
-            Text(
-                profilePromoMessage(plan),
-                style = DsType.bodySmall,
-                color = DsColor.textPrimary,
-            )
-        }
-        PillButton(
-            if (plan.isPremium) "Active" else "Go Pro",
-            onClick = onOpenMembership,
-            tone = if (plan.isPremium) PillTone.Tonal else PillTone.Primary,
-        )
-    }
+    // Membership card: the gold Go Pro card for non-Pro riders (the only Pro prompt on this
+    // screen; the badge under the name was redundant with it), the plain card for subscribers.
+    PromoBanner(
+        message = profilePromoMessage(plan),
+        actionLabel = if (plan.isPremium) "Active" else "Go Pro",
+        onAction = onOpenMembership,
+        subscribed = plan.isPremium,
+        goProStyle = true,
+    )
 
     // Every row goes somewhere: a settings row that renders a chevron and does nothing reads as a
     // broken app, and the two legal rows are documents the store requires be reachable in-app.

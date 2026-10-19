@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.designsystem.GoProButton
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -73,7 +74,7 @@ fun CreateRideScreen(
 
         if (error != null) InlineError(error!!)
         if (blockedByPlan) {
-            PrimaryButton(
+            GoProButton(
                 "Go Pro",
                 onClick = { Paywall.present(PaywallSource.CreateBlocked) },
                 icon = Icons.Filled.WorkspacePremium,

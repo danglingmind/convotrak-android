@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.designsystem.DsPro
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.material.icons.filled.Lock
@@ -872,7 +873,7 @@ private fun RiderCapCount(count: Int, cap: Int) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (nearCap) Icon(Icons.Filled.Lock, null, tint = DsColor.accent, modifier = Modifier.size(11.dp))
-        Text("$count/$cap RIDERS", style = DsType.badgeSmall, color = if (nearCap) DsColor.accent else DsColor.textMuted, maxLines = 1)
+        if (nearCap) Icon(Icons.Filled.Lock, null, tint = DsPro.gold, modifier = Modifier.size(11.dp))
+        Text("$count/$cap RIDERS", style = DsType.badgeSmall, color = if (nearCap) DsPro.gold else DsColor.textMuted, maxLines = 1)
     }
 }
