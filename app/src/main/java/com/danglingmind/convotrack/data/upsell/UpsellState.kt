@@ -40,6 +40,11 @@ class UpsellState(context: Context) {
     fun recordNudgeShown(now: Long = System.currentTimeMillis()) = put("lastNudgeAt", now)
     fun recordNudgeDismissed() = prefs.edit().putInt("nudgeDismissCount", nudgeDismissCount + 1).apply()
     fun recordOnboardingPaywall(now: Long = System.currentTimeMillis()) = put("onboardingPaywallAt", now)
+
+    /** The one-time paywall after first sign-in has been shown (or skipped for an existing rider). */
+    var hasSeenOnboardingPaywall: Boolean
+        get() = prefs.getBoolean("hasSeenOnboardingPaywall", false)
+        set(value) = prefs.edit().putBoolean("hasSeenOnboardingPaywall", value).apply()
     fun recordRideCompleted(now: Long = System.currentTimeMillis()) = put("rideCompletedAt", now)
 
     fun isHomeCardSnoozed(now: Long = System.currentTimeMillis()): Boolean =

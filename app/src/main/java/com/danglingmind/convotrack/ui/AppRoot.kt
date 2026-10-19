@@ -56,6 +56,8 @@ object Routes {
     const val RIDE_SUMMARY = "ride_summary"
     const val EDIT_RIDE = "edit_ride"
     const val MEMBERSHIP = "membership"
+    /** The one-time paywall after first sign-in; leads to MAIN either way. */
+    const val MEMBERSHIP_ONBOARDING = "membership_onboarding"
     fun membership(source: PaywallSource) = "$MEMBERSHIP?source=${source.name}"
 
     // The whole ride flow lives inside one nested graph so the lobby and the navigation screen
@@ -122,6 +124,9 @@ fun AppRoot(
                     scope.launch {
                         withTimeoutOrNull(4000) { ServiceLocator.auth.isReady.first { it } }
                         val signedIn = ServiceLocator.auth.userState.value != null
+                        // Already signed in (includes everyone who installed before this paywall
+                        // existed): never show them the first-sign-in paywall (iOS parity).
+                        if (signedIn) ServiceLocator.upsell.hasSeenOnboardingPaywall = true
                         nav.navigate(if (signedIn) Routes.MAIN else Routes.AUTH) {
                             popUpTo(Routes.SPLASH) { inclusive = true }
                         }
@@ -130,11 +135,7 @@ fun AppRoot(
             }
             composable(Routes.AUTH) {
                 AuthScreen(
-                    onSignedIn = {
-                        nav.navigate(Routes.MAIN) {
-                            popUpTo(Routes.AUTH) { inclusive = true }
-                        }
-                    },
+                    onSignedIn = { nav.afterSignIn() },
                     onNeedsVerification = { email ->
                         val arg = URLEncoder.encode(email, "UTF-8")
                         nav.navigate("${Routes.VERIFY}/$arg")
@@ -150,11 +151,7 @@ fun AppRoot(
                 )
                 VerificationScreen(
                     email = email,
-                    onVerified = {
-                        nav.navigate(Routes.MAIN) {
-                            popUpTo(Routes.AUTH) { inclusive = true }
-                        }
-                    },
+                    onVerified = { nav.afterSignIn() },
                     onBack = { nav.popBackStack() },
                 )
             }
@@ -287,6 +284,16 @@ fun AppRoot(
                     },
                 )
             }
+            composable(Routes.MEMBERSHIP_ONBOARDING) {
+                MembershipScreen(
+                    onboarding = true,
+                    onClose = {
+                        nav.navigate(Routes.MAIN) {
+                            popUpTo(Routes.MEMBERSHIP_ONBOARDING) { inclusive = true }
+                        }
+                    },
+                )
+            }
             composable(
                 route = "${Routes.MEMBERSHIP}?source={source}",
                 arguments = listOf(navArgument("source") { type = NavType.StringType; nullable = true; defaultValue = null }),
@@ -297,6 +304,22 @@ fun AppRoot(
                 )
             }
         }
+    }
+}
+
+/**
+ * Sign-in succeeded. First-time riders who aren't Pro see the paywall once (with their trial
+ * starting); everyone else goes straight in (iOS `ContentView.authenticated`).
+ */
+private fun NavHostController.afterSignIn() {
+    val upsell = ServiceLocator.upsell
+    val showPaywall = !upsell.hasSeenOnboardingPaywall && !ServiceLocator.billing.isPremium.value
+    upsell.hasSeenOnboardingPaywall = true
+    if (showPaywall) {
+        upsell.recordOnboardingPaywall()
+        navigate(Routes.MEMBERSHIP_ONBOARDING) { popUpTo(Routes.AUTH) { inclusive = true } }
+    } else {
+        navigate(Routes.MAIN) { popUpTo(Routes.AUTH) { inclusive = true } }
     }
 }
 

@@ -94,6 +94,8 @@ data class PlanState(
     val riderCap: Int,
     /** Free-plan limits from the server; null for Pro or until loaded. */
     val freePlan: MembershipPlanInfo?,
+    /** `/users/me` has answered at least once this session. */
+    val loaded: Boolean,
 ) {
     /** Creating or joining needs Pro first. The server enforces it too; this just skips a failed request. */
     val mustUpgradeToRide: Boolean get() = access == Access.TrialExpired
@@ -122,6 +124,7 @@ fun rememberPlanState(): PlanState {
         trialDaysLeft = PlanGate.trialDaysLeft(access, now),
         riderCap = cap,
         freePlan = serverPlan?.takeIf { !it.isPremium },
+        loaded = serverPlan != null,
     )
 }
 

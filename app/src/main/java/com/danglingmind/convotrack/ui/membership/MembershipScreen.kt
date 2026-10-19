@@ -1,5 +1,8 @@
 package com.danglingmind.convotrack.ui.membership
 
+import com.danglingmind.convotrack.ui.designsystem.TextActionTone
+import com.danglingmind.convotrack.ui.designsystem.TextAction
+import androidx.activity.compose.BackHandler
 import com.danglingmind.convotrack.data.upsell.PaywallAnalytics
 import androidx.compose.runtime.DisposableEffect
 import android.app.Activity
@@ -91,8 +94,18 @@ private val benefits = listOf(
 )
 
 @Composable
-fun MembershipScreen(onClose: () -> Unit, source: PaywallSource = PaywallSource.Profile) {
+fun MembershipScreen(
+    onClose: () -> Unit,
+    source: PaywallSource = PaywallSource.Profile,
+    /** Shown once after first sign-in (iOS `MembershipPresentation.onboarding`). */
+    onboarding: Boolean = false,
+) {
     val planState = rememberPlanState()
+    // Onboarding has no presenter source of its own (iOS parity).
+    val analyticsSource = if (onboarding) null else source
+    var purchaseStarted by remember { mutableStateOf(false) }
+    // Onboarding has nothing behind it on the back stack: back means "continue", not "exit the app".
+    BackHandler(enabled = onboarding) { onClose() }
     val context = LocalContext.current
     val billing = remember { ServiceLocator.billing }
     var selectedProductId by remember { mutableStateOf<String?>(null) }
@@ -111,22 +124,27 @@ fun MembershipScreen(onClose: () -> Unit, source: PaywallSource = PaywallSource.
 
     // Connect to Play + load products/entitlement on open; flip to success once entitled.
     LaunchedEffect(Unit) { billing.start() }
-    LaunchedEffect(isPremium) { if (isPremium) showSuccess = true }
+    LaunchedEffect(isPremium) {
+        if (!isPremium) return@LaunchedEffect
+        // A rider who turns out to be Pro already (entitlement loaded after sign-in) skips straight
+        // in; the "You're in" overlay is for a purchase made here.
+        if (onboarding && !purchaseStarted) onClose() else showSuccess = true
+    }
 
     // Funnel events (iOS parity). "Converted" only when Pro arrived while this paywall was open;
     // leaving any other way — close button or system back — counts as dismissed.
     val startedPremium = remember { billing.isPremium.value }
     var converted by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { PaywallAnalytics.log(PaywallAnalytics.Event.PaywallShown, source, planState.access) }
+    LaunchedEffect(Unit) { PaywallAnalytics.log(PaywallAnalytics.Event.PaywallShown, analyticsSource, planState.access) }
     LaunchedEffect(isPremium) {
         if (isPremium && !startedPremium && !converted) {
             converted = true
-            PaywallAnalytics.log(PaywallAnalytics.Event.Converted, source)
+            PaywallAnalytics.log(PaywallAnalytics.Event.Converted, analyticsSource)
         }
     }
     DisposableEffect(Unit) {
         onDispose {
-            if (!converted && !startedPremium) PaywallAnalytics.log(PaywallAnalytics.Event.PaywallDismissed, source, planState.access)
+            if (!converted && !startedPremium) PaywallAnalytics.log(PaywallAnalytics.Event.PaywallDismissed, analyticsSource, planState.access)
         }
     }
 
@@ -165,7 +183,14 @@ fun MembershipScreen(onClose: () -> Unit, source: PaywallSource = PaywallSource.
                     Modifier.navigationBarsPadding().padding(horizontal = DsSpace.gutter).padding(bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(22.dp),
                 ) {
-                    HeroSection(heroTitle(planState), heroSubtitle(planState, source))
+                    // First sign-in: hold the hero until `/users/me` answers, or it would read
+                    // "ConvoTrack Pro" and then jump to the trial wording.
+                    val awaitingPlan = onboarding && !planState.loaded && !isPremium
+                    HeroSection(
+                        title = if (onboarding) onboardingTitle(planState) else heroTitle(planState),
+                        subtitle = if (onboarding) onboardingSubtitle(planState) else heroSubtitle(planState, source),
+                        placeholder = awaitingPlan,
+                    )
                     BenefitsGrid()
                     PlansSection(
                         plans = plans,
@@ -179,8 +204,13 @@ fun MembershipScreen(onClose: () -> Unit, source: PaywallSource = PaywallSource.
                         selected = plans.firstOrNull { it.productId == selectedProductId },
                         error = error ?: restoreNotice,
                         restoring = restoring,
+                        secondaryLabel = if (!onboarding) null
+                            else if (planState.access is Access.Trial || planState.access == Access.TrialExpired) "Continue with free trial"
+                            else "Continue with Free",
+                        onSecondary = onClose,
                         onPurchase = {
-                            PaywallAnalytics.log(PaywallAnalytics.Event.PurchaseStarted, source, planState.access)
+                            purchaseStarted = true
+                            PaywallAnalytics.log(PaywallAnalytics.Event.PurchaseStarted, analyticsSource, planState.access)
                             val activity = context.findActivity()
                             val productId = selectedProductId
                             if (activity != null && productId != null) billing.purchase(activity, productId)
@@ -256,12 +286,26 @@ private fun trialTerms(plan: PlanState): String? {
     }
 }
 
+private fun onboardingTitle(plan: PlanState): String = when (plan.access) {
+    is Access.Trial -> "Your free trial has started"
+    else -> heroTitle(plan)
+}
+
+private fun onboardingSubtitle(plan: PlanState): String = when (plan.access) {
+    is Access.Trial -> plan.trialDaysLeft?.takeIf { it > 1 }
+        ?.let { "$it days of ConvoTrack, on us. Go Pro any time to keep riding after it ends." }
+        ?: "ConvoTrack is free while it lasts. Go Pro any time to keep riding after it ends."
+    else -> "Ride bigger. Keep every ride."
+}
+
 @Composable
-private fun HeroSection(title: String, subtitle: String) {
+private fun HeroSection(title: String, subtitle: String, placeholder: Boolean = false) {
+    // Placeholder keeps the layout (no jump when the text lands) but hides the words.
+    val textAlpha = if (placeholder) 0f else 1f
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         IconDisc(Icons.Filled.WorkspacePremium, size = 72.dp, iconSize = 34.dp, background = DsColor.accentTint)
-        Text(title, style = DsType.heroTitleCompact, color = DsColor.textPrimary, textAlign = TextAlign.Center)
-        Text(subtitle, style = DsType.body, color = DsColor.textSecondary, textAlign = TextAlign.Center)
+        Text(title, style = DsType.heroTitleCompact, color = DsColor.textPrimary.copy(alpha = textAlpha), textAlign = TextAlign.Center)
+        Text(subtitle, style = DsType.body, color = DsColor.textSecondary.copy(alpha = textAlpha), textAlign = TextAlign.Center)
     }
 }
 
@@ -375,6 +419,8 @@ private fun PlanCard(
 @Composable
 private fun CtaStack(
     terms: String?,
+    secondaryLabel: String? = null,
+    onSecondary: () -> Unit = {},
     selected: DisplayPlan?,
     error: String?,
     restoring: Boolean,
@@ -394,6 +440,7 @@ private fun CtaStack(
         if (error != null) InlineError(error)
         // Disabled until a plan is actually loaded and selected.
         PrimaryButton(ctaLabel, onClick = onPurchase, enabled = selected != null)
+        if (secondaryLabel != null) TextAction(secondaryLabel, onClick = onSecondary, tone = TextActionTone.Dismiss)
         if (terms != null) Text(terms, style = DsType.helper, color = DsColor.textMuted, textAlign = TextAlign.Center)
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
