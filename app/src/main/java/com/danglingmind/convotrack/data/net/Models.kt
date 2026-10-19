@@ -248,6 +248,15 @@ data class TrialInfo(
         get() = endsAt?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
 }
 
+/** What Pro offers (from `/users/me`), so upsell copy quotes real limits instead of constants. */
+@Serializable
+data class ProPlanInfo(
+    val maxRidersPerRide: Int,
+    /** null = unlimited. */
+    val monthlyLimit: Int? = null,
+    val rideHistoryDays: Int = 365,
+)
+
 @Serializable
 data class UsageInfo(
     val ridesUsedThisMonth: Int = 0,
@@ -271,6 +280,7 @@ data class UserMeResponse(
     /** null from servers that predate the app-level trial. */
     val trial: TrialInfo? = null,
     val usage: UsageInfo? = null,
+    val proPlan: ProPlanInfo? = null,
 )
 
 @Serializable

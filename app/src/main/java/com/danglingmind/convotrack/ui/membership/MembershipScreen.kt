@@ -86,8 +86,9 @@ import kotlinx.coroutines.launch
 // hardcoded "SAVE 33%" silently becomes a false claim the moment either plan is repriced.
 private data class Benefit(val icon: ImageVector, val title: String, val detail: String)
 
-private val benefits = listOf(
-    Benefit(Icons.Filled.Groups, "25 RIDERS", "Fill every seat in the pack"),
+/** The rider cap comes from the server's Pro plan, never a constant. */
+private fun benefits(proRiderCap: Int) = listOf(
+    Benefit(Icons.Filled.Groups, "$proRiderCap RIDERS", "Fill every seat in the pack"),
     Benefit(Icons.Filled.AllInclusive, "UNLIMITED", "No monthly ride cap, ever"),
     Benefit(Icons.Filled.BarChart, "ANALYTICS", "Live stats & sync scores"),
     Benefit(Icons.Filled.Schedule, "365 DAYS", "Full ride history archive"),
@@ -191,7 +192,7 @@ fun MembershipScreen(
                         subtitle = if (onboarding) onboardingSubtitle(planState) else heroSubtitle(planState, source),
                         placeholder = awaitingPlan,
                     )
-                    BenefitsGrid()
+                    BenefitsGrid(planState.proRiderCap)
                     PlansSection(
                         plans = plans,
                         selectedProductId = selectedProductId,
@@ -310,9 +311,9 @@ private fun HeroSection(title: String, subtitle: String, placeholder: Boolean = 
 }
 
 @Composable
-private fun BenefitsGrid() {
+private fun BenefitsGrid(proRiderCap: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        benefits.chunked(2).forEach { row ->
+        benefits(proRiderCap).chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { b ->
                     Column(

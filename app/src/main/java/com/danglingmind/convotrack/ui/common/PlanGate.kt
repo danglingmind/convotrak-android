@@ -6,6 +6,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.danglingmind.convotrack.data.net.MembershipPlanInfo
+import com.danglingmind.convotrack.data.net.ProPlanInfo
 import com.danglingmind.convotrack.data.net.TrialInfo
 import com.danglingmind.convotrack.data.net.UsageInfo
 import com.danglingmind.convotrack.data.net.apiCall
@@ -17,7 +18,7 @@ import kotlin.math.ceil
 /** Riders per ride on the free plan, used until the server's number has loaded. */
 const val FREE_RIDER_CAP = 5
 
-/** Riders per ride on ConvoTrack Pro, used until the server's number has loaded. */
+/** Riders per ride on ConvoTrack Pro, used only until the server's `proPlan` has loaded. */
 const val PRO_RIDER_CAP = 25
 
 /** Where the rider stands, most important first (iOS `MembershipStore.Access`). */
@@ -47,6 +48,10 @@ object PlanGate {
     private val _usage = MutableStateFlow<UsageInfo?>(null)
     val usage: StateFlow<UsageInfo?> = _usage
 
+    private val _proPlan = MutableStateFlow<ProPlanInfo?>(null)
+    /** What Pro offers, from the server; null until loaded (or from an older server). */
+    val proPlan: StateFlow<ProPlanInfo?> = _proPlan
+
     /**
      * Invite code the rider couldn't use yet because Pro was needed. `MainScreen` reopens the join
      * sheet with it as soon as the rider goes Pro.
@@ -61,6 +66,7 @@ object PlanGate {
         _serverPlan.value = me.plan
         _trial.value = me.trial
         _usage.value = me.usage
+        me.proPlan?.let { _proPlan.value = it }
     }
 
     /** Pure, so the access rules match iOS exactly and can be reasoned about without a clock. */
@@ -96,6 +102,8 @@ data class PlanState(
     val freePlan: MembershipPlanInfo?,
     /** `/users/me` has answered at least once this session. */
     val loaded: Boolean,
+    /** Riders per ride on Pro, for upsell copy shown to free riders. */
+    val proRiderCap: Int,
 ) {
     /** Creating or joining needs Pro first. The server enforces it too; this just skips a failed request. */
     val mustUpgradeToRide: Boolean get() = access == Access.TrialExpired
@@ -107,6 +115,7 @@ fun rememberPlanState(): PlanState {
     val localPremium by billing.isPremium.collectAsState()
     val serverPlan by PlanGate.serverPlan.collectAsState()
     val trial by PlanGate.trial.collectAsState()
+    val proPlan by PlanGate.proPlan.collectAsState()
     LaunchedEffect(Unit) {
         billing.start()
         if (PlanGate.serverPlan.value == null) PlanGate.refresh()
@@ -117,7 +126,7 @@ fun rememberPlanState(): PlanState {
     // Only trust the server's cap when it describes the plan the rider is on right now — a
     // just-purchased Pro rider may still hold the free plan's response.
     val cap = serverPlan?.takeIf { it.isPremium == premium }?.maxRidersPerRide
-        ?: if (premium) PRO_RIDER_CAP else FREE_RIDER_CAP
+        ?: if (premium) proPlan?.maxRidersPerRide ?: PRO_RIDER_CAP else FREE_RIDER_CAP
     return PlanState(
         isPremium = premium,
         access = access,
@@ -125,6 +134,7 @@ fun rememberPlanState(): PlanState {
         riderCap = cap,
         freePlan = serverPlan?.takeIf { !it.isPremium },
         loaded = serverPlan != null,
+        proRiderCap = proPlan?.maxRidersPerRide ?: PRO_RIDER_CAP,
     )
 }
 
