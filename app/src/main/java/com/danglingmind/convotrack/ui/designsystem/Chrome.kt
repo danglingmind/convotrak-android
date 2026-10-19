@@ -6,6 +6,17 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.animateColorAsState
+import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -225,20 +236,24 @@ private fun rememberNetworkAvailable(): Boolean {
     return online
 }
 
-/** The header antenna: accent icon with a status dot. */
+/**
+ * The header antenna. The icon colour is the state (plus a slash through it when offline, so it is
+ * not colour alone); tapping expands a pill to the left with the state name, then it collapses.
+ * The layout slot stays one button wide, so the header never reflows while it animates.
+ */
 @Composable
 fun ConnectionStatusButton(
     modifier: Modifier = Modifier,
     status: ConnectionStatus = rememberConnectionStatus(),
     tone: FloatingTone = FloatingTone.AccentIcon,
 ) {
-    val dot by animateColorAsState(
+    val tint by animateColorAsState(
         when (status) {
             ConnectionStatus.Live, ConnectionStatus.Online -> DsColor.success
             ConnectionStatus.Reconnecting -> DsColor.warning
-            ConnectionStatus.Offline -> DsColor.textSubtle
+            ConnectionStatus.Offline -> DsColor.textMuted
         },
-        label = "dot",
+        label = "tint",
     )
     val label = when (status) {
         ConnectionStatus.Live -> "Live, connected to the ride"
@@ -246,26 +261,67 @@ fun ConnectionStatusButton(
         ConnectionStatus.Reconnecting -> "Reconnecting"
         ConnectionStatus.Offline -> "Offline"
     }
-    FloatingButton(
-        icon = Icons.Outlined.SettingsInputAntenna,
-        contentDescription = label,
-        onClick = null,
-        tone = tone,
-        modifier = modifier.semantics { contentDescription = label },
-        badge = {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = (-6).dp, y = 6.dp)
-                    .size(9.dp)
-                    .clip(CircleShape)
-                    .background(DsColor.bgBase)
-                    .padding(1.5.dp)
-                    .clip(CircleShape)
-                    .background(dot),
-            )
-        },
-    )
+    val name = when (status) {
+        ConnectionStatus.Live -> "Connected"
+        ConnectionStatus.Online -> "Online"
+        ConnectionStatus.Reconnecting -> "Reconnecting…"
+        ConnectionStatus.Offline -> "Offline"
+    }
+    var expanded by remember { mutableStateOf(false) }
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            delay(2000)
+            expanded = false
+        }
+    }
+    val bg = if (tone == FloatingTone.OnDark) DsColor.cardSolid else DsColor.glassOnPhoto
+    val border = if (tone == FloatingTone.OnDark) DsColor.border else DsColor.borderOnPhoto
+    val size = DsSize.floatingButton
+    val offline = status == ConnectionStatus.Offline
+
+    Box(modifier.size(size).semantics { contentDescription = label }) {
+        Row(
+            Modifier
+                .align(Alignment.CenterEnd)
+                .wrapContentWidth(Alignment.End, unbounded = true)
+                .height(size)
+                .clip(CircleShape)
+                .background(bg)
+                .border(1.dp, border, CircleShape)
+                .dsClickable(pressedScale = 0.95f) { expanded = true },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandHorizontally(tween(400), expandFrom = Alignment.End) + fadeIn(tween(400)),
+                exit = shrinkHorizontally(tween(400), shrinkTowards = Alignment.End) + fadeOut(tween(300)),
+            ) {
+                Text(
+                    name,
+                    style = DsType.bodySmall,
+                    color = DsColor.textPrimary,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
+            }
+            Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Outlined.SettingsInputAntenna,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .drawWithContent {
+                            drawContent()
+                            if (offline) {
+                                drawLine(tint, Offset(2.dp.toPx(), 2.dp.toPx()), Offset(this.size.width - 2.dp.toPx(), this.size.height - 2.dp.toPx()), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                            }
+                        },
+                )
+            }
+        }
+    }
 }
 
 // MARK: - Photo backdrop
