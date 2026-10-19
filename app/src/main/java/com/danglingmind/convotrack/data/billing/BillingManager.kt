@@ -191,7 +191,7 @@ class BillingManager(
             _lastError.value = UserFacingError.PLAN_UNAVAILABLE
             return
         }
-        val offerToken = details.subscriptionOfferDetails?.firstOrNull()?.offerToken ?: run {
+        val offerToken = PlanPeriod.baseOffer(details)?.offerToken ?: run {
             _lastError.value = UserFacingError.PLAN_UNAVAILABLE
             return
         }

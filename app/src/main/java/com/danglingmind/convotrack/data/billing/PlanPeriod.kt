@@ -46,11 +46,19 @@ data class PlanPeriod(val unit: Unit, val value: Int) {
             }
         }
 
-        /** The recurring phase of a product's first offer — the one whose price actually repeats.
+        /** The plain base-plan offer (Play reports it with a null `offerId`). The free trial is
+         *  app-level and server-side now, so a store trial or intro offer must never be what we
+         *  sell or price; Play's offer order is not guaranteed, hence no `firstOrNull()`. Falls
+         *  back to the first offer only if Play returns no base-plan offer at all. */
+        fun baseOffer(details: ProductDetails): ProductDetails.SubscriptionOfferDetails? {
+            val offers = details.subscriptionOfferDetails ?: return null
+            return offers.firstOrNull { it.offerId == null } ?: offers.firstOrNull()
+        }
+
+        /** The recurring phase of the base-plan offer — the one whose price actually repeats.
          *  A free trial or intro phase sits ahead of it and must not be mistaken for the plan. */
         fun recurringPhase(details: ProductDetails): ProductDetails.PricingPhase? =
-            details.subscriptionOfferDetails
-                ?.firstOrNull()
+            baseOffer(details)
                 ?.pricingPhases
                 ?.pricingPhaseList
                 // recurrenceMode 1 == INFINITE_RECURRING; a trial/intro phase is FINITE or NON.
