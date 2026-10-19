@@ -59,6 +59,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.danglingmind.convotrack.data.audio.SirenPlayer
 import com.danglingmind.convotrack.data.maps.AvatarCache
 import com.danglingmind.convotrack.data.socket.SocketEmergency
+import com.danglingmind.convotrack.data.location.RideStatus
+import com.danglingmind.convotrack.data.location.RideStatusNotifier
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.LocationDeniedDialog
 import com.danglingmind.convotrack.ui.common.LocationDisclosureDialog
@@ -321,7 +323,48 @@ fun RideNavigationScreen(
             previousOrientation?.let { activity.requestedOrientation = it }
             locationController.stopCompass()
             locationController.stop(ctx)
+            // Leaving navigation stops the service, which owns the status notifications; clear
+            // the shared state too so nothing stale is shown if it is restarted.
+            RideStatusNotifier.clear()
         }
+    }
+
+    // Live ride status for the ongoing notification / Android 16 Live Update. The service throttles
+    // routine refreshes; step changes and emergency start/end go out immediately.
+    val emergencyName = activeEmergency?.let { vm.emergencyReporterName(it) }
+    val convoyGapText = remember(leaderboardRows, onlineIds) {
+        val me = leaderboardRows.firstOrNull { it.isMe }
+        val others = leaderboardRows.filter { !it.isMe && onlineIds.contains(it.id) }
+        val last = others.maxByOrNull { it.distanceToGoalKm }
+        when {
+            me == null || last == null -> ""
+            last.distanceToGoalKm <= me.distanceToGoalKm -> "You're last"
+            else -> "Last rider -" + formatSplitGap((last.distanceToGoalKm - me.distanceToGoalKm) * 1000)
+        }
+    }
+    val destName = ride?.destinationName ?: "Destination"
+    val routeMeters = ride?.distanceMeters ?: 0.0
+    LaunchedEffect(
+        isNavigationActive, instruction, maneuver, turnDistanceBucket(distToTurn), timeLeftSeconds?.let { (it / 60).toLong() },
+        convoyGapText, emergencyName, destName, myDistanceKm,
+    ) {
+        if (!isNavigationActive) return@LaunchedEffect
+        val arr = timeLeftSeconds?.let { arrivalFor(it, is24h) }
+        RideStatusNotifier.publish(
+            RideStatus(
+                rideId = rideId,
+                maneuverKey = maneuver,
+                turnDistanceText = if (vm.hasUpcomingTurn) turnDistanceText(distToTurn) else "",
+                instruction = instruction,
+                arrivalText = arr?.let { it.time + (it.period?.let { p -> " $p" } ?: "") }.orEmpty(),
+                arrivalShort = arr?.time.orEmpty(),
+                timeLeftText = arr?.timeLeft.orEmpty(),
+                convoyGapText = convoyGapText,
+                emergencyName = emergencyName,
+                destinationName = destName,
+                progress = if (routeMeters > 0) (1.0 - myDistanceKm * 1000 / routeMeters).toFloat().coerceIn(0f, 1f) else 0f,
+            ),
+        )
     }
 
     // Every accepted fix drives the whole navigation model.
@@ -827,3 +870,6 @@ private fun formatDistToGoal(km: Double): String = when {
 private fun formatRiderDistance(meters: Double): String =
     if (meters < 1000) "${(Math.round(meters / 10) * 10)} m"
     else String.format(java.util.Locale.US, "%.1f km", meters / 1000)
+
+/** Coarse distance-to-turn key so the status publisher only restarts when the shown text changes. */
+private fun turnDistanceBucket(meters: Double): String = turnDistanceText(meters)

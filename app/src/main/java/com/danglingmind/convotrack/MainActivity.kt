@@ -12,6 +12,15 @@ import com.danglingmind.convotrack.ui.theme.ConvoTrackTheme
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        /** Set by the ride-status notifications; asks the app to open that ride's live navigation. */
+        const val EXTRA_OPEN_RIDE_ID = "openRideId"
+    }
+
+    // Ride to jump into from a notification tap. Deliberately an extra, not intent data:
+    // extractInviteCode() scans data for 6-character codes and would misread a ride URL.
+    private val openRideId = mutableStateOf<String?>(null)
+
     // Pending ride-invite code from a deep link (convotrack://join/CODE or the
     // https App Link). Read by AppRoot; cleared once the join sheet consumes it.
     private val deepLinkCode = mutableStateOf<String?>(null)
@@ -20,11 +29,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         deepLinkCode.value = inviteCodeFrom(intent)
+        openRideId.value = intent?.getStringExtra(EXTRA_OPEN_RIDE_ID)
         setContent {
             ConvoTrackTheme {
                 AppRoot(
                     deepLinkCode = deepLinkCode.value,
                     onDeepLinkConsumed = { deepLinkCode.value = null },
+                    openRideId = openRideId.value,
+                    onOpenRideConsumed = { openRideId.value = null },
                 )
             }
         }
@@ -35,6 +47,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         inviteCodeFrom(intent)?.let { deepLinkCode.value = it }
+        intent.getStringExtra(EXTRA_OPEN_RIDE_ID)?.let { openRideId.value = it }
     }
 
     private fun inviteCodeFrom(intent: Intent?): String? {

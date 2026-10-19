@@ -28,6 +28,10 @@ class LocationController {
     private val _active = MutableStateFlow(false)
     val active: StateFlow<Boolean> = _active
 
+    /** The ride the foreground service is broadcasting for; null when not riding. */
+    private val _activeRideId = MutableStateFlow<String?>(null)
+    val activeRideId: StateFlow<String?> = _activeRideId
+
     fun update(location: Location) { _current.value = location }
 
     /** Starts broadcasting position for a ride (foreground service). Caller must hold FINE_LOCATION. */
@@ -36,12 +40,14 @@ class LocationController {
             .putExtra(RideLocationService.EXTRA_RIDE_ID, rideId)
         ContextCompat.startForegroundService(context, intent)
         _active.value = true
+        _activeRideId.value = rideId
     }
 
     fun stop(context: Context) {
         context.stopService(Intent(context, RideLocationService::class.java))
         _current.value = null
         _active.value = false
+        _activeRideId.value = null
     }
 
     /**
