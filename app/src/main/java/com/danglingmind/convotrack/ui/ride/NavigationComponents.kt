@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.ride
 
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import com.danglingmind.convotrack.ui.designsystem.FloatingTone
 import com.danglingmind.convotrack.ui.designsystem.FloatingButton
 import androidx.compose.ui.semantics.semantics
@@ -212,8 +214,23 @@ fun TurnInstructionCard(
 
 /** One stat written directly on the bar — no card, no pill. */
 @Composable
-fun BarStat(label: String, value: String, unit: String?, isLandscape: Boolean, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+fun BarStat(
+    label: String,
+    value: String,
+    unit: String?,
+    isLandscape: Boolean,
+    modifier: Modifier = Modifier,
+    /** A third line under the value, e.g. the minutes left beneath an arrival time. */
+    sub: String? = null,
+    /** What a screen reader says instead of the visible pieces. */
+    spoken: String? = null,
+) {
+    Column(
+        modifier.semantics(mergeDescendants = true) {
+            contentDescription = "$label ${spoken ?: listOfNotNull(value, unit).joinToString(" ")}"
+        },
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
         Text(label, style = DsType.hudStatLabel, color = DsColor.textMuted)
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
@@ -224,7 +241,26 @@ fun BarStat(label: String, value: String, unit: String?, isLandscape: Boolean, m
             )
             if (unit != null) Text(unit, style = DsType.hudStatLabel, color = DsColor.textMuted, maxLines = 1, modifier = Modifier.padding(bottom = 3.dp))
         }
+        if (sub != null) Text(sub, style = DsType.hudStatLabel, color = DsColor.textMuted, maxLines = 1)
     }
+}
+
+/** Clock arrival, split so the 12-hour period can be set small beside the digits. */
+data class Arrival(val time: String, val period: String?, val timeLeft: String, val spoken: String)
+
+/**
+ * When the rider gets to the next stop on the device clock: "10:42" plus "AM" in 12-hour mode.
+ * [is24h] comes from the system setting, not the locale, so it matches the status bar.
+ */
+fun arrivalFor(secondsLeft: Double, is24h: Boolean): Arrival {
+    val at = java.time.LocalTime.now().plusSeconds(secondsLeft.toLong())
+    val locale = java.util.Locale.getDefault()
+    val time = java.time.format.DateTimeFormatter.ofPattern(if (is24h) "HH:mm" else "h:mm", locale).format(at)
+    val period = if (is24h) null else java.time.format.DateTimeFormatter.ofPattern("a", locale).format(at)
+    val left = formatRemainingTime(secondsLeft)
+    val minutes = Math.round(secondsLeft / 60).toInt()
+    val spokenLeft = if (minutes < 60) "$minutes minutes" else "${minutes / 60} hours ${minutes % 60} minutes"
+    return Arrival(time, period, "$left left", "$time${period?.let { " $it" }.orEmpty()}, $spokenLeft left")
 }
 
 @Composable
@@ -233,23 +269,6 @@ fun BarDivider(isLandscape: Boolean) {
 }
 
 /** Live rider count, presence-based so it can never disagree with the greyed leaderboard rows. */
-@Composable
-fun LiveRiderCountPill(count: Int) {
-    Row(
-        Modifier
-            .heightIn(min = 34.dp)
-            .clip(DsShape.pill)
-            .background(HudGlass)
-            .border(1.dp, DsColor.border, DsShape.pill)
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        PulseDot(DsColor.accent, 6.dp)
-        Text(if (count > 0) "$count" else "--", style = DsType.badge, color = DsColor.accent)
-    }
-}
-
 /**
  * One leaderboard card. No rank number: the strip is already ordered by position. The rank still
  * drives the leader highlight.
@@ -260,19 +279,47 @@ fun LiveLeaderboardCard(
     isSelected: Boolean,
     isOffline: Boolean,
     compact: Boolean = false,
+    /** Metres this rider is ahead of (+) or behind (−) me; null for my own card. */
+    gapMeters: Double? = null,
     onClick: () -> Unit = {},
 ) {
     val highlighted = row.rank == 1 || isSelected || row.isMe
     val firstName = row.name.substringBefore(" ").ifEmpty { "Rider" }
-    val lastName = row.name.substringAfter(" ", "")
     val photo = rememberAvatarPhoto(row.avatarUrl)
+
+    // "+1.2 km" ahead, "−300 m" behind, "Level" within a few car lengths.
+    val gapText = gapMeters?.let { gap ->
+        val d = kotlin.math.abs(gap)
+        when {
+            d < 25 -> "Level"
+            else -> (if (gap > 0) "+" else "−") +
+                if (d < 1000) "${Math.round(d / 10) * 10} m" else String.format(java.util.Locale.US, "%.1f km", d / 1000)
+        }
+    }
+    val spokenGap = gapMeters?.let { gap ->
+        val d = kotlin.math.abs(gap)
+        when {
+            d < 25 -> "level with you"
+            else -> NavVoiceGuide.spokenDistance(d) + if (gap > 0) " ahead" else " behind"
+        }
+    }
 
     Row(
         Modifier
+            .heightIn(min = DsSize.touchTarget)
             .clip(DsShape.pill)
             .background(if (highlighted) DsColor.accent.copy(alpha = 0.14f).compositeOverHud() else HudGlass)
             .border(if (highlighted) 1.5.dp else 1.dp, if (highlighted) DsColor.accentBorder else DsColor.border, DsShape.pill)
             .alpha(if (isOffline) 0.5f else 1f)
+            .semantics(mergeDescendants = true) {
+                contentDescription = buildString {
+                    append(row.name)
+                    if (row.isMe) append(", you")
+                    if (isOffline) append(", offline")
+                    spokenGap?.let { append(", ").append(it) }
+                }
+                role = Role.Button
+            }
             .dsClickable(onClick = onClick)
             .padding(start = 5.dp, end = 12.dp, top = if (compact) 4.dp else 5.dp, bottom = if (compact) 4.dp else 5.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -286,12 +333,11 @@ fun LiveLeaderboardCard(
             ring = if (highlighted) DsColor.accent else null,
         )
         Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(firstName, style = DsType.bodySmall.copy(fontWeight = FontWeight.Bold), color = DsColor.textPrimary, maxLines = 1, softWrap = false)
-                if (row.isMe) TagChip("You")
-            }
-            if (lastName.isNotEmpty() && !compact) {
-                Text(lastName, style = DsType.helper.copy(fontSize = 10.sp, lineHeight = 12.sp), color = DsColor.textMuted, maxLines = 1, softWrap = false)
+            Text(firstName, style = DsType.bodySmall.copy(fontWeight = FontWeight.Bold), color = DsColor.textPrimary, maxLines = 1, softWrap = false)
+            // The gap is the point of the card: where is this rider relative to me?
+            val second = if (row.isMe) "You" else gapText
+            if (second != null) {
+                Text(second, style = DsType.dataMono, color = if (row.isMe) DsColor.accent else DsColor.textSecondary, maxLines = 1, softWrap = false)
             }
         }
     }

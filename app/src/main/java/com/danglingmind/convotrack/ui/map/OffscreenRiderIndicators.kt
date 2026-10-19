@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.map
 
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.contentDescription
@@ -232,12 +233,12 @@ fun OffscreenIndicatorsOverlay(
                     when {
                         member != null -> EdgeChip(
                             model = member,
-                            modifier = Modifier.clickable { onTapRider(member.id) },
+                            modifier = Modifier.minimumInteractiveComponentSize().clickable(role = Role.Button) { onTapRider(member.id) },
                         )
                         cluster != null -> ClusterChip(
                             count = cluster.members.size,
                             distanceMeters = cluster.minDistance,
-                            modifier = Modifier.clickable { expandedClusterId = cluster.id },
+                            modifier = Modifier.minimumInteractiveComponentSize().clickable(role = Role.Button) { expandedClusterId = cluster.id },
                         )
                     }
                 }

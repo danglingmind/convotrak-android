@@ -141,7 +141,10 @@ fun RideNavigationScreen(
     val isEnding by vm.isEnding.collectAsState()
     val endError by vm.endError.collectAsState()
     val rideCompleted by vm.rideCompleted.collectAsState()
-    val etaText by vm.etaText.collectAsState()
+    val timeLeftSeconds by vm.timeLeftSeconds.collectAsState()
+    // Clock arrival, in the system's 12/24-hour setting so it matches the status bar.
+    val is24h = android.text.format.DateFormat.is24HourFormat(ctx)
+    val arrival = timeLeftSeconds?.let { arrivalFor(it, is24h) }
     val destination by vm.destinationCoordinate.collectAsState()
     val middleWaypoints by vm.middleWaypoints.collectAsState()
 
@@ -503,7 +506,6 @@ fun RideNavigationScreen(
     // --- Derived display ------------------------------------------------------------------------
 
     val destinationName = ride?.destinationName ?: "Destination"
-    val liveCount = vm.liveRiderCount(onlineIds)
 
     val navMarkers: List<MapMarker> = remember(riders, middleWaypoints, destination, activeRegroup, activeEmergency, onlineIds, selectedRiderId, userLocation) {
         buildList {
@@ -652,8 +654,7 @@ fun RideNavigationScreen(
                 leaderboardRows = leaderboardRows,
                 onlineIds = onlineIds,
                 selectedRiderId = selectedRiderId,
-                onSelectRider = ::focusRider,
-                liveCount = liveCount,
+                onSelectRider = { id -> if (id == myId) resumeNavigation() else focusRider(id) },
                 connectionState = connectionState,
                 isOffRoute = isOffRoute,
                 activeEmergency = activeEmergency,
@@ -672,12 +673,13 @@ fun RideNavigationScreen(
                     hasMarkedArrived = true
                 },
                 speedText = if (hasSpeedFix) String.format(java.util.Locale.US, "%.0f", mySpeedKmh) else "--",
-                etaText = etaText,
+                arrival = arrival,
                 distText = formatDistToGoal(myDistanceKm),
                 destinationName = destinationName,
                 myDistanceKm = myDistanceKm,
                 isEnding = isEnding,
                 onRegroup = { showRegroup = true },
+                isLeader = vm.amILeader,
                 onEndRide = { if (vm.amILeader) showEndConfirm = true else onExit() },
                 onStartNavigation = {
                     isNavigationActive = true
@@ -708,8 +710,7 @@ fun RideNavigationScreen(
                 leaderboardRows = leaderboardRows,
                 onlineIds = onlineIds,
                 selectedRiderId = selectedRiderId,
-                onSelectRider = ::focusRider,
-                liveCount = liveCount,
+                onSelectRider = { id -> if (id == myId) resumeNavigation() else focusRider(id) },
                 connectionState = connectionState,
                 isOffRoute = isOffRoute,
                 activeEmergency = activeEmergency,
@@ -728,12 +729,13 @@ fun RideNavigationScreen(
                     hasMarkedArrived = true
                 },
                 speedText = if (hasSpeedFix) String.format(java.util.Locale.US, "%.0f", mySpeedKmh) else "--",
-                etaText = etaText,
+                arrival = arrival,
                 distText = formatDistToGoal(myDistanceKm),
                 destinationName = destinationName,
                 myDistanceKm = myDistanceKm,
                 isEnding = isEnding,
                 onRegroup = { showRegroup = true },
+                isLeader = vm.amILeader,
                 onEndRide = { if (vm.amILeader) showEndConfirm = true else onExit() },
                 onStartNavigation = {
                     isNavigationActive = true

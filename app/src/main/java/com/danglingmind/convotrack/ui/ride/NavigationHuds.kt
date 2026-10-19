@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.ride
 
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import com.danglingmind.convotrack.ui.designsystem.dsClickable
 import com.danglingmind.convotrack.ui.designsystem.DsSize
 import androidx.compose.foundation.layout.heightIn
@@ -72,18 +73,21 @@ import com.danglingmind.convotrack.data.socket.SocketEmergency
 private const val BUTTON_SIZE_PORTRAIT = 50
 private const val BUTTON_SIZE_LANDSCAPE = 44
 
+/**
+ * The convoy: one tappable card per rider, ordered by position, each showing how far that rider is
+ * ahead of or behind me. [trailing] holds a control that must stay put while the cards scroll.
+ */
 @Composable
 private fun LeaderboardStrip(
     rows: List<NavLeaderboardRow>,
     onlineIds: Set<String>,
     selectedRiderId: String?,
     onSelectRider: (String) -> Unit,
-    liveCount: Int,
     compact: Boolean,
     horizontalPadding: Int,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
-    // The count sits OUTSIDE the scroll on purpose: it is a fact about the convoy, not a rider
-    // card, so it must stay put while the cards scroll under it.
+    val me = rows.firstOrNull { it.isMe }
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -106,11 +110,13 @@ private fun LeaderboardStrip(
                     isSelected = selectedRiderId == row.id,
                     isOffline = !row.isMe && !onlineIds.contains(row.id),
                     compact = compact,
+                    // Ahead of me = less distance left to the goal than I have.
+                    gapMeters = if (row.isMe || me == null) null else (me.distanceToGoalKm - row.distanceToGoalKm) * 1000,
                     onClick = { onSelectRider(row.id) },
                 )
             }
         }
-        LiveRiderCountPill(liveCount)
+        trailing?.invoke()
         Spacer(Modifier.width(if (compact) 0.dp else horizontalPadding.dp))
     }
 }
@@ -203,7 +209,7 @@ private enum class NavAlert { EMERGENCY, SPLIT, REGROUP, REGROUP_RESOLVED }
 private fun NavigationPreviewBar(
     destinationName: String,
     myDistanceKm: Double,
-    etaText: String,
+    arrival: Arrival?,
     onStartNavigation: () -> Unit,
     bottomPadding: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
@@ -222,15 +228,22 @@ private fun NavigationPreviewBar(
                 Text("DESTINATION", style = DsType.fieldLabel, color = DsColor.textMuted)
                 Text(destinationName, style = DsType.cardTitle, color = DsColor.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    if (myDistanceKm > 0) String.format(java.util.Locale.US, "%.1f km away", myDistanceKm) else "Calculating route…",
+                    if (myDistanceKm > 0) String.format(java.util.Locale.US, "%.1f km", myDistanceKm) + (arrival?.let { " · ${it.timeLeft}" }.orEmpty()) else "Calculating route…",
                     style = DsType.bodySmall,
                     color = DsColor.textMuted,
                 )
             }
             Spacer(Modifier.width(16.dp))
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(etaText, style = DsType.hudEta, color = DsColor.textPrimary)
-                Text("ETA", style = DsType.hudStatLabel, color = DsColor.textMuted)
+                Row(
+                    Modifier.semantics(mergeDescendants = true) { contentDescription = "Arrival ${arrival?.spoken ?: "unknown"}" },
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(arrival?.time ?: "--", style = DsType.hudEta, color = DsColor.textPrimary)
+                    arrival?.period?.let { Text(it, style = DsType.hudStatLabel, color = DsColor.textMuted, modifier = Modifier.padding(bottom = 3.dp)) }
+                }
+                Text("ARRIVAL", style = DsType.hudStatLabel, color = DsColor.textMuted)
             }
         }
         PrimaryButton("Start navigation", onStartNavigation, icon = Icons.Filled.Navigation)
@@ -251,7 +264,6 @@ fun PortraitHud(
     onlineIds: Set<String>,
     selectedRiderId: String?,
     onSelectRider: (String) -> Unit,
-    liveCount: Int,
     connectionState: RideRealtimeSession.ConnectionState,
     isOffRoute: Boolean,
     activeEmergency: SocketEmergency?,
@@ -267,12 +279,13 @@ fun PortraitHud(
     onMarkArrived: () -> Unit,
     onShowRegroup: () -> Unit,
     speedText: String,
-    etaText: String,
+    arrival: Arrival?,
     distText: String,
     destinationName: String,
     myDistanceKm: Double,
     isEnding: Boolean,
     onRegroup: () -> Unit,
+    isLeader: Boolean,
     onEndRide: () -> Unit,
     onStartNavigation: () -> Unit,
     onBack: () -> Unit,
@@ -299,15 +312,6 @@ fun PortraitHud(
                     isReconnecting = connectionState == RideRealtimeSession.ConnectionState.RECONNECTING,
                     isLandscape = false,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                )
-                LeaderboardStrip(
-                    rows = leaderboardRows,
-                    onlineIds = onlineIds,
-                    selectedRiderId = selectedRiderId,
-                    onSelectRider = onSelectRider,
-                    liveCount = liveCount,
-                    compact = false,
-                    horizontalPadding = 20,
                 )
             } else {
                 // Route preview. There is no turn banner yet, and this back button is the only way
@@ -364,29 +368,26 @@ fun PortraitHud(
             }
         }
 
-        if (isNavigationActive) {
-            // Bottom-trailing, in thumb reach: the rider reaches for it with the hand that is
-            // already near the controls, not across the whole screen to the top.
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 8.dp), horizontalArrangement = Arrangement.End) {
-                VoiceToggleButton()
-            }
-        }
-
         Box(Modifier.onSizeChanged { onBottomBarHeight(it.height) }) {
             if (isNavigationActive) {
                 NavBottomBar(
+                    leaderboardRows = leaderboardRows,
+                    onlineIds = onlineIds,
+                    selectedRiderId = selectedRiderId,
+                    onSelectRider = onSelectRider,
                     speedText = speedText,
-                    etaText = etaText,
+                    arrival = arrival,
                     distText = distText,
                     isEnding = isEnding,
                     onRegroup = onRegroup,
+                    isLeader = isLeader,
                     onEndRide = onEndRide,
                 )
             } else {
                 NavigationPreviewBar(
                     destinationName = destinationName,
                     myDistanceKm = myDistanceKm,
-                    etaText = etaText,
+                    arrival = arrival,
                     onStartNavigation = onStartNavigation,
                     bottomPadding = 24.dp,
                     modifier = Modifier.navigationBarsPadding(),
@@ -405,11 +406,16 @@ fun PortraitHud(
  */
 @Composable
 private fun NavBottomBar(
+    leaderboardRows: List<NavLeaderboardRow>,
+    onlineIds: Set<String>,
+    selectedRiderId: String?,
+    onSelectRider: (String) -> Unit,
     speedText: String,
-    etaText: String,
+    arrival: Arrival?,
     distText: String,
     isEnding: Boolean,
     onRegroup: () -> Unit,
+    isLeader: Boolean,
     onEndRide: () -> Unit,
 ) {
     androidx.compose.foundation.layout.BoxWithConstraints(
@@ -433,6 +439,19 @@ private fun NavBottomBar(
                 .background(HudGlass)
                 .border(1.dp, DsColor.border, DsShape.nav),
         ) {
+            // The convoy sits in the bar, in thumb reach, so the top of the screen stays free for
+            // the road. The mute button holds the trailing slot, where it can't scroll away.
+            Box(Modifier.padding(top = 10.dp)) {
+                LeaderboardStrip(
+                    rows = leaderboardRows,
+                    onlineIds = onlineIds,
+                    selectedRiderId = selectedRiderId,
+                    onSelectRider = onSelectRider,
+                    compact = false,
+                    horizontalPadding = 12,
+                    trailing = { VoiceToggleButton(Modifier.padding(end = 0.dp)) },
+                )
+            }
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -449,7 +468,10 @@ private fun NavBottomBar(
                 ) {
                     BarStat("SPEED", speedText, if (showUnits) "KM/H" else null, isLandscape = false)
                     BarDivider(false)
-                    BarStat("ETA", etaText, null, isLandscape = false)
+                    BarStat(
+                        "ARRIVAL", arrival?.time ?: "--", if (showUnits) arrival?.period else null, isLandscape = false,
+                        sub = arrival?.timeLeft, spoken = arrival?.spoken,
+                    )
                     BarDivider(false)
                     BarStat("DIST", distText, if (showUnits) "KM" else null, isLandscape = false)
                 }
@@ -462,17 +484,32 @@ private fun NavBottomBar(
                     size = BUTTON_SIZE_PORTRAIT.dp,
                     onClick = onRegroup,
                 )
-                NavControlButton(
-                    icon = Icons.Filled.Stop,
-                    description = "End ride",
-                    tint = DsColor.danger,
-                    background = DsColor.dangerTint,
-                    border = DsColor.dangerBorder,
-                    size = BUTTON_SIZE_PORTRAIT.dp,
-                    enabled = !isEnding,
-                    busy = isEnding,
-                    onClick = onEndRide,
-                )
+                // Two different controls because they do two different things. The leader's red stop
+                // ends the ride for everyone (after a confirmation that also offers Exit); everyone
+                // else cannot end anything, so theirs is a plain neutral exit.
+                if (isLeader) {
+                    NavControlButton(
+                        icon = Icons.Filled.Stop,
+                        description = "End ride",
+                        tint = DsColor.danger,
+                        background = DsColor.dangerTint,
+                        border = DsColor.dangerBorder,
+                        size = BUTTON_SIZE_PORTRAIT.dp,
+                        enabled = !isEnding,
+                        busy = isEnding,
+                        onClick = onEndRide,
+                    )
+                } else {
+                    NavControlButton(
+                        icon = Icons.AutoMirrored.Filled.ExitToApp,
+                        description = "Exit navigation",
+                        tint = DsColor.textPrimary,
+                        background = DsColor.card,
+                        border = DsColor.border,
+                        size = BUTTON_SIZE_PORTRAIT.dp,
+                        onClick = onEndRide,
+                    )
+                }
             }
         }
     }
@@ -499,7 +536,6 @@ fun LandscapeHud(
     onlineIds: Set<String>,
     selectedRiderId: String?,
     onSelectRider: (String) -> Unit,
-    liveCount: Int,
     connectionState: RideRealtimeSession.ConnectionState,
     isOffRoute: Boolean,
     activeEmergency: SocketEmergency?,
@@ -515,12 +551,13 @@ fun LandscapeHud(
     onMarkArrived: () -> Unit,
     onShowRegroup: () -> Unit,
     speedText: String,
-    etaText: String,
+    arrival: Arrival?,
     distText: String,
     destinationName: String,
     myDistanceKm: Double,
     isEnding: Boolean,
     onRegroup: () -> Unit,
+    isLeader: Boolean,
     onEndRide: () -> Unit,
     onStartNavigation: () -> Unit,
     onBack: () -> Unit,
@@ -582,7 +619,6 @@ fun LandscapeHud(
                         onlineIds = onlineIds,
                         selectedRiderId = selectedRiderId,
                         onSelectRider = onSelectRider,
-                        liveCount = liveCount,
                         compact = true,
                         horizontalPadding = 4,
                     )
@@ -617,7 +653,10 @@ fun LandscapeHud(
                         // three values.
                         BarStat("SPEED", speedText, null, isLandscape = true)
                         BarDivider(true)
-                        BarStat("ETA", etaText, null, isLandscape = true)
+                        BarStat(
+                            "ARRIVAL", arrival?.time ?: "--", arrival?.period, isLandscape = true,
+                            sub = arrival?.timeLeft, spoken = arrival?.spoken,
+                        )
                         BarDivider(true)
                         BarStat("DIST", distText, null, isLandscape = true)
                         Spacer(Modifier.weight(1f))
@@ -649,25 +688,39 @@ fun LandscapeHud(
                             fillWidth = true,
                             onClick = onRegroup,
                         )
-                        NavControlButton(
-                            icon = Icons.Filled.Stop,
-                            description = "End ride",
-                            tint = DsColor.danger,
-                            background = DsColor.dangerTint,
-                            border = DsColor.dangerBorder,
-                            size = BUTTON_SIZE_LANDSCAPE.dp,
-                            enabled = !isEnding,
-                            busy = isEnding,
-                            modifier = Modifier.weight(1f),
-                            fillWidth = true,
-                            onClick = onEndRide,
-                        )
+                        if (isLeader) {
+                            NavControlButton(
+                                icon = Icons.Filled.Stop,
+                                description = "End ride",
+                                tint = DsColor.danger,
+                                background = DsColor.dangerTint,
+                                border = DsColor.dangerBorder,
+                                size = BUTTON_SIZE_LANDSCAPE.dp,
+                                enabled = !isEnding,
+                                busy = isEnding,
+                                modifier = Modifier.weight(1f),
+                                fillWidth = true,
+                                onClick = onEndRide,
+                            )
+                        } else {
+                            NavControlButton(
+                                icon = Icons.AutoMirrored.Filled.ExitToApp,
+                                description = "Exit navigation",
+                                tint = DsColor.textPrimary,
+                                background = DsColor.card,
+                                border = DsColor.border,
+                                size = BUTTON_SIZE_LANDSCAPE.dp,
+                                modifier = Modifier.weight(1f),
+                                fillWidth = true,
+                                onClick = onEndRide,
+                            )
+                        }
                     }
                 } else {
                     NavigationPreviewBar(
                         destinationName = destinationName,
                         myDistanceKm = myDistanceKm,
-                        etaText = etaText,
+                        arrival = arrival,
                         onStartNavigation = onStartNavigation,
                         bottomPadding = 8.dp,
                         modifier = Modifier.fillMaxWidth(),

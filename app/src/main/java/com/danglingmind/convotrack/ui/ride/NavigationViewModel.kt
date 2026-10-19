@@ -181,8 +181,9 @@ class NavigationViewModel : ViewModel() {
      * trigger a recomposition — so the number on screen would sit still for seconds at a time and
      * then jump.
      */
-    private val _etaText = MutableStateFlow("--")
-    val etaText: StateFlow<String> = _etaText.asStateFlow()
+    private val _timeLeftSeconds = MutableStateFlow<Double?>(null)
+    /** Remaining travel time to the next stop, in seconds; null until there is enough to estimate. */
+    val timeLeftSeconds: StateFlow<Double?> = _timeLeftSeconds.asStateFlow()
 
     private val _destinationCoordinate = MutableStateFlow<LatLng?>(null)
     val destinationCoordinate: StateFlow<LatLng?> = _destinationCoordinate.asStateFlow()
@@ -522,7 +523,7 @@ class NavigationViewModel : ViewModel() {
         _routeVersion.value += 1
         // The preview bar shows an ETA before the first GPS fix arrives, so seed it from the
         // planned duration as soon as the route is known.
-        _etaText.value = computeEtaText()
+        _timeLeftSeconds.value = computeTimeLeftSeconds()
     }
 
     /**
@@ -950,7 +951,7 @@ class NavigationViewModel : ViewModel() {
         etaBaseSeconds?.let { base ->
             _etaSecondsRemaining.value = max(0.0, base - (now - etaBaseAtMs) / 1000.0)
         }
-        _etaText.value = computeEtaText()
+        _timeLeftSeconds.value = computeTimeLeftSeconds()
 
         if (isEtaRefreshInFlight) return
         if (lastEtaRefreshMs != 0L && now - lastEtaRefreshMs < ETA_REFRESH_INTERVAL_MS) return
@@ -970,21 +971,21 @@ class NavigationViewModel : ViewModel() {
             etaBaseSeconds = seconds
             etaBaseAtMs = System.currentTimeMillis()
             _etaSecondsRemaining.value = seconds
-            _etaText.value = computeEtaText()
+            _timeLeftSeconds.value = computeTimeLeftSeconds()
         }
     }
 
     /**
-     * Remaining travel time to the NEXT stop, as text.
+     * Remaining travel time to the NEXT stop, in seconds.
      *
      * The live traffic-aware value wins whenever we have one; the planned-duration estimate below
      * is only the bootstrap for the seconds before the first refresh lands.
      */
-    private fun computeEtaText(): String {
-        _etaSecondsRemaining.value?.let { return formatRemainingTime(it) }
-        if (routeExpectedTravelTime <= 0 || totalDistanceMeters <= 0) return "--"
+    private fun computeTimeLeftSeconds(): Double? {
+        _etaSecondsRemaining.value?.let { return it }
+        if (routeExpectedTravelTime <= 0 || totalDistanceMeters <= 0) return null
         val remainingKm = _myDistanceToGoalKm.value
-        if (remainingKm < 0) return "--"
+        if (remainingKm < 0) return null
         val remainingFraction = ((remainingKm * 1000) / totalDistanceMeters).coerceIn(0.0, 1.0)
         val elapsed = routeExpectedTravelTime * (1 - remainingFraction)
 
@@ -996,7 +997,7 @@ class NavigationViewModel : ViewModel() {
         } else {
             routeExpectedTravelTime * remainingFraction
         }
-        return formatRemainingTime(secsToNextStop)
+        return secsToNextStop
     }
 
     // MARK: - Regroup meet point
