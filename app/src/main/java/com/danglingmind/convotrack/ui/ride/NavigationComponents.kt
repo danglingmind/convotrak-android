@@ -238,7 +238,7 @@ fun BarStat(
             )
             if (unit != null) Text(unit, style = DsType.hudStatLabel, color = DsColor.textSecondary, maxLines = 1, modifier = Modifier.padding(bottom = 3.dp))
         }
-        if (sub != null) Text(sub, style = DsType.hudStatLabel, color = DsColor.textSecondary, maxLines = 1)
+        if (sub != null) Text(sub, style = DsType.micro, color = DsColor.textSecondary, maxLines = 1)
     }
 }
 

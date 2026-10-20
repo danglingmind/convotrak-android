@@ -173,6 +173,6 @@ private fun ReasonTile(
             if (sending) CircularProgressIndicator(color = accent, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
             else Icon(reason.icon, null, tint = accent, modifier = Modifier.size(26.dp))
         }
-        Text(reason.label.uppercase(), style = DsType.buttonPill, color = DsColor.textPrimary)
+        Text(reason.label, style = DsType.buttonPill, color = DsColor.textPrimary)
     }
 }

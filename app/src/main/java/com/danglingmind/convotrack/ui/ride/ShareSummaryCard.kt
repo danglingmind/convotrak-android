@@ -11,6 +11,8 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import androidx.core.content.FileProvider
+import androidx.core.content.res.ResourcesCompat
+import com.danglingmind.convotrack.R
 import androidx.compose.ui.graphics.toArgb
 import com.danglingmind.convotrack.data.imagecache.ImageCache
 import com.danglingmind.convotrack.data.imagecache.ImageCategory
@@ -54,21 +56,35 @@ object ShareSummaryCard {
         this.color = color
         textSize = sizePx
         letterSpacing = letterSpacingEm
-        typeface = Typeface.create(
-            if (mono) Typeface.MONOSPACE else Typeface.DEFAULT,
-            if (bold) Typeface.BOLD else Typeface.NORMAL,
-        )
+        typeface = if (bold) faceBold else faceRegular
+        // "mono" now means tabular digits in the UI face, matching the app (no monospace font).
+        if (mono) fontFeatureSettings = "tnum"
     }
 
     /**
      * Renders the card. The map hero and the QR are both optional: a ride whose route failed to
      * render still produces a perfectly good card, so neither is allowed to fail the whole share.
      */
+    // The app's UI face (Inter), so the card reads as the same product as the screens. Resolved on
+    // the first render; the system face is the fallback if the font resource can't be loaded.
+    @Volatile private var faceRegular: Typeface = Typeface.DEFAULT
+    @Volatile private var faceBold: Typeface = Typeface.DEFAULT_BOLD
+    @Volatile private var facesLoaded = false
+
+    private fun loadFaces(context: Context) {
+        if (facesLoaded) return
+        ResourcesCompat.getFont(context, R.font.inter_medium)?.let { faceRegular = it }
+        ResourcesCompat.getFont(context, R.font.inter_bold)?.let { faceBold = it }
+        facesLoaded = true
+    }
+
     suspend fun render(
+        context: Context,
         rideTitle: String,
         summary: RideSummary,
         routeCoordinates: List<LatLng>,
     ): Bitmap = withContext(Dispatchers.Default) {
+        loadFaces(context.applicationContext)
         val bmp = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         c.drawColor(DsColor.bgBase.toArgb())
@@ -120,7 +136,7 @@ object ShareSummaryCard {
 
         // --- Title + date -----------------------------------------------------------------
         val titlePaint = paint(onSurface, 62f, bold = true)
-        c.drawText(ellipsise(rideTitle.uppercase(), titlePaint, W - 144f), 72f, contentTop + 140f, titlePaint)
+        c.drawText(ellipsise(rideTitle, titlePaint, W - 144f), 72f, contentTop + 140f, titlePaint)
 
         // 30sp with tighter tracking: at 36 the three-part line ran past the card and the rider
         // count — the part a reader actually cares about — was the bit that got ellipsised away.
@@ -198,7 +214,7 @@ object ShareSummaryCard {
      * older build are never matched again (and age out of the LRU) instead of being shared in the
      * old design.
      */
-    private const val CARD_VERSION = 3
+    private const val CARD_VERSION = 4
 
     /**
      * What identifies a card's pixels: the ride, the layout version, the title, EVERY field of the

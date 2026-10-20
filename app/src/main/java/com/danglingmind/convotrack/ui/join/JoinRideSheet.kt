@@ -288,7 +288,7 @@ private fun QrScanTarget(enabled: Boolean, onClick: () -> Unit, modifier: Modifi
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             IconDisc(Icons.Filled.CameraAlt, size = 60.dp, iconSize = 28.dp, background = DsColor.accentTint)
-            Text("TAP TO SCAN", style = DsType.buttonPill, color = DsColor.accent)
+            Text("Tap to scan", style = DsType.buttonPill, color = DsColor.accent)
         }
     }
 }

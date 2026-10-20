@@ -49,9 +49,10 @@ object MapMarkerBitmaps {
             textSize = sizePx
             this.color = color
             typeface = Typeface.create(
-                if (mono) Typeface.MONOSPACE else Typeface.DEFAULT,
+                Typeface.DEFAULT,
                 if (bold) Typeface.BOLD else Typeface.NORMAL,
             )
+            if (mono) fontFeatureSettings = "tnum"
         }
 
     // MARK: - User chevron

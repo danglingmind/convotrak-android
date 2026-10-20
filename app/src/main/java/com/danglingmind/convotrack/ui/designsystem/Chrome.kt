@@ -128,7 +128,7 @@ fun SectionAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
             .padding(start = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text.uppercase(), style = DsType.sectionAction, color = DsColor.textLabel)
+        Text(text, style = DsType.sectionAction, color = DsColor.textLabel)
         Icon(Icons.Filled.ChevronRight, null, tint = DsColor.textLabel, modifier = Modifier.size(18.dp))
     }
 }
@@ -146,7 +146,7 @@ fun OutlinedPillAction(text: String, icon: ImageVector, onClick: () -> Unit, mod
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(text.uppercase(), style = DsType.sectionAction.sized(DsType.micro.fontSize), color = DsColor.textSecondary)
+        Text(text, style = DsType.sectionAction.sized(DsType.micro.fontSize), color = DsColor.textSecondary)
         Icon(icon, null, tint = DsColor.textPrimary, modifier = Modifier.size(16.dp))
     }
 }
@@ -156,7 +156,7 @@ fun OutlinedPillAction(text: String, icon: ImageVector, onClick: () -> Unit, mod
 fun LiveIndicator(text: String, modifier: Modifier = Modifier, color: Color = DsColor.accent, pulse: Boolean = true) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         PulseDot(color = color, size = 7.dp, pulse = pulse)
-        Text(text.uppercase(), style = DsType.sectionAction, color = color, maxLines = 1)
+        Text(text.uppercase(), style = DsType.metaTag, color = color, maxLines = 1)
     }
 }
 

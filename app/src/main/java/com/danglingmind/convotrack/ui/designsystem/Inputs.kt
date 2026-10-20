@@ -193,7 +193,7 @@ fun <T> SegmentedControl(
                     .dsClickable { view.dsHaptic(DsHaptic.Selection); onSelect(option) },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label(option).uppercase(), style = DsType.buttonPill, color = if (active) DsColor.onAccent else DsColor.textSecondary)
+                Text(label(option), style = DsType.buttonPill, color = if (active) DsColor.onAccent else DsColor.textSecondary)
             }
         }
     }

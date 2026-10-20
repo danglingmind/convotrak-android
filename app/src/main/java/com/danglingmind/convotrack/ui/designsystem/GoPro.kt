@@ -177,7 +177,7 @@ fun GoProButton(
                     Icon(icon, null, tint = DsPro.gold, modifier = Modifier.size(24.dp))
                     Spacer(Modifier.width(12.dp))
                 }
-                Text(text.uppercase(), style = DsType.button.gold(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text, style = DsType.button.gold(), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

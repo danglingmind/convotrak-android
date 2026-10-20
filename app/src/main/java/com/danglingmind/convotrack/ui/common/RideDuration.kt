@@ -38,9 +38,9 @@ object RideDuration {
     fun inline(seconds: Int?): String {
         if (seconds == null || seconds <= 0) return "--"
         return when {
-            seconds < 60 -> "$seconds SEC"
-            seconds < 3600 -> "${seconds / 60} MIN"
-            else -> String.format(Locale.US, "%dH %02dM", seconds / 3600, (seconds % 3600) / 60)
+            seconds < 60 -> "$seconds sec"
+            seconds < 3600 -> "${seconds / 60} min"
+            else -> String.format(Locale.US, "%dh %02dm", seconds / 3600, (seconds % 3600) / 60)
         }
     }
 }

@@ -537,7 +537,7 @@ private fun AddStopButton(onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(Icons.Outlined.AddCircleOutline, null, tint = DsColor.accent, modifier = Modifier.size(18.dp))
-        Text("ADD STOP", style = DsType.buttonWide.copy(fontSize = DsType.helper.fontSize), color = DsColor.accent)
+        Text("Add stop", style = DsType.buttonWide.copy(fontSize = DsType.helper.fontSize), color = DsColor.accent)
     }
 }
 

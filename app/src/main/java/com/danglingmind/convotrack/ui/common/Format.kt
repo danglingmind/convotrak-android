@@ -17,9 +17,9 @@ fun HistoryRide.dateLabel(): String {
         .uppercase(Locale.getDefault())
 }
 
-/** "42.6 KM", or "--" when distance is unknown. */
+/** "42.6 km", or "--" when distance is unknown. */
 fun HistoryRide.distanceLabel(): String =
-    if (distanceMeters > 0) String.format(Locale.US, "%.1f KM", distanceMeters / 1000) else "--"
+    if (distanceMeters > 0) String.format(Locale.US, "%.1f km", distanceMeters / 1000) else "--"
 
 fun formatKm(meters: Double): String =
     if (meters > 0) String.format(Locale.US, "%.1f", meters / 1000) else "0"

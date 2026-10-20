@@ -296,7 +296,7 @@ private fun ActionButtonPair(onCreateRide: () -> Unit, onJoinRide: () -> Unit, l
                 Icon(if (locked) Icons.Filled.Lock else Icons.Filled.Add, null, tint = DsColor.accent, modifier = Modifier.size(if (locked) 15.dp else 18.dp))
             }
             Spacer(Modifier.size(12.dp))
-            Text("CREATE RIDE", style = DsType.buttonWide, color = DsColor.onAccent, maxLines = 1)
+            Text("Create ride", style = DsType.buttonWide, color = DsColor.onAccent, maxLines = 1)
         }
         Row(
             Modifier
@@ -312,7 +312,7 @@ private fun ActionButtonPair(onCreateRide: () -> Unit, onJoinRide: () -> Unit, l
         ) {
             Icon(if (locked) Icons.Filled.Lock else Icons.Outlined.PersonAddAlt, null, tint = DsColor.textPrimary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.size(10.dp))
-            Text("JOIN RIDE", style = DsType.buttonWide, color = DsColor.textPrimary, maxLines = 1)
+            Text("Join ride", style = DsType.buttonWide, color = DsColor.textPrimary, maxLines = 1)
         }
     }
 }
@@ -378,7 +378,7 @@ private fun ActiveRideSection(ride: HistoryRide, onClick: () -> Unit, modifier: 
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(ride.title, style = DsType.cardTitle, color = DsColor.textOnPhoto, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MetaChip(Icons.Filled.Route, "${formatKm(ride.distanceMeters)} KM")
+                        MetaChip(Icons.Filled.Route, "${formatKm(ride.distanceMeters)} km")
                         full?.estimatedDurationSeconds?.takeIf { it > 0 }?.let { MetaChip(Icons.Filled.Schedule, durationLabel(it)) }
                     }
                 }

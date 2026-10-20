@@ -258,7 +258,7 @@ private fun GoogleSignInButton(loading: Boolean, enabled: Boolean, onClick: () -
                 Modifier.align(Alignment.CenterStart).padding(start = 12.dp).size(34.dp).clip(CircleShape).background(Color.White),
                 contentAlignment = Alignment.Center,
             ) { GoogleGIcon() }
-            Text("CONTINUE WITH GOOGLE", style = DsType.buttonWide, color = DsColor.onAccent)
+            Text("Continue with Google", style = DsType.buttonWide, color = DsColor.onAccent)
         }
     }
 }

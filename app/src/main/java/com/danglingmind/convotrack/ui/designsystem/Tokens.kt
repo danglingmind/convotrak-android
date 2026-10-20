@@ -141,7 +141,8 @@ object DsGradient {
     val bottomActionFade = Brush.verticalGradient(0f to Color(0x00060C12), 0.4f to DsColor.bgDeep)
 }
 
-/** Font families. Bundled in res/font (decision: fonts are bundled). */
+/** Font families. Bundled in res/font. Inter for everything; Roboto Mono only for invite and
+ *  one-time codes, where 0/O must be unambiguous. Live numbers use Inter with tabular digits. */
 object DsFont {
     val ui = FontFamily(
         Font(R.font.inter_regular, FontWeight.Normal),
@@ -151,10 +152,8 @@ object DsFont {
         Font(R.font.inter_extrabold, FontWeight.ExtraBold),
     )
     val mono = FontFamily(
-        Font(R.font.roboto_mono_medium, FontWeight.Medium),
         Font(R.font.roboto_mono_bold, FontWeight.Bold),
     )
-    val display = FontFamily(Font(R.font.source_serif_bold, FontWeight.Bold))
 }
 
 private val tightLines = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)
@@ -181,51 +180,51 @@ private fun style(
  * caller (`text.uppercase()`), since TextStyle has no transform.
  */
 object DsType {
-    val heroTitle = style(DsFont.display, 40, FontWeight.Bold, 40, -1.0f)
-    val heroTitleCompact = style(DsFont.display, 30, FontWeight.Bold, 32, -0.6f)
-    val heroSubtitle = style(DsFont.ui, 15, FontWeight.Normal, 21, 0.2f)
-    val eyebrow = style(DsFont.ui, 11, FontWeight.SemiBold, 14, 4.4f)
+    val heroTitle = style(DsFont.ui, 34, FontWeight.ExtraBold, 38, -0.8f)
+    val heroTitleCompact = style(DsFont.ui, 28, FontWeight.ExtraBold, 32, -0.6f)
+    val heroSubtitle = style(DsFont.ui, 15, FontWeight.Normal, 21)
+    val eyebrow = style(DsFont.ui, 12, FontWeight.SemiBold, 16, 1.5f)
     val brandWordmark = style(DsFont.ui, 40, FontWeight.ExtraBold, 44, 4f)
-    val headerTitle = style(DsFont.ui, 16, FontWeight.SemiBold, 20, 3.6f)
-    val headerSubtitle = style(DsFont.ui, 13, FontWeight.Normal, 17, 1.6f)
-    val sectionLabel = style(DsFont.ui, 14, FontWeight.SemiBold, 18, 4.6f)
-    val sectionAction = style(DsFont.ui, 12, FontWeight.SemiBold, 16, 2.6f)
-    val fieldLabel = style(DsFont.ui, 12, FontWeight.SemiBold, 16, 3.0f)
-    val titleLarge = style(DsFont.ui, 24, FontWeight.Bold, 30, -0.2f)
-    val cardTitle = style(DsFont.ui, 22, FontWeight.Bold, 26, 0.2f)
-    val rowTitle = style(DsFont.ui, 16, FontWeight.SemiBold, 21, 0.4f)
-    val body = style(DsFont.ui, 15, FontWeight.Normal, 21, 0.2f)
-    val bodyStrong = style(DsFont.ui, 15, FontWeight.SemiBold, 21, 0.2f)
-    val bodySmall = style(DsFont.ui, 13, FontWeight.Normal, 18, 0.3f)
-    val input = style(DsFont.ui, 18, FontWeight.Medium, 24, 0.2f)
+    val headerTitle = style(DsFont.ui, 15, FontWeight.SemiBold, 20, 2.0f)
+    val headerSubtitle = style(DsFont.ui, 13, FontWeight.Normal, 17)
+    val sectionLabel = style(DsFont.ui, 13, FontWeight.SemiBold, 18, 2.0f)
+    val sectionAction = style(DsFont.ui, 13, FontWeight.SemiBold, 16)
+    val fieldLabel = style(DsFont.ui, 12, FontWeight.SemiBold, 16, 1.5f)
+    val titleLarge = style(DsFont.ui, 24, FontWeight.Bold, 30)
+    val cardTitle = style(DsFont.ui, 22, FontWeight.Bold, 26)
+    val rowTitle = style(DsFont.ui, 16, FontWeight.SemiBold, 21)
+    val body = style(DsFont.ui, 15, FontWeight.Normal, 21)
+    val bodyStrong = style(DsFont.ui, 15, FontWeight.SemiBold, 21)
+    val bodySmall = style(DsFont.ui, 13, FontWeight.Normal, 18)
+    val input = style(DsFont.ui, 18, FontWeight.Medium, 24)
     val locationTitle = style(DsFont.ui, 16, FontWeight.Medium, 20)
-    val helper = style(DsFont.ui, 12, FontWeight.Normal, 17, 0.2f)
-    val button = style(DsFont.ui, 18, FontWeight.ExtraBold, 22, 1.4f)
-    val buttonWide = style(DsFont.ui, 14, FontWeight.Bold, 18, 3.0f)
-    val buttonPill = style(DsFont.ui, 13, FontWeight.Bold, 16, 1.2f)
+    val helper = style(DsFont.ui, 12, FontWeight.Normal, 17)
+    val button = style(DsFont.ui, 17, FontWeight.Bold, 22)
+    val buttonWide = style(DsFont.ui, 16, FontWeight.SemiBold, 20)
+    val buttonPill = style(DsFont.ui, 14, FontWeight.SemiBold, 18)
     val link = style(DsFont.ui, 13, FontWeight.SemiBold, 18)
-    val statLabel = style(DsFont.ui, 11, FontWeight.Medium, 14, 1.4f)
+    val statLabel = style(DsFont.ui, 11, FontWeight.SemiBold, 14, 1.5f)
     val statValue = style(DsFont.ui, 18, FontWeight.SemiBold, 22, tabular = true)
     val metricValue = style(DsFont.ui, 24, FontWeight.SemiBold, 28, tabular = true)
     val metricDisplay = style(DsFont.ui, 44, FontWeight.Bold, 48, -0.8f, tabular = true)
-    val detailLabel = style(DsFont.ui, 14, FontWeight.Normal, 18, 0.5f)
-    val detailValue = style(DsFont.ui, 15, FontWeight.Medium, 20, 0.2f)
-    val dataMono = style(DsFont.mono, 13, FontWeight.Medium, 17, 0.6f, tabular = true)
+    val detailLabel = style(DsFont.ui, 14, FontWeight.Normal, 18)
+    val detailValue = style(DsFont.ui, 15, FontWeight.Medium, 20)
+    val dataMono = style(DsFont.ui, 13, FontWeight.SemiBold, 17, tabular = true)
     val codeValue = style(DsFont.mono, 18, FontWeight.Bold, 22, 1.0f)
     val codeDisplay = style(DsFont.mono, 30, FontWeight.Bold, 36, 6f)
     val otpDisplay = style(DsFont.mono, 26, FontWeight.Bold, 32, 10f)
-    val badge = style(DsFont.mono, 12, FontWeight.Bold, 14, 2.0f)
-    val badgeSmall = style(DsFont.mono, 10, FontWeight.Bold, 12, 1.4f)
-    val metaTag = style(DsFont.ui, 12, FontWeight.SemiBold, 16, 2.0f)
-    val navLabel = style(DsFont.ui, 12, FontWeight.Medium, 14, 0.2f)
-    val micro = style(DsFont.ui, 10, FontWeight.Medium, 12, 0.3f)
+    val badge = style(DsFont.ui, 12, FontWeight.SemiBold, 14, 1.5f, tabular = true)
+    val badgeSmall = style(DsFont.ui, 11, FontWeight.SemiBold, 13, 1.5f, tabular = true)
+    val metaTag = style(DsFont.ui, 12, FontWeight.SemiBold, 16, 1.5f)
+    val navLabel = style(DsFont.ui, 12, FontWeight.Medium, 14)
+    val micro = style(DsFont.ui, 11, FontWeight.Medium, 13)
 
     // Ride HUD — read at road speed, so larger than the planning screens.
-    val hudTurnDistance = style(DsFont.mono, 26, FontWeight.Bold, 30, tabular = true)
+    val hudTurnDistance = style(DsFont.ui, 26, FontWeight.ExtraBold, 30, tabular = true)
     val hudTurnInstruction = style(DsFont.ui, 17, FontWeight.SemiBold, 22)
-    val hudStatValue = style(DsFont.mono, 24, FontWeight.Bold, 28, tabular = true)
-    val hudStatLabel = style(DsFont.ui, 10, FontWeight.Bold, 12, 1.0f)
-    val hudEta = style(DsFont.mono, 22, FontWeight.Bold, 26, tabular = true)
+    val hudStatValue = style(DsFont.ui, 24, FontWeight.ExtraBold, 28, tabular = true)
+    val hudStatLabel = style(DsFont.ui, 11, FontWeight.Bold, 13, 1.0f)
+    val hudEta = style(DsFont.ui, 22, FontWeight.ExtraBold, 26, tabular = true)
 }
 
 /** 4pt spacing scale (`tokens.spacing`). */

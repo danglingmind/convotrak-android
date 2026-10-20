@@ -216,7 +216,7 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
                                 val cardKey = ShareSummaryCard.cacheKey(title, summary, r)
                                 val card = ShareSummaryCard.cachedCard(cardKey) ?: run {
                                     val route = r?.let { runCatching { rideRoute(it) }.getOrNull() }.orEmpty()
-                                    val bitmap = ShareSummaryCard.render(rideTitle = title, summary = summary, routeCoordinates = route)
+                                    val bitmap = ShareSummaryCard.render(context = ctx, rideTitle = title, summary = summary, routeCoordinates = route)
                                     ShareSummaryCard.saveCard(cardKey, rideId, bitmap)
                                 }
                                 ShareSummaryCard.share(ctx, card, title)

@@ -131,7 +131,7 @@ fun PrimaryButton(
                     Icon(icon, null, tint = DsColor.onAccent, modifier = Modifier.size(26.dp))
                     Spacer(Modifier.width(14.dp))
                 }
-                Text(text.uppercase(), style = DsType.button, color = DsColor.onAccent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text, style = DsType.button, color = DsColor.onAccent, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -174,7 +174,7 @@ fun SecondaryButton(
                     Icon(icon, null, tint = fg, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(10.dp))
                 }
-                Text(text.uppercase(), style = DsType.button.sized(DsType.buttonWide.fontSize).tracked(1.6f), color = fg, maxLines = 1)
+                Text(text, style = DsType.button.sized(DsType.buttonWide.fontSize), color = fg, maxLines = 1)
             }
         }
     }
@@ -203,7 +203,7 @@ fun DestructiveButton(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text.uppercase(),
+            text,
             style = DsType.buttonWide,
             color = DsColor.danger,
             modifier = if (enabled) Modifier else Modifier.dsAlpha(0.42f),
@@ -222,7 +222,7 @@ fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
             .dsClickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text.uppercase(), style = DsType.buttonWide, color = DsColor.textSecondary)
+        Text(text, style = DsType.buttonWide, color = DsColor.textSecondary)
     }
 }
 
@@ -265,8 +265,8 @@ fun PillButton(
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
     ) {
         if (icon != null) Icon(icon, null, tint = fg, modifier = Modifier.size(18.dp))
-        if (tone == PillTone.Gold) Text(text.uppercase(), style = DsType.buttonPill.gold(), maxLines = 1)
-        else Text(text.uppercase(), style = DsType.buttonPill, color = fg, maxLines = 1)
+        if (tone == PillTone.Gold) Text(text, style = DsType.buttonPill.gold(), maxLines = 1)
+        else Text(text, style = DsType.buttonPill, color = fg, maxLines = 1)
     }
 }
 
@@ -294,7 +294,7 @@ fun TextAction(
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text.uppercase(), style = DsType.buttonPill, color = if (enabled) color else DsColor.textDisabled)
+        Text(text, style = DsType.buttonPill, color = if (enabled) color else DsColor.textDisabled)
     }
 }
 
