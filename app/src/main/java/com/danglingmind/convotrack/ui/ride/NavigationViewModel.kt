@@ -143,11 +143,10 @@ class NavigationViewModel : ViewModel() {
     private val _isOffRoute = MutableStateFlow(false)
     val isOffRoute: StateFlow<Boolean> = _isOffRoute.asStateFlow()
 
-    /** Flags the rider as off route; speaks once per episode, not on every fix that confirms it. */
+    /** Flags the rider as off route. Shown as the turn card's status line only, not spoken. */
     private fun markOffRoute() {
         if (_isOffRoute.value) return
         _isOffRoute.value = true
-        VoiceAnnouncer.announce("Off route. Rerouting.", priority = VoicePriority.ALERT)
     }
 
     init {
