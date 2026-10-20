@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.1 (versionCode 10) — 2026-10-20
+
+### Added
+- A gold GO PRO chip with a soft glow, and gold Pro cards and plans screens.
+
+### Changed
+- One type family throughout: titles, labels and numbers now use Inter, with clearer durations
+  and distances ("16 min", "1h 05m", "5.6 km").
+- "Off route. Rerouting." is no longer read aloud; the turn card still shows it.
+
 ## 2.0.0 (versionCode 9) — 2026-10-19
 
 ### Added
