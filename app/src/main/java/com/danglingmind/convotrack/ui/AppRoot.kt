@@ -13,7 +13,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.navigation.compose.NavHost
@@ -27,6 +29,7 @@ import androidx.compose.runtime.remember
 import com.danglingmind.convotrack.ui.ride.RideSessionViewModel
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import com.danglingmind.convotrack.data.net.SyncProfileRequest
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.auth.AuthScreen
 import com.danglingmind.convotrack.ui.auth.VerificationScreen
@@ -86,6 +89,18 @@ fun AppRoot(
     // is the ride this device is currently broadcasting for. Anything else (stale notification,
     // unknown id, ride already over) is ignored. Waits while splash/auth are still on screen.
     val backStack by nav.currentBackStackEntryAsState()
+
+    // Pushes the rider's Clerk name + avatar to the backend whenever it changes (iOS MainTabView does
+    // the same on launch). Android session tokens carry no firstName/lastName claims, so without this
+    // the server only ever knows the rider as "Unknown" in lobbies, rosters and live broadcasts.
+    LaunchedEffect(Unit) {
+        ServiceLocator.auth.userState
+            .filterNotNull()
+            .distinctUntilChanged()
+            .collect { user ->
+                runCatching { ServiceLocator.api.syncProfile(SyncProfileRequest(user.name, user.avatarUrl)) }
+            }
+    }
 
     // The one paywall entry point (iOS `PaywallPresenter`): any screen calls `Paywall.present`.
     // A second request while the paywall is already up is dropped rather than stacking another.

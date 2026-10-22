@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.3 (versionCode 12) — 2026-10-22
+
+### Fixed
+- Riders no longer show up as "Unknown": your name and photo are now sent to ConvoTrack when you sign in, so other riders see them in lobbies, rosters and live rides.
+
 ## 2.0.2 (versionCode 11) — 2026-10-22
 
 ### Added
