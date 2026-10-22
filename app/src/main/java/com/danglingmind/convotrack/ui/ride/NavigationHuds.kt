@@ -130,28 +130,26 @@ private fun LeaderboardStrip(
  */
 @Composable
 private fun AlertSlot(
-    activeEmergency: SocketEmergency?,
-    emergencyReporter: String,
-    canDismissEmergency: Boolean,
-    onDismissEmergency: () -> Unit,
-    onShowEmergency: () -> Unit,
+    emergencies: List<EmergencyAlertItem>,
+    onDismissEmergency: (String) -> Unit,
+    onShowEmergency: (String) -> Unit,
     splitAlert: SplitAlertInfo?,
     onDismissSplit: () -> Unit,
     onRegroupFromSplit: () -> Unit,
-    showRegroupResolved: Boolean,
-    activeRegroupType: String?,
-    hasMarkedArrived: Boolean,
-    onMarkArrived: () -> Unit,
-    onShowRegroup: () -> Unit,
-    canDismissRegroup: Boolean,
-    onDismissRegroup: () -> Unit,
+    regroups: List<RegroupAlertItem>,
+    regroupNotice: RegroupNoticeUi?,
+    onMarkArrived: (String) -> Unit,
+    onShowRegroup: (String) -> Unit,
+    onDismissRegroup: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val alerts = buildList {
-        if (activeEmergency != null) add(NavAlert.EMERGENCY)
-        if (splitAlert != null) add(NavAlert.SPLIT)
-        if (activeRegroupType != null) add(NavAlert.REGROUP)
-        if (showRegroupResolved) add(NavAlert.REGROUP_RESOLVED)
+    // Several emergencies or regroups can be open at once. Each is its own alert, in the order it
+    // was raised, so the banner a rider is reading never reshuffles under them as they ride.
+    val alerts = buildList<NavAlert> {
+        emergencies.forEach { add(NavAlert.Emergency(it.id)) }
+        if (splitAlert != null) add(NavAlert.Split)
+        regroups.forEach { add(NavAlert.Regroup(it.id)) }
+        if (regroupNotice != null) add(NavAlert.Notice)
     }
     if (alerts.isEmpty()) return
     // Back to the most urgent whenever the set changes.
@@ -160,24 +158,29 @@ private fun AlertSlot(
 
     Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         when (current) {
-            NavAlert.EMERGENCY -> if (activeEmergency != null) EmergencyBanner(
-                reporterName = emergencyReporter,
-                message = activeEmergency.message,
-                onShow = onShowEmergency,
-                // No dismiss control unless you raised it or you lead: the server enforces the
-                // same rule, so offering the button to anyone else would only fail.
-                onDismiss = if (canDismissEmergency) onDismissEmergency else null,
-            )
-            NavAlert.SPLIT -> if (splitAlert != null) GroupSplitAlert(splitAlert, onIgnore = onDismissSplit, onRegroup = onRegroupFromSplit)
-            NavAlert.REGROUP -> if (activeRegroupType != null) RegroupAlertBanner(
-                type = activeRegroupType,
-                hasArrived = hasMarkedArrived,
-                onShow = onShowRegroup,
-                onArrived = onMarkArrived,
-                // Only the caller or the leader can end it early; the server enforces the same rule.
-                onDismiss = if (canDismissRegroup) onDismissRegroup else null,
-            )
-            NavAlert.REGROUP_RESOLVED -> RegroupResolvedBanner()
+            is NavAlert.Emergency -> emergencies.firstOrNull { it.id == current.id }?.let { e ->
+                EmergencyBanner(
+                    reporterName = e.reporter,
+                    message = e.message,
+                    onShow = { onShowEmergency(e.id) },
+                    // No dismiss control unless you raised it or you lead: the server enforces the
+                    // same rule, so offering the button to anyone else would only fail.
+                    onDismiss = if (e.canDismiss) ({ onDismissEmergency(e.id) }) else null,
+                )
+            }
+            NavAlert.Split -> if (splitAlert != null) GroupSplitAlert(splitAlert, onIgnore = onDismissSplit, onRegroup = onRegroupFromSplit)
+            is NavAlert.Regroup -> regroups.firstOrNull { it.id == current.id }?.let { r ->
+                RegroupAlertBanner(
+                    type = r.type,
+                    caller = r.caller,
+                    hasArrived = r.hasArrived,
+                    onShow = { onShowRegroup(r.id) },
+                    onArrived = { onMarkArrived(r.id) },
+                    // Only the caller or the leader can end it early; the server enforces the same rule.
+                    onDismiss = if (r.canDismiss) ({ onDismissRegroup(r.id) }) else null,
+                )
+            }
+            NavAlert.Notice -> regroupNotice?.let { RegroupNoticeBanner(it) }
         }
         if (alerts.size > 1) {
             val more = "${alerts.size - 1} more alerts"
@@ -204,7 +207,12 @@ private fun AlertSlot(
 }
 
 /** The alerts that can claim the banner slot, in priority order. */
-private enum class NavAlert { EMERGENCY, SPLIT, REGROUP, REGROUP_RESOLVED }
+private sealed interface NavAlert {
+    data class Emergency(val id: String) : NavAlert
+    object Split : NavAlert
+    data class Regroup(val id: String) : NavAlert
+    object Notice : NavAlert
+}
 
 @Composable
 private fun NavigationPreviewBar(
@@ -267,20 +275,16 @@ fun PortraitHud(
     onSelectRider: (String) -> Unit,
     connectionState: RideRealtimeSession.ConnectionState,
     isOffRoute: Boolean,
-    activeEmergency: SocketEmergency?,
-    emergencyReporter: String,
-    canDismissEmergency: Boolean,
-    onDismissEmergency: () -> Unit,
-    onShowEmergency: () -> Unit,
+    emergencies: List<EmergencyAlertItem>,
+    onDismissEmergency: (String) -> Unit,
+    onShowEmergency: (String) -> Unit,
     splitAlert: SplitAlertInfo?,
     onDismissSplit: () -> Unit,
-    showRegroupResolved: Boolean,
-    activeRegroupType: String?,
-    hasMarkedArrived: Boolean,
-    onMarkArrived: () -> Unit,
-    onShowRegroup: () -> Unit,
-    canDismissRegroup: Boolean,
-    onDismissRegroup: () -> Unit,
+    regroups: List<RegroupAlertItem>,
+    regroupNotice: RegroupNoticeUi?,
+    onMarkArrived: (String) -> Unit,
+    onShowRegroup: (String) -> Unit,
+    onDismissRegroup: (String) -> Unit,
     speedText: String,
     arrival: Arrival?,
     distText: String,
@@ -345,20 +349,16 @@ fun PortraitHud(
 
         if (isNavigationActive) {
             AlertSlot(
-                activeEmergency = activeEmergency,
-                emergencyReporter = emergencyReporter,
-                canDismissEmergency = canDismissEmergency,
+                emergencies = emergencies,
                 onDismissEmergency = onDismissEmergency,
                 onShowEmergency = onShowEmergency,
                 splitAlert = splitAlert,
                 onDismissSplit = onDismissSplit,
                 onRegroupFromSplit = { onDismissSplit(); onRegroup() },
-                showRegroupResolved = showRegroupResolved,
-                activeRegroupType = activeRegroupType,
-                hasMarkedArrived = hasMarkedArrived,
+                regroups = regroups,
+                regroupNotice = regroupNotice,
                 onMarkArrived = onMarkArrived,
                 onShowRegroup = onShowRegroup,
-                canDismissRegroup = canDismissRegroup,
                 onDismissRegroup = onDismissRegroup,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
@@ -542,20 +542,16 @@ fun LandscapeHud(
     onSelectRider: (String) -> Unit,
     connectionState: RideRealtimeSession.ConnectionState,
     isOffRoute: Boolean,
-    activeEmergency: SocketEmergency?,
-    emergencyReporter: String,
-    canDismissEmergency: Boolean,
-    onDismissEmergency: () -> Unit,
-    onShowEmergency: () -> Unit,
+    emergencies: List<EmergencyAlertItem>,
+    onDismissEmergency: (String) -> Unit,
+    onShowEmergency: (String) -> Unit,
     splitAlert: SplitAlertInfo?,
     onDismissSplit: () -> Unit,
-    showRegroupResolved: Boolean,
-    activeRegroupType: String?,
-    hasMarkedArrived: Boolean,
-    onMarkArrived: () -> Unit,
-    onShowRegroup: () -> Unit,
-    canDismissRegroup: Boolean,
-    onDismissRegroup: () -> Unit,
+    regroups: List<RegroupAlertItem>,
+    regroupNotice: RegroupNoticeUi?,
+    onMarkArrived: (String) -> Unit,
+    onShowRegroup: (String) -> Unit,
+    onDismissRegroup: (String) -> Unit,
     speedText: String,
     arrival: Arrival?,
     distText: String,
@@ -630,20 +626,16 @@ fun LandscapeHud(
 
                     // 3 — banners, directly under the leaderboard.
                     AlertSlot(
-                activeEmergency = activeEmergency,
-                emergencyReporter = emergencyReporter,
-                canDismissEmergency = canDismissEmergency,
+                emergencies = emergencies,
                 onDismissEmergency = onDismissEmergency,
                 onShowEmergency = onShowEmergency,
                 splitAlert = splitAlert,
                 onDismissSplit = onDismissSplit,
                 onRegroupFromSplit = { onDismissSplit(); onRegroup() },
-                showRegroupResolved = showRegroupResolved,
-                activeRegroupType = activeRegroupType,
-                hasMarkedArrived = hasMarkedArrived,
+                regroups = regroups,
+                regroupNotice = regroupNotice,
                 onMarkArrived = onMarkArrived,
                 onShowRegroup = onShowRegroup,
-                canDismissRegroup = canDismissRegroup,
                 onDismissRegroup = onDismissRegroup,
                 modifier = Modifier,
             )

@@ -51,6 +51,18 @@ data class SocketEmergency(
     val createdAt: String? = null,
 )
 
+/**
+ * ride:regroup_dismissed payload. [reason] is "dismissed" (by its caller or the leader),
+ * "superseded" (its caller started another) or "capped" (dropped as the oldest when a fourth was
+ * called).
+ */
+@Serializable
+data class RegroupDismissal(
+    val regroupId: String = "",
+    val reason: String = "dismissed",
+    val dismissedAt: String? = null,
+)
+
 /** ride:split_detected payload — the group has spread past the split threshold. */
 @Serializable
 data class SplitEvent(
@@ -142,7 +154,7 @@ class SocketService(private val auth: AuthRepository) {
     val presence = event<List<String>>()           // authoritative online userIds (heartbeat)
     val regroupStarted = event<RegroupEvent>()
     val regroupResolved = event<String>()          // regroupId
-    val regroupDismissed = event<String>()         // regroupId
+    val regroupDismissed = event<RegroupDismissal>()
     val emergencyStarted = event<SocketEmergency>()
     val emergencyResolved = event<String>()         // emergencyId
     val splitDetected = event<SplitEvent>()
@@ -333,7 +345,7 @@ class SocketService(private val auth: AuthRepository) {
         s.onField("ride:participant_removed", "userId", participantRemoved)
         s.onField("ride:participant_offline", "userId", participantOffline)
         s.onField("ride:regroup_resolved", "regroupId", regroupResolved)
-        s.onField("ride:regroup_dismissed", "regroupId", regroupDismissed)
+        s.onDecoded("ride:regroup_dismissed", RegroupDismissal.serializer(), regroupDismissed)
         s.onField("ride:emergency_resolved", "emergencyId", emergencyResolved)
         s.onSignal("ride:split_resolved", splitResolved)
         // The leader deleted the whole ride. Carries no payload worth reading — the room it

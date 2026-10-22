@@ -146,7 +146,15 @@ data class RideStateUpdate(
     // An emergency stays open (pin + repeating siren) until the raiser or leader dismisses it;
     // carried in the snapshot so late joiners / re-entrants pick it up.
     val openEmergency: com.danglingmind.convotrack.data.socket.SocketEmergency? = null,
-)
+    // Every open regroup / emergency. Absent from servers that predate multiple open items, in
+    // which case openRegroup / openEmergency (the most recent) is all there is.
+    val openRegroups: List<RegroupEvent>? = null,
+    val openEmergencies: List<com.danglingmind.convotrack.data.socket.SocketEmergency>? = null,
+) {
+    fun allOpenRegroups(): List<RegroupEvent> = openRegroups ?: listOfNotNull(openRegroup)
+    fun allOpenEmergencies(): List<com.danglingmind.convotrack.data.socket.SocketEmergency> =
+        openEmergencies ?: listOfNotNull(openEmergency)
+}
 
 @Serializable
 data class LiveParticipant(

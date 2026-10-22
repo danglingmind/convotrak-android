@@ -405,7 +405,7 @@ private fun regroupAccentColor(type: String): Color = when (type) {
     else -> DsColor.catOther
 }
 
-private fun regroupLabelText(type: String): String = when (type) {
+internal fun regroupLabelText(type: String): String = when (type) {
     "FUEL" -> "Fuel Stop"
     "FOOD" -> "Food Stop"
     "SCENIC" -> "Scenic Stop"
@@ -420,6 +420,7 @@ private fun regroupLabelText(type: String): String = when (type) {
 @Composable
 fun RegroupAlertBanner(
     type: String,
+    caller: String,
     hasArrived: Boolean,
     onShow: () -> Unit,
     onArrived: () -> Unit,
@@ -434,6 +435,8 @@ fun RegroupAlertBanner(
         icon = Icons.Filled.Groups,
         eyebrow = "REGROUP CALLED",
         message = "Head to the ${regroupLabelText(type)}",
+        // Several can be open at once, so say whose it is.
+        detail = "Called by $caller",
         modifier = modifier,
         trailing = onDismiss?.let { dismiss ->
             {
@@ -460,18 +463,51 @@ fun RegroupAlertBanner(
     )
 }
 
-/** Transient "regroup complete" confirmation once the server resolves it. */
+/** One open emergency, as the alert slot shows it. */
+data class EmergencyAlertItem(val id: String, val reporter: String, val message: String, val canDismiss: Boolean)
+
+/** One open regroup, as the alert slot shows it. */
+data class RegroupAlertItem(
+    val id: String,
+    val type: String,
+    val caller: String,
+    val hasArrived: Boolean,
+    val canDismiss: Boolean,
+)
+
+/** A short-lived confirmation in the alert slot, after a regroup ends without anyone dismissing it. */
+sealed interface RegroupNoticeUi {
+    /** Everyone arrived at this stop (e.g. "Fuel stop"). */
+    data class Complete(val stop: String) : RegroupNoticeUi
+    /** The oldest open regroup was dropped to make room (e.g. "Fuel stop · Ravi"). */
+    data class Replaced(val what: String) : RegroupNoticeUi
+}
+
 @Composable
-fun RegroupResolvedBanner(modifier: Modifier = Modifier) {
-    HudBanner(
-        accent = DsColor.success,
-        background = DsColor.success.copy(alpha = 0.12f).compositeOverHud(),
-        border = DsColor.successBorder,
-        icon = Icons.Filled.CheckCircle,
-        eyebrow = "REGROUP COMPLETE",
-        message = "Everyone arrived",
-        modifier = modifier,
-    )
+fun RegroupNoticeBanner(notice: RegroupNoticeUi, modifier: Modifier = Modifier) {
+    when (notice) {
+        is RegroupNoticeUi.Complete -> HudBanner(
+            accent = DsColor.success,
+            background = DsColor.success.copy(alpha = 0.12f).compositeOverHud(),
+            border = DsColor.successBorder,
+            icon = Icons.Filled.CheckCircle,
+            eyebrow = "REGROUP COMPLETE",
+            message = "Everyone arrived at the ${notice.stop}",
+            modifier = modifier,
+        )
+        is RegroupNoticeUi.Replaced -> {
+            val accent = regroupAccentColor("STOP")
+            HudBanner(
+                accent = accent,
+                background = accent.copy(alpha = 0.12f).compositeOverHud(),
+                border = accent.copy(alpha = 0.5f),
+                icon = Icons.Filled.Groups,
+                eyebrow = "REGROUP REPLACED",
+                message = "${notice.what} made way for a newer one",
+                modifier = modifier,
+            )
+        }
+    }
 }
 
 /**

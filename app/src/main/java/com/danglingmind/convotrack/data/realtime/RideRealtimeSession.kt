@@ -4,6 +4,7 @@ import com.danglingmind.convotrack.data.imagecache.RideDestinationStore
 import com.danglingmind.convotrack.data.imagecache.ImageCache
 import com.danglingmind.convotrack.data.auth.AuthRepository
 import com.danglingmind.convotrack.data.net.RegroupEvent
+import com.danglingmind.convotrack.data.socket.RegroupDismissal
 import com.danglingmind.convotrack.data.net.RideParticipant
 import com.danglingmind.convotrack.data.net.RideStateUpdate
 import com.danglingmind.convotrack.data.net.RideUpdatedEvent
@@ -90,8 +91,8 @@ class RideRealtimeSession(
     private val _latestRegroupResolvedId = MutableStateFlow<String?>(null)
     val latestRegroupResolvedId: StateFlow<String?> = _latestRegroupResolvedId.asStateFlow()
 
-    private val _latestRegroupDismissedId = MutableStateFlow<String?>(null)
-    val latestRegroupDismissedId: StateFlow<String?> = _latestRegroupDismissedId.asStateFlow()
+    private val _latestRegroupDismissal = MutableStateFlow<RegroupDismissal?>(null)
+    val latestRegroupDismissal: StateFlow<RegroupDismissal?> = _latestRegroupDismissal.asStateFlow()
 
     private val _latestEmergency = MutableStateFlow<SocketEmergency?>(null)
     val latestEmergency: StateFlow<SocketEmergency?> = _latestEmergency.asStateFlow()
@@ -197,7 +198,7 @@ class RideRealtimeSession(
         _split.value = null
         _latestRegroup.value = null
         _latestRegroupResolvedId.value = null
-        _latestRegroupDismissedId.value = null
+        _latestRegroupDismissal.value = null
         _latestEmergency.value = null
         _latestEmergencyResolvedId.value = null
         _rideUpdated.value = null
@@ -363,10 +364,20 @@ class RideRealtimeSession(
             splitVoicePending.set(false)
         }
         collect(socket.regroupStarted) { event -> _latestRegroup.value = event }
-        collect(socket.regroupResolved) { id -> _latestRegroupResolvedId.value = id }
-        collect(socket.regroupDismissed) { id -> _latestRegroupDismissedId.value = id }
+        // A closed item must not replay as "latest started" when a screen is entered again.
+        collect(socket.regroupResolved) { id ->
+            _latestRegroupResolvedId.value = id
+            if (_latestRegroup.value?.regroupId == id) _latestRegroup.value = null
+        }
+        collect(socket.regroupDismissed) { dismissal ->
+            _latestRegroupDismissal.value = dismissal
+            if (_latestRegroup.value?.regroupId == dismissal.regroupId) _latestRegroup.value = null
+        }
         collect(socket.emergencyStarted) { event -> _latestEmergency.value = event }
-        collect(socket.emergencyResolved) { id -> _latestEmergencyResolvedId.value = id }
+        collect(socket.emergencyResolved) { id ->
+            _latestEmergencyResolvedId.value = id
+            if (_latestEmergency.value?.emergencyId == id) _latestEmergency.value = null
+        }
     }
 
     private fun <T> collect(

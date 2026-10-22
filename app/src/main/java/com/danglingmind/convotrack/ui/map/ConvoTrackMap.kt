@@ -658,10 +658,12 @@ private fun bakeMarker(marker: MapMarker, scale: Float, fontScale: Float, avatar
         MapMarkerKind.START -> stopPin(scale, fontScale, "▲", DsColor.mapStart.toArgb(), 36f, marker.label, filled = false)
         MapMarkerKind.REGROUP -> {
             val type = marker.regroupType.orEmpty()
-            stopPin(scale, fontScale, regroupGlyph(type), regroupAccent(type), 40f, regroupLabel(type), filled = false)
+            // The caller rides in `label` so several stops on the map can be told apart.
+            val stop = regroupLabel(type)
+            stopPin(scale, fontScale, regroupGlyph(type), regroupAccent(type), 40f, marker.label?.let { "$stop · $it" } ?: stop, filled = false)
         }
         MapMarkerKind.EMERGENCY ->
-            stopPin(scale, fontScale, "!", DsColor.danger.toArgb(), 40f, "Emergency")
+            stopPin(scale, fontScale, "!", DsColor.danger.toArgb(), 40f, marker.label?.let { "Emergency · $it" } ?: "Emergency")
     }
 
 private fun stopPin(

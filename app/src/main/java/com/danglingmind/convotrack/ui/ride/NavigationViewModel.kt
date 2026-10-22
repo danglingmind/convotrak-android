@@ -1059,12 +1059,17 @@ class NavigationViewModel : ViewModel() {
     fun isStopAhead(stop: LatLng): Boolean =
         remainingStops.any { abs(it.latitude - stop.latitude) < 1e-6 && abs(it.longitude - stop.longitude) < 1e-6 }
 
-    fun emergencyReporterName(emergency: SocketEmergency): String {
-        if (emergency.userId == myUserId) return "You"
-        return _leaderboardRows.value.firstOrNull { it.id == emergency.userId }?.name
-            ?: staticParticipants.firstOrNull { it.userId == emergency.userId }?.name
+    /** A rider's display name; "You" for the signed-in rider. */
+    fun riderName(id: String): String {
+        if (id == myUserId) return "You"
+        return _leaderboardRows.value.firstOrNull { it.id == id }?.name
+            ?: staticParticipants.firstOrNull { it.userId == id }?.name
             ?: "A rider"
     }
+
+    fun riderFirstName(id: String): String = riderName(id).substringBefore(' ')
+
+    fun emergencyReporterName(emergency: SocketEmergency): String = riderName(emergency.userId)
 
     /** Only the rider who raised the emergency or the ride leader may clear it (the server enforces
      *  the same rule); everyone else sees the persistent pin + siren until one of them dismisses. */

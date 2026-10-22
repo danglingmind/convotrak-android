@@ -73,8 +73,11 @@ data class EdgeIndicator(
 
 /** Marker ids for the non-rider things worth an edge chip. They share the rider tap path. */
 object EdgeTarget {
-    const val REGROUP_ID = "regroup"
-    const val EMERGENCY_ID = "emergency"
+    const val REGROUP_PREFIX = "regroup:"
+    const val EMERGENCY_PREFIX = "emergency:"
+
+    fun regroupId(id: String) = REGROUP_PREFIX + id
+    fun emergencyId(id: String) = EMERGENCY_PREFIX + id
 }
 
 enum class EdgeKind { RIDER, REGROUP, EMERGENCY }
