@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.2 (versionCode 11) — 2026-10-22
+
+### Added
+- Several open regroups and emergencies can now show at once, and the caller or leader can dismiss an open regroup.
+
+### Changed
+- The online indicator in the top-right corner is gone from every screen.
+- The Google photo credit is now a small, quiet line in the corner of the destination photo.
+- Spoken prompts pick the best installed English voice.
+
 ## 2.0.1 (versionCode 10) — 2026-10-20
 
 ### Added
