@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -81,6 +82,9 @@ object VoiceAnnouncer {
                 val regional = Locale("en", Locale.getDefault().country)
                 language = if (Locale.getDefault().country.isNotEmpty() &&
                     isLanguageAvailable(regional) >= TextToSpeech.LANG_COUNTRY_AVAILABLE) regional else Locale.US
+                // The default voice for a language is often the engine's basic one; use the best
+                // installed English voice instead (offline, highest quality, rider's accent first).
+                bestEnglishVoice()?.let { voice = it }
                 setAudioAttributes(guidanceAttributes)
                 setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String) {
@@ -95,6 +99,20 @@ object VoiceAnnouncer {
             ready = true
             pending?.let { (text, priority) -> speakNow(text, priority); pending = null }
         }
+    }
+
+    private fun TextToSpeech.bestEnglishVoice(): Voice? {
+        val country = Locale.getDefault().country
+        return runCatching { voices }.getOrNull().orEmpty()
+            .filter {
+                it.locale.language == "en" &&
+                    !it.isNetworkConnectionRequired &&
+                    "notInstalled" !in it.features.orEmpty()
+            }
+            .maxWithOrNull(
+                compareBy<Voice> { it.quality }
+                    .thenBy { if (country.isNotEmpty() && it.locale.country == country) 1 else 0 }
+            )
     }
 
     fun setMuted(value: Boolean) {
