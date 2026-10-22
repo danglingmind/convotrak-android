@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.designsystem.PhotoCredit
 import com.danglingmind.convotrack.ui.designsystem.DsPro
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -593,6 +594,10 @@ private fun LobbyHero(ride: Ride, heroPhase: DestinationHeroPhase, routeCoords: 
             )
         }
         Box(Modifier.matchParentSize().background(DsGradient.photoFade))
+        // Photographer credit: Google's Places policy requires it wherever a Place Photo is shown.
+        (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
+            PhotoCredit(credit, Modifier.align(Alignment.BottomEnd))
+        }
 
         Column(
             Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = DsSpace.gutter).padding(bottom = 4.dp),
@@ -614,23 +619,6 @@ private fun LobbyHero(ride: Ride, heroPhase: DestinationHeroPhase, routeCoords: 
                 Icon(Icons.Filled.LocationOn, null, tint = DsColor.textSecondary, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(6.dp))
                 Text(ride.destinationName, style = DsType.body, color = DsColor.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                // Photographer credit. Required by Google's Places policy whenever a Place Photo is
-                // displayed, so it renders WITH the image rather than being optional decoration.
-                (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
-                    Text(
-                        "Photo: $credit · Google",
-                        style = DsType.micro,
-                        color = DsColor.textOnPhotoMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .widthIn(max = 170.dp)
-                            .clip(DsShape.pill)
-                            .background(DsColor.glassPill)
-                            .border(1.dp, DsColor.borderOnPhoto, DsShape.pill)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
-                }
             }
         }
     }

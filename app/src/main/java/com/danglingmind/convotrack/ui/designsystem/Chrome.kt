@@ -72,6 +72,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -372,14 +374,14 @@ fun DsScreen(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> 
 
 // MARK: - Headers
 
-/** Pushed-screen header: back · centred title + subtitle · trailing (connection by default). */
+/** Pushed-screen header: back · centred title + subtitle · trailing (empty for now; the connection indicator is hidden). */
 @Composable
 fun PushedHeader(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
-    trailing: @Composable () -> Unit = { ConnectionStatusButton() },
+    trailing: @Composable () -> Unit = { /* ConnectionStatusButton() hidden: slot reserved for a notification bell */ },
 ) {
     Row(
         modifier
@@ -506,3 +508,19 @@ fun BackFloatingButton(onBack: () -> Unit, modifier: Modifier = Modifier, tone: 
     FloatingButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack, modifier, tone = tone)
 }
 
+
+/**
+ * Google Places photographer credit, required wherever a Place Photo is shown. Kept tiny and
+ * quiet: place it with `Modifier.align(Alignment.BottomEnd)` in the photo's corner.
+ */
+@Composable
+fun PhotoCredit(credit: String, modifier: Modifier = Modifier) {
+    Text(
+        "Photo: $credit · Google",
+        style = DsType.micro.copy(fontSize = 8.sp, lineHeight = 10.sp, fontWeight = FontWeight.Normal),
+        color = DsColor.textOnPhotoMuted.copy(alpha = 0.7f),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.padding(end = 8.dp, bottom = 4.dp),
+    )
+}

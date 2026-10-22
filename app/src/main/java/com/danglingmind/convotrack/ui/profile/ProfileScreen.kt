@@ -142,7 +142,8 @@ fun ProfileScreen(
                 ) {
                     LogoBadge()
                     Spacer(Modifier.weight(1f))
-                    ConnectionStatusButton()
+                    // Hidden for now: the top-right slot is reserved for a notification bell.
+                    // ConnectionStatusButton()
                 }
                 Column(
                     Modifier.fillMaxWidth().padding(horizontal = DsSpace.gutter).padding(top = 130.dp, bottom = bottomNavClearance()),

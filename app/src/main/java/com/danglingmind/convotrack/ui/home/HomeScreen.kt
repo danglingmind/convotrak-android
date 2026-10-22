@@ -69,6 +69,7 @@ import com.danglingmind.convotrack.ui.common.PaywallSource
 import com.danglingmind.convotrack.ui.common.PlanBadgeButton
 import com.danglingmind.convotrack.ui.common.PlanState
 import com.danglingmind.convotrack.ui.common.rememberPlanState
+import com.danglingmind.convotrack.ui.designsystem.PhotoCredit
 import com.danglingmind.convotrack.ui.designsystem.PromoBanner
 import com.danglingmind.convotrack.ui.common.rememberDestinationHero
 import com.danglingmind.convotrack.ui.designsystem.AvatarStack
@@ -260,7 +261,8 @@ private fun HomeHero(plan: PlanState, onCreateRide: () -> Unit, onJoinRide: () -
                 Spacer(Modifier.size(10.dp))
                 PlanBadgeButton(plan, PaywallSource.HomeBadge)
                 Spacer(Modifier.weight(1f))
-                ConnectionStatusButton()
+                // Hidden for now: the top-right slot is reserved for a notification bell.
+                // ConnectionStatusButton()
             }
             Spacer(Modifier.height(48.dp))
             Eyebrow("Ride together")
@@ -385,10 +387,10 @@ private fun ActiveRideSection(ride: HistoryRide, onClick: () -> Unit, modifier: 
                 Spacer(Modifier.size(10.dp))
                 PillButton("Resume", onClick, tone = PillTone.Primary, icon = Icons.Filled.PlayArrow, height = 38.dp)
             }
-        }
-        // Photographer credit: Google's Places policy requires it wherever a Place Photo is shown.
-        (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
-            Text("Photo: $credit · Google", style = DsType.micro, color = DsColor.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.End))
+            // Photographer credit: Google's Places policy requires it wherever a Place Photo is shown.
+            (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
+                PhotoCredit(credit, Modifier.align(Alignment.BottomEnd))
+            }
         }
     }
 }

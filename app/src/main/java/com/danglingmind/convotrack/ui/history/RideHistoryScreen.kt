@@ -134,7 +134,8 @@ private fun HistoryHeader() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LogoBadge()
                 Spacer(Modifier.weight(1f))
-                ConnectionStatusButton()
+                // Hidden for now: the top-right slot is reserved for a notification bell.
+                // ConnectionStatusButton()
             }
             Spacer(Modifier.height(64.dp))
             Eyebrow("Your rides")

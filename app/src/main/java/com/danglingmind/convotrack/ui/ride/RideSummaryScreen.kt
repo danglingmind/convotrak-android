@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.ui.designsystem.PhotoCredit
 import com.danglingmind.convotrack.ui.designsystem.PromoBanner
 import com.danglingmind.convotrack.ui.common.rememberPlanState
 import com.danglingmind.convotrack.ui.common.PlanState
@@ -132,6 +133,10 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
                     // No destination photo: the road at sunset stands in.
                     else -> PhotoBackdrop(height = 320.dp, drawable = R.drawable.hero_road, verticalBias = 0.62f)
                 }
+                // Photographer credit: Google's Places policy requires it wherever a Place Photo is shown.
+                (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
+                    Box(Modifier.fillMaxWidth().height(320.dp)) { PhotoCredit(credit, Modifier.align(Alignment.BottomEnd)) }
+                }
                 Text(
                     "RIDE SUMMARY",
                     style = DsType.headerTitle,
@@ -145,9 +150,6 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(ride?.title ?: "", style = DsType.heroTitle, color = DsColor.textOnPhoto, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    (heroPhase as? DestinationHeroPhase.Photo)?.photo?.attribution?.let { credit ->
-                        Text("Photo: $credit · Google", style = DsType.micro, color = DsColor.textOnPhotoMuted, modifier = Modifier.padding(top = 4.dp))
-                    }
                     Spacer(Modifier.height(20.dp))
 
                     when (val s = state) {
