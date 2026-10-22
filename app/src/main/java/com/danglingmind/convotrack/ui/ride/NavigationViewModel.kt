@@ -11,6 +11,7 @@ import com.danglingmind.convotrack.data.maps.DirectionsService
 import com.danglingmind.convotrack.data.maps.DirectionsStep
 import com.danglingmind.convotrack.data.net.LiveLeaderboardEntry
 import com.danglingmind.convotrack.data.net.Ride
+import com.danglingmind.convotrack.data.net.RegroupEvent
 import com.danglingmind.convotrack.data.net.RideParticipant
 import com.danglingmind.convotrack.data.net.RideStateUpdate
 import com.danglingmind.convotrack.data.net.RideUpdatedEvent
@@ -1069,6 +1070,11 @@ class NavigationViewModel : ViewModel() {
      *  the same rule); everyone else sees the persistent pin + siren until one of them dismisses. */
     fun canDismissEmergency(emergency: SocketEmergency): Boolean =
         emergency.userId == myUserId || amILeader
+
+    /** Only the rider who called the regroup or the ride leader may clear it early (the server
+     *  enforces the same rule); it otherwise stays until every active rider has arrived. */
+    fun canDismissRegroup(regroup: RegroupEvent): Boolean =
+        regroup.createdBy == myUserId || amILeader
 }
 
 /**

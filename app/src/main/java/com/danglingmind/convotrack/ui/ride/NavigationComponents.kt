@@ -423,6 +423,7 @@ fun RegroupAlertBanner(
     hasArrived: Boolean,
     onShow: () -> Unit,
     onArrived: () -> Unit,
+    onDismiss: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val accent = regroupAccentColor(type)
@@ -434,6 +435,18 @@ fun RegroupAlertBanner(
         eyebrow = "REGROUP CALLED",
         message = "Head to the ${regroupLabelText(type)}",
         modifier = modifier,
+        trailing = onDismiss?.let { dismiss ->
+            {
+                Box(
+                    Modifier.size(DsSize.touchTarget).dsClickable(onClick = dismiss),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(Modifier.size(32.dp).clip(CircleShape).background(Color(0x1FFFFFFF)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Close, "Dismiss regroup", tint = DsColor.textPrimary, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        },
         actions = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 PillButton("Show", onShow, Modifier.weight(1f), tone = PillTone.Neutral, icon = Icons.Filled.MyLocation, height = DsSize.touchTarget)

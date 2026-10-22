@@ -110,6 +110,7 @@ fun RideNavigationScreen(
     val split by session.split.collectAsState()
     val sessionRegroup by session.latestRegroup.collectAsState()
     val sessionRegroupResolvedId by session.latestRegroupResolvedId.collectAsState()
+    val sessionRegroupDismissedId by session.latestRegroupDismissedId.collectAsState()
     val sessionEmergency by session.latestEmergency.collectAsState()
     val sessionEmergencyResolvedId by session.latestEmergencyResolvedId.collectAsState()
     val sessionRideUpdated by session.rideUpdated.collectAsState()
@@ -405,6 +406,13 @@ fun RideNavigationScreen(
         activeRegroup = null
         hasMarkedArrived = false
         showRegroupResolved = true
+    }
+    // Cleared early by the caller or the leader: no "everyone arrived" confirmation, since they didn't.
+    LaunchedEffect(sessionRegroupDismissedId) {
+        val id = sessionRegroupDismissedId ?: return@LaunchedEffect
+        if (activeRegroup?.regroupId != id) return@LaunchedEffect
+        activeRegroup = null
+        hasMarkedArrived = false
     }
     LaunchedEffect(showRegroupResolved) { if (showRegroupResolved) { delay(2_500); showRegroupResolved = false } }
 
@@ -723,6 +731,8 @@ fun RideNavigationScreen(
                 activeRegroupType = activeRegroup?.type,
                 hasMarkedArrived = hasMarkedArrived,
                 onShowRegroup = { activeRegroup?.let { peek(LatLng(it.lat, it.lng), 15f) } },
+                canDismissRegroup = activeRegroup?.let { vm.canDismissRegroup(it) } == true,
+                onDismissRegroup = { activeRegroup?.let { session.dismissRegroup(it.regroupId) } },
                 onMarkArrived = {
                     activeRegroup?.let { session.markArrivedAtRegroup(it.regroupId) }
                     hasMarkedArrived = true
@@ -779,6 +789,8 @@ fun RideNavigationScreen(
                 activeRegroupType = activeRegroup?.type,
                 hasMarkedArrived = hasMarkedArrived,
                 onShowRegroup = { activeRegroup?.let { peek(LatLng(it.lat, it.lng), 15f) } },
+                canDismissRegroup = activeRegroup?.let { vm.canDismissRegroup(it) } == true,
+                onDismissRegroup = { activeRegroup?.let { session.dismissRegroup(it.regroupId) } },
                 onMarkArrived = {
                     activeRegroup?.let { session.markArrivedAtRegroup(it.regroupId) }
                     hasMarkedArrived = true

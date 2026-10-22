@@ -90,6 +90,9 @@ class RideRealtimeSession(
     private val _latestRegroupResolvedId = MutableStateFlow<String?>(null)
     val latestRegroupResolvedId: StateFlow<String?> = _latestRegroupResolvedId.asStateFlow()
 
+    private val _latestRegroupDismissedId = MutableStateFlow<String?>(null)
+    val latestRegroupDismissedId: StateFlow<String?> = _latestRegroupDismissedId.asStateFlow()
+
     private val _latestEmergency = MutableStateFlow<SocketEmergency?>(null)
     val latestEmergency: StateFlow<SocketEmergency?> = _latestEmergency.asStateFlow()
 
@@ -194,6 +197,7 @@ class RideRealtimeSession(
         _split.value = null
         _latestRegroup.value = null
         _latestRegroupResolvedId.value = null
+        _latestRegroupDismissedId.value = null
         _latestEmergency.value = null
         _latestEmergencyResolvedId.value = null
         _rideUpdated.value = null
@@ -360,6 +364,7 @@ class RideRealtimeSession(
         }
         collect(socket.regroupStarted) { event -> _latestRegroup.value = event }
         collect(socket.regroupResolved) { id -> _latestRegroupResolvedId.value = id }
+        collect(socket.regroupDismissed) { id -> _latestRegroupDismissedId.value = id }
         collect(socket.emergencyStarted) { event -> _latestEmergency.value = event }
         collect(socket.emergencyResolved) { id -> _latestEmergencyResolvedId.value = id }
     }
@@ -390,6 +395,8 @@ class RideRealtimeSession(
     fun dismissEmergency(emergencyId: String) = socket.emitEmergencyDismiss(rideId, emergencyId)
 
     fun markArrivedAtRegroup(regroupId: String) = socket.emitRegroupArrived(rideId, regroupId)
+
+    fun dismissRegroup(regroupId: String) = socket.emitRegroupDismiss(rideId, regroupId)
 
     /** Clears the one-shot regroup-resolved marker once a screen has acted on it. */
     fun consumeRegroupResolved() { _latestRegroupResolvedId.value = null }

@@ -143,6 +143,8 @@ private fun AlertSlot(
     hasMarkedArrived: Boolean,
     onMarkArrived: () -> Unit,
     onShowRegroup: () -> Unit,
+    canDismissRegroup: Boolean,
+    onDismissRegroup: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val alerts = buildList {
@@ -172,6 +174,8 @@ private fun AlertSlot(
                 hasArrived = hasMarkedArrived,
                 onShow = onShowRegroup,
                 onArrived = onMarkArrived,
+                // Only the caller or the leader can end it early; the server enforces the same rule.
+                onDismiss = if (canDismissRegroup) onDismissRegroup else null,
             )
             NavAlert.REGROUP_RESOLVED -> RegroupResolvedBanner()
         }
@@ -275,6 +279,8 @@ fun PortraitHud(
     hasMarkedArrived: Boolean,
     onMarkArrived: () -> Unit,
     onShowRegroup: () -> Unit,
+    canDismissRegroup: Boolean,
+    onDismissRegroup: () -> Unit,
     speedText: String,
     arrival: Arrival?,
     distText: String,
@@ -352,6 +358,8 @@ fun PortraitHud(
                 hasMarkedArrived = hasMarkedArrived,
                 onMarkArrived = onMarkArrived,
                 onShowRegroup = onShowRegroup,
+                canDismissRegroup = canDismissRegroup,
+                onDismissRegroup = onDismissRegroup,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
         }
@@ -546,6 +554,8 @@ fun LandscapeHud(
     hasMarkedArrived: Boolean,
     onMarkArrived: () -> Unit,
     onShowRegroup: () -> Unit,
+    canDismissRegroup: Boolean,
+    onDismissRegroup: () -> Unit,
     speedText: String,
     arrival: Arrival?,
     distText: String,
@@ -633,6 +643,8 @@ fun LandscapeHud(
                 hasMarkedArrived = hasMarkedArrived,
                 onMarkArrived = onMarkArrived,
                 onShowRegroup = onShowRegroup,
+                canDismissRegroup = canDismissRegroup,
+                onDismissRegroup = onDismissRegroup,
                 modifier = Modifier,
             )
 

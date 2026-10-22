@@ -142,6 +142,7 @@ class SocketService(private val auth: AuthRepository) {
     val presence = event<List<String>>()           // authoritative online userIds (heartbeat)
     val regroupStarted = event<RegroupEvent>()
     val regroupResolved = event<String>()          // regroupId
+    val regroupDismissed = event<String>()         // regroupId
     val emergencyStarted = event<SocketEmergency>()
     val emergencyResolved = event<String>()         // emergencyId
     val splitDetected = event<SplitEvent>()
@@ -284,6 +285,11 @@ class SocketService(private val auth: AuthRepository) {
         socket?.emit("ride:emergency_dismiss", JSONObject().put("rideId", rideId).put("emergencyId", emergencyId))
     }
 
+    /** Clear an open regroup early. Server authorizes (caller or leader) and broadcasts ride:regroup_dismissed. */
+    fun emitRegroupDismiss(rideId: String, regroupId: String) {
+        socket?.emit("ride:regroup_dismiss", JSONObject().put("rideId", rideId).put("regroupId", regroupId))
+    }
+
     fun emitRegroupArrived(rideId: String, regroupId: String) {
         socket?.emit("ride:regroup_arrived", JSONObject().put("rideId", rideId).put("regroupId", regroupId))
     }
@@ -327,6 +333,7 @@ class SocketService(private val auth: AuthRepository) {
         s.onField("ride:participant_removed", "userId", participantRemoved)
         s.onField("ride:participant_offline", "userId", participantOffline)
         s.onField("ride:regroup_resolved", "regroupId", regroupResolved)
+        s.onField("ride:regroup_dismissed", "regroupId", regroupDismissed)
         s.onField("ride:emergency_resolved", "emergencyId", emergencyResolved)
         s.onSignal("ride:split_resolved", splitResolved)
         // The leader deleted the whole ride. Carries no payload worth reading — the room it
