@@ -117,6 +117,8 @@ object DirectionsService {
         origin: LatLng,
         destination: LatLng,
         trafficAware: Boolean = true,
+        avoidHighways: Boolean = false,
+        avoidTolls: Boolean = false,
     ): List<DirectionsResult> = withContext(Dispatchers.IO) {
         val bodyJson = JSONObject().apply {
             put("origin", latLngNode(origin))
@@ -127,6 +129,12 @@ object DirectionsService {
             put("computeAlternativeRoutes", true)
             put("languageCode", "en-US")
             put("units", "METRIC")
+            if (avoidHighways || avoidTolls) {
+                put("routeModifiers", JSONObject().apply {
+                    put("avoidHighways", avoidHighways)
+                    put("avoidTolls", avoidTolls)
+                })
+            }
         }.toString()
 
         val request = Request.Builder()

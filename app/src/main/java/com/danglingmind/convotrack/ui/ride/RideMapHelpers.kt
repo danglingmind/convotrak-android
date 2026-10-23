@@ -120,6 +120,20 @@ suspend fun rideRouteWithSteps(ride: Ride): RouteWithSteps {
  * Null is a real answer, not just a failure: guessing an alternative would put the wrong turns on
  * screen — the exact failure this lookup exists to prevent.
  */
+private data class MatchingPass(
+    val trafficAware: Boolean,
+    val avoidHighways: Boolean = false,
+    val avoidTolls: Boolean = false,
+)
+
+private val MATCHING_PASSES = listOf(
+    MatchingPass(trafficAware = true),
+    MatchingPass(trafficAware = false),
+    MatchingPass(trafficAware = true, avoidHighways = true),
+    MatchingPass(trafficAware = true, avoidTolls = true),
+    MatchingPass(trafficAware = true, avoidHighways = true, avoidTolls = true),
+)
+
 private suspend fun alternativeMatching(
     stored: List<LatLng>,
     origin: LatLng,
@@ -131,9 +145,15 @@ private suspend fun alternativeMatching(
     // not be offered any more — hence the traffic-unaware second pass, which asks the
     // time-invariant road-network set. Strictly more matches than either alone; the extra call is
     // only ever made on a ride that would otherwise lose turn guidance entirely.
-    for (trafficAware in listOf(true, false)) {
+    //
+    // Then the route options the iOS planner offers (avoid highways, tolls, both), traffic-aware:
+    // the leader may have planned with one, and which one isn't stored with the ride. Same passes
+    // in the same order as iOS `RideNavigationView.alternativeMatching`.
+    for (pass in MATCHING_PASSES) {
         val options = runCatching {
-            DirectionsService.alternativeRoutesWithSteps(origin, destination, trafficAware)
+            DirectionsService.alternativeRoutesWithSteps(
+                origin, destination, pass.trafficAware, pass.avoidHighways, pass.avoidTolls,
+            )
         }.getOrNull() ?: continue
 
         options
