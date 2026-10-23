@@ -192,6 +192,18 @@ internal fun RidePlannerScreen(
 
     LaunchedEffect(Unit) { state.locateUser() }
 
+    // The opening view is the one the recentre button gives: the rider, centred in the part of the
+    // map between the top card and the sheet. That area isn't known until both have been measured
+    // (and the rider's position can arrive after that), so re-centre as each of them settles,
+    // until the rider moves the map themselves.
+    var userMovedMap by remember { mutableStateOf(false) }
+    LaunchedEffect(topChromeBottomPx, mapBottomPadding, state.userLocation, state.hasDestination) {
+        val me = state.userLocation ?: return@LaunchedEffect
+        if (!userMovedMap && !state.hasDestination && searchStopId == null && choosingStopId == null && droppedPin == null) {
+            state.focus(me, 13f, animated = false)
+        }
+    }
+
     fun openSearch(id: Long) {
         focusManager.clearFocus()
         geocodeJob?.cancel()
@@ -309,6 +321,7 @@ internal fun RidePlannerScreen(
             markers = plannerMarkers(state),
             camera = state.camera,
             interactive = true,
+            onUserPan = { userMovedMap = true },
             alternativeRoutes = state.routes.map { it.coordinates },
             selectedRouteIndex = state.selectedRouteIndex,
             onSelectRoute = { index ->
