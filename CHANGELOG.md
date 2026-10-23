@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.5 (versionCode 14) — 2026-10-23
+
+### Changed
+- Creating and editing a ride now happens on a full-screen map. Search for your destination and the route is drawn straight away, with the other routes shown on the map with how much longer they take. Tap one to switch.
+- Add stops along the way, swap start and destination, and drag stops to reorder them.
+- Long-press the map to drop a pin and use it as a start, stop or destination, or choose a spot by moving the map.
+- Search for fuel, food and viewpoints near the map, or along your route with how many minutes each adds.
+- New route options: avoid highways and avoid tolls.
+- The route starts from your location by default, and your recent destinations are kept on your phone.
+- When editing a ride, Save changes only turns on once something has changed, and going back asks before discarding your edits.
+- Delete ride moved into the ⋯ menu.
+
 ## 2.0.4 (versionCode 13) — 2026-10-23
 
 ### Changed
