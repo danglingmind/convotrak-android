@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.4 (versionCode 13) — 2026-10-23
+
+### Changed
+- If you leave the route and reroute, ConvoTrack now guides you back onto the route your leader chose instead of switching to Google's default route.
+- Anonymous usage analytics help us see which parts of the app get used and fix what doesn't work. No locations, names, emails or invite codes are included.
+
 ## 2.0.3 (versionCode 12) — 2026-10-22
 
 ### Fixed
