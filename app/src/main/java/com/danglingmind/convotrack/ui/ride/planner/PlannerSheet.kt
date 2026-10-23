@@ -6,6 +6,14 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
@@ -65,6 +73,9 @@ enum class SheetDetent(val label: String) { LOW("Collapsed"), MEDIUM("Half heigh
 
 private val GRABBER_HEIGHT = 22.dp
 
+/** Space kept between the status bar and the fully raised sheet, so it still reads as a sheet. */
+private val LARGE_TOP_GAP = 8.dp
+
 /**
  * A resizable sheet resting over a full-bleed map, like the route card in Maps (iOS DSMapSheet):
  * the map behind it keeps working, and it is never dismissed, only lowered.
@@ -100,17 +111,28 @@ fun PlannerSheet(
     val currentDetent by rememberUpdatedState(detent)
 
     // Sits above the keyboard; the navigation bar inset is drawn inside the sheet instead, so the
-    // sheet's colour runs under it.
-    BoxWithConstraints(modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.navigationBars))) {
+    // sheet's colour runs under it. The top stops below the status bar: raised all the way, the
+    // grabber and header would otherwise sit behind it, where a downward swipe opens the
+    // notification shade instead of lowering the sheet, and the sheet couldn't be brought back.
+    BoxWithConstraints(
+        modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.navigationBars)),
+    ) {
         val available = constraints.maxHeight.toFloat()
         val grabberPx = with(density) { GRABBER_HEIGHT.toPx() }
-        val low = minOf(grabberPx + headerPx + bottomInsetPx + with(density) { 8.dp.toPx() }, available)
-        val medium = minOf(maxOf(low, available * 0.52f), available)
-        val heights = listOf(low, medium, available)
+        val large = maxOf(available - with(density) { LARGE_TOP_GAP.toPx() }, 0f)
+        val low = minOf(grabberPx + headerPx + bottomInsetPx + with(density) { 8.dp.toPx() }, large)
+        val medium = minOf(maxOf(low, available * 0.52f), large)
+        val heights = listOf(low, medium, large)
         val target = heights[detent.ordinal]
 
         val height = remember { Animatable(target) }
         var dragging by remember { mutableStateOf(false) }
+        /** Where the finger has put the sheet. Kept apart from [height] because a gesture delivers
+         *  deltas faster than `snapTo` lands, and each one has to build on the last. */
+        var liveHeight by remember { mutableFloatStateOf(target) }
 
         LaunchedEffect(low) { onRestingHeightChange(with(density) { low.toDp() }) }
         // Detent changes and header re-measures settle the sheet, unless a finger is on it.
@@ -127,23 +149,69 @@ fun PlannerSheet(
             onDetentChange(SheetDetent.entries[next])
         }
 
-        val dragState = rememberDraggableState { delta ->
-            scope.launch { height.snapTo((height.value - delta).coerceIn(low * 0.85f, available)) }
+        fun beginDrag() {
+            if (dragging) return
+            dragging = true
+            liveHeight = height.value
+            scope.launch { height.stop() }
         }
+
+        /** Moves the sheet by a finger delta (positive = down); returns how much it took. */
+        fun dragBy(deltaY: Float): Float {
+            val next = (liveHeight - deltaY).coerceIn(low * 0.85f, large)
+            val used = liveHeight - next
+            liveHeight = next
+            scope.launch { height.snapTo(next) }
+            return used
+        }
+
+        /** Projects where a fling was heading and settles on the nearest detent. */
+        suspend fun settle(velocityY: Float) {
+            dragging = false
+            val projected = liveHeight - velocityY * 0.18f
+            val nearest = heights.indices.minByOrNull { abs(heights[it] - projected) } ?: 0
+            val goal = heights[nearest]
+            onDetentChange(SheetDetent.entries[nearest])
+            if (reduceMotion) height.snapTo(goal) else height.animateTo(goal, spring(dampingRatio = 0.82f))
+        }
+
+        val dragState = rememberDraggableState { delta -> dragBy(delta) }
         val dragModifier = Modifier.draggable(
             state = dragState,
             orientation = Orientation.Vertical,
-            onDragStarted = { dragging = true },
-            onDragStopped = { velocity ->
-                dragging = false
-                // Project where a fling was heading and settle on the nearest detent.
-                val projected = height.value - velocity * 0.18f
-                val nearest = heights.indices.minByOrNull { abs(heights[it] - projected) } ?: 0
-                val goal = heights[nearest]
-                onDetentChange(SheetDetent.entries[nearest])
-                if (reduceMotion) height.snapTo(goal) else height.animateTo(goal, spring(dampingRatio = 0.82f))
-            },
+            onDragStarted = { beginDrag() },
+            onDragStopped = { velocity -> settle(velocity) },
         )
+
+        // The content drags the sheet too, as in Maps: pulling down once it's scrolled to the top
+        // lowers the sheet, and pushing up below full height raises it before the content scrolls.
+        var nestedMoved by remember { mutableStateOf(false) }
+        val contentDrag = remember(heights) {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (source != NestedScrollSource.UserInput || available.y >= 0f) return Offset.Zero
+                    if (!dragging && height.value >= large - 1f) return Offset.Zero
+                    beginDrag()
+                    nestedMoved = true
+                    // Only what the sheet used; once it's fully raised the rest scrolls the content.
+                    return Offset(0f, dragBy(available.y))
+                }
+
+                override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                    if (source != NestedScrollSource.UserInput || available.y <= 0f) return Offset.Zero
+                    beginDrag()
+                    nestedMoved = true
+                    return Offset(0f, dragBy(available.y))
+                }
+
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    if (!nestedMoved) return Velocity.Zero
+                    nestedMoved = false
+                    settle(available.y)
+                    return available
+                }
+            }
+        }
 
         val sheetHeight = with(density) { height.value.toDp() }
         val shape = RoundedCornerShape(topStart = DsRadius.nav, topEnd = DsRadius.nav)
@@ -173,6 +241,7 @@ fun PlannerSheet(
                     Modifier
                         .fillMaxWidth()
                         .height(GRABBER_HEIGHT)
+                        .pointerInput(Unit) { detectTapGestures { step(if (currentDetent == SheetDetent.LARGE) -2 else 1) } }
                         .semantics {
                             contentDescription = "Sheet grabber"
                             stateDescription = detent.label
@@ -192,6 +261,7 @@ fun PlannerSheet(
                 Modifier
                     .weight(1f, fill = false)
                     .alpha(if (detent == SheetDetent.LOW && !dragging) 0f else 1f)
+                    .nestedScroll(contentDrag)
                     .verticalScroll(rememberScrollState(), enabled = detent != SheetDetent.LOW),
                 content = content,
             )
