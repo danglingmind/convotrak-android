@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import com.danglingmind.convotrack.ui.designsystem.DsColor
 
 import android.content.Context
@@ -254,6 +256,7 @@ object ShareSummaryCard {
     /** Hands a saved card to the share sheet. */
     suspend fun share(context: Context, card: File, rideTitle: String) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", card)
+        Analytics.capture(Analytics.Event.RideSummaryShared)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)

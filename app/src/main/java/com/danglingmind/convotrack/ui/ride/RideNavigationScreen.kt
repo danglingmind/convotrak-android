@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import com.danglingmind.convotrack.ui.map.EdgeKind
 import com.danglingmind.convotrack.ui.map.EdgeTarget
 import com.danglingmind.convotrack.data.audio.NavVoiceGuide
@@ -263,7 +265,9 @@ fun RideNavigationScreen(
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
-        if (grants[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+        val locationGranted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        Analytics.capture(Analytics.Event.PermissionResult, mapOf("kind" to "location", "status" to if (locationGranted) "granted" else "denied"))
+        if (locationGranted) {
             locationController.start(ctx, rideId)
         } else {
             showLocationDenied = true

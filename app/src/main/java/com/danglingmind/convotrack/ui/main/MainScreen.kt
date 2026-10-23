@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.main
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import com.danglingmind.convotrack.ui.common.Access
 import com.danglingmind.convotrack.data.upsell.PaywallAnalytics
 import androidx.compose.foundation.layout.Box
@@ -49,6 +51,7 @@ fun MainScreen(
     onRequestedTabConsumed: () -> Unit = {},
 ) {
     var activeTab by rememberSaveable { mutableStateOf(DsTab.Home) }
+    LaunchedEffect(activeTab) { Analytics.screen("tab_${activeTab.name.lowercase()}") }
     var showJoin by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
     var showNudge by remember { mutableStateOf(false) }
@@ -81,6 +84,7 @@ fun MainScreen(
     }
 
     // A rider who went Pro from a blocked invite carries straight on into that ride.
+    LaunchedEffect(plan.access) { Analytics.setAccess(plan.access) }
     LaunchedEffect(plan.isPremium) {
         val code = PlanGate.joinAfterUpgradeCode
         if (plan.isPremium && code != null) {

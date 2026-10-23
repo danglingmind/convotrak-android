@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.scan
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import android.Manifest
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.runtime.LaunchedEffect
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
@@ -85,7 +88,10 @@ fun QRScannerScreen(
     }
     var denied by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) { Analytics.capture(Analytics.Event.QrScanOpened) }
+
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        Analytics.capture(Analytics.Event.PermissionResult, mapOf("kind" to "camera", "status" to if (ok) "granted" else "denied"))
         granted = ok
         denied = !ok
     }

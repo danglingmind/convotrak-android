@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import com.danglingmind.convotrack.ui.designsystem.PhotoCredit
 import com.danglingmind.convotrack.ui.designsystem.PromoBanner
 import com.danglingmind.convotrack.ui.common.rememberPlanState
@@ -114,6 +116,7 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
         ride = RideDetailsCache.get(rideId)
     }
     LaunchedEffect(rideId) { load() }
+    LaunchedEffect(rideId) { Analytics.capture(Analytics.Event.RideSummaryViewed) }
 
     val heroPhase by rememberDestinationHero(
         rideId = ride?.id,

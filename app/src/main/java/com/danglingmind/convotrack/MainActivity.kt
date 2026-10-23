@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import com.danglingmind.convotrack.ui.common.PlanGate
 import android.content.Intent
 import android.os.Bundle
@@ -60,6 +62,8 @@ class MainActivity : ComponentActivity() {
 
     private fun inviteCodeFrom(intent: Intent?): String? {
         val data = intent?.dataString ?: return null
-        return extractInviteCode(data)
+        return extractInviteCode(data)?.also {
+            Analytics.capture(Analytics.Event.DeepLinkOpened, mapOf("kind" to "join"))
+        }
     }
 }

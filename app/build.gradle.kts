@@ -16,6 +16,11 @@ val localProps = Properties().apply {
 // Google Maps key. Falls back to empty so the project still builds without it.
 val mapsApiKey: String = localProps.getProperty("MAPS_API_KEY", "")
 
+// PostHog product analytics. The project API key is public and write-only. Empty = analytics is off.
+// Host depends on the project region: https://us.i.posthog.com or https://eu.i.posthog.com.
+val posthogApiKey: String = localProps.getProperty("POSTHOG_API_KEY", "")
+val posthogHost: String = localProps.getProperty("POSTHOG_HOST", "https://us.i.posthog.com")
+
 // Upload signing. Play refuses an unsigned bundle at upload, and with no signingConfig declared
 // that is exactly what `bundleRelease` produced: the signReleaseBundle task still runs, finds
 // nothing to sign with, and succeeds — so the build looked clean and the failure only appeared
@@ -56,6 +61,8 @@ android {
         // Exposed to the manifest (Maps SDK meta-data) and to code (REST services).
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
         buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
+        buildConfigField("String", "POSTHOG_API_KEY", "\"$posthogApiKey\"")
+        buildConfigField("String", "POSTHOG_HOST", "\"$posthogHost\"")
     }
 
     signingConfigs {

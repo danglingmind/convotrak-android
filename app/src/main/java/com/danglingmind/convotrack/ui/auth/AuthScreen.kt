@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.auth
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -112,6 +114,8 @@ fun AuthScreen(
         if (busy != null) return
         error = null
         busy = provider
+        val method = provider.name.lowercase()
+        Analytics.capture(Analytics.Event.SignInStarted, mapOf("method" to method))
         scope.launch {
             val result = when (provider) {
                 Provider.GOOGLE -> auth.signInWithGoogle()
@@ -122,11 +126,17 @@ fun AuthScreen(
             }
             busy = null
             when (result) {
-                is AuthResult.Success -> onSignedIn()
+                is AuthResult.Success -> {
+                    Analytics.capture(Analytics.Event.SignInSucceeded, mapOf("method" to method))
+                    onSignedIn()
+                }
                 is AuthResult.NeedsEmailCode -> onNeedsVerification(email.trim())
                 // Dismissing the account sheet is a decision, not a failure — nothing to report.
                 is AuthResult.Cancelled -> Unit
-                is AuthResult.Error -> error = result.message
+                is AuthResult.Error -> {
+                    Analytics.capture(Analytics.Event.SignInFailed, mapOf("method" to method))
+                    error = result.message
+                }
             }
         }
     }

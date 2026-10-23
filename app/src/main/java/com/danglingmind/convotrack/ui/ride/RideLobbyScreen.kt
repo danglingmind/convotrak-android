@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import com.danglingmind.convotrack.ui.designsystem.PhotoCredit
 import com.danglingmind.convotrack.ui.designsystem.DsPro
 import androidx.compose.ui.semantics.semantics
@@ -286,7 +288,10 @@ fun RideLobbyScreen(
         }
     }
 
-    showQrFor?.let { code -> QrCodeDialog(inviteCode = code, onDismiss = { showQrFor = null }) }
+    showQrFor?.let { code ->
+        LaunchedEffect(code) { Analytics.capture(Analytics.Event.InviteShareOpened, mapOf("method" to "qr")) }
+        QrCodeDialog(inviteCode = code, onDismiss = { showQrFor = null })
+    }
 
     if (showLeaveConfirm) {
         ConfirmDialog(
@@ -833,6 +838,7 @@ private fun QrCodeDialog(inviteCode: String, onDismiss: () -> Unit) {
 
 /** Fires the Android share sheet with the invite deep link (iOS ShareSheetPresenter parity). */
 private fun shareInvite(ctx: android.content.Context, inviteCode: String, title: String) {
+    Analytics.capture(Analytics.Event.InviteShareOpened, mapOf("method" to "link"))
     val text = if (inviteCode.isNotEmpty()) {
         // HTTPS App Link — tappable in every messaging app, opens the app if installed and falls
         // back to a web page + store links otherwise.

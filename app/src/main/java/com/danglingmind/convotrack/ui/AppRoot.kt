@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import com.danglingmind.convotrack.ui.ride.RideSessionViewModel
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import com.danglingmind.convotrack.data.analytics.Analytics
 import com.danglingmind.convotrack.data.net.SyncProfileRequest
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.auth.AuthScreen
@@ -98,6 +99,7 @@ fun AppRoot(
             .filterNotNull()
             .distinctUntilChanged()
             .collect { user ->
+                Analytics.identify(user.id)
                 runCatching { ServiceLocator.api.syncProfile(SyncProfileRequest(user.name, user.avatarUrl)) }
             }
     }

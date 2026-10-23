@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.join
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import com.danglingmind.convotrack.ui.designsystem.GoProButton
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -94,6 +96,8 @@ fun JoinRideSheet(
 
     val codeReady = code.length == 6
 
+    LaunchedEffect(Unit) { Analytics.capture(Analytics.Event.JoinSheetOpened, mapOf("prefilled" to code.isNotEmpty())) }
+
     // Live lookup — as soon as a full 6-char code is entered, verify it and preview the ride.
     LaunchedEffect(code) {
         preview = null
@@ -127,11 +131,13 @@ fun JoinRideSheet(
                 if (e.message == "ALREADY_JOINED" || e.message?.contains("already", ignoreCase = true) == true) {
                     onJoined(p.rideId)
                 } else {
+                    Analytics.capture(Analytics.Event.JoinFailed, mapOf("reason" to (e.message ?: "request_failed")))
                     error = e.riderMessage
                     blockedByPlan = e.isPlanLimit
                     joining = false
                 }
             } catch (e: Exception) {
+                Analytics.capture(Analytics.Event.JoinFailed, mapOf("reason" to "request_failed"))
                 error = e.riderMessage
                 joining = false
             }

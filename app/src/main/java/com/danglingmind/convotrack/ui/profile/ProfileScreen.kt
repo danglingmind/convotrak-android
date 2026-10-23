@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.profile
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import com.danglingmind.convotrack.ui.designsystem.PromoBanner
 import android.content.Intent
 import android.provider.Settings
@@ -156,7 +158,7 @@ fun ProfileScreen(
                             data = s.data,
                             plan = plan,
                             onOpenMembership = onOpenMembership,
-                            onSignOut = { scope.launch { auth.signOut(); onSignedOut() } },
+                            onSignOut = { scope.launch { Analytics.reset(); auth.signOut(); onSignedOut() } },
                             onDeleteAccount = { showDeleteConfirm = true },
                         )
                     }
@@ -186,6 +188,7 @@ fun ProfileScreen(
                         apiCall { api.deleteAccount() }
                         // The account is gone server-side, so the session token authorises nothing;
                         // clearing it locally is cleanup, not a sign-out the rider could undo.
+                        Analytics.reset(recordSignOut = false)
                         auth.signOut()
                         showDeleteConfirm = false
                         onSignedOut()

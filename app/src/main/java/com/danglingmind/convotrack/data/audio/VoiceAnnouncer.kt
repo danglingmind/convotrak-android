@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.data.audio
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -116,6 +118,7 @@ object VoiceAnnouncer {
     }
 
     fun setMuted(value: Boolean) {
+        if (value != _muted.value) Analytics.capture(Analytics.Event.VoiceMuteToggled, mapOf("muted" to value))
         _muted.value = value
         prefs?.edit()?.putBoolean(KEY_MUTED, value)?.apply()
         if (value) stop()

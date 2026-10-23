@@ -1,5 +1,7 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.data.analytics.Analytics
+
 import com.danglingmind.convotrack.ui.designsystem.GoProButton
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -107,6 +109,7 @@ fun CreateRideScreen(
                         val resp = apiCall { api.createRide(req) }
                         onCreated(resp.rideId)
                     } catch (e: Exception) {
+                        Analytics.capture(Analytics.Event.CreateRideFailed, mapOf("plan_limit" to e.isPlanLimit))
                         error = e.riderMessage
                         blockedByPlan = e.isPlanLimit
                         creating = false
