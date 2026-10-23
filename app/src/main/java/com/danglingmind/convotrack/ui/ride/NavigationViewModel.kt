@@ -515,6 +515,9 @@ class NavigationViewModel : ViewModel() {
         if (result.coords.isEmpty()) return
 
         adoptNavRoute(result.coords, result.steps)
+        val stored = DirectionsService.decodedRoute(ride.routePolyline)
+        plannedRoute = if (stored != null && result.coords == stored) stored else emptyList()
+        plannedSteps = if (plannedRoute.isEmpty()) emptyList() else navSteps
 
         // The dim layer stays the leader's plan even where navigation had to fall back onto the
         // route it holds instructions for: the two lines then diverge on screen, which is the
@@ -930,13 +933,19 @@ class NavigationViewModel : ViewModel() {
      * against the new route on the very next fix and rerouting again 200 m later. With it, Google
      * returns the U-turn.
      */
+    /** Leader-selected route and its stamped steps, so a reroute can rejoin it. Empty when none. */
+    private var plannedRoute: List<LatLng> = emptyList()
+    private var plannedSteps: List<DirectionsStep> = emptyList()
+
     private fun launchReroute(origin: LatLng, originHeading: Double?) {
         if (remainingStops.isEmpty()) return
         isRerouteInFlight = true
         lastRerouteOrigin = origin
         rerouteJob?.cancel()
         rerouteJob = viewModelScope.launch {
-            val result = calculateFullReroute(origin, remainingStops, originHeading)
+            // The leader's chosen route (maybe an alternative) beats Google's default for the way back.
+            val result = rejoinPlannedRoute(origin, plannedRoute, plannedSteps, originHeading)
+                ?: calculateFullReroute(origin, remainingStops, originHeading)
             isRerouteInFlight = false
             if (result.coords.isEmpty()) return@launch
             _activeRouteCoordinates.value = result.coords

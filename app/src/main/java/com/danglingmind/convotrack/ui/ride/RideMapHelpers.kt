@@ -253,6 +253,39 @@ suspend fun calculateFullReroute(
     return RouteWithSteps(coords, steps, totalTime)
 }
 
+private const val REJOIN_LOOKAHEAD_METERS = 250.0
+private const val REJOIN_MAX_OFFSET_METERS = 5_000.0
+
+/**
+ * A route from [origin] that drives a short leg back onto the leader-selected [planned] route and
+ * then follows it to the end, with [plannedSteps] (already stamped along [planned]) carried over.
+ *
+ * Without this, a reroute asks Google for the DEFAULT route and silently swaps out the alternative
+ * the leader picked. Null when the rider is too far from the plan, too little of it remains, or
+ * the leg can't be fetched — the caller then reroutes the usual way.
+ */
+suspend fun rejoinPlannedRoute(
+    origin: LatLng,
+    planned: List<LatLng>,
+    plannedSteps: List<DirectionsStep>,
+    originHeading: Double? = null,
+): RouteWithSteps? {
+    if (planned.size < 2) return null
+    val cumulative = cumulativeDistances(planned)
+    val hit = nearestPointOnRoute(planned, origin)
+    if (metersBetween(origin, hit.projected) > REJOIN_MAX_OFFSET_METERS) return null
+    val along = cumulative[hit.segmentStart] + metersBetween(planned[hit.segmentStart], hit.projected)
+    val target = along + REJOIN_LOOKAHEAD_METERS
+    val joinIdx = cumulative.indexOfFirst { it >= target }
+    if (joinIdx < 0 || joinIdx >= planned.size - 1) return null
+
+    val leg = routeLegOrNull(origin, planned[joinIdx], trafficAware = false, originHeading = originHeading)
+        ?: return null
+    val coords = leg.coordinates + planned.subList(joinIdx + 1, planned.size)
+    val ahead = plannedSteps.filter { it.endDistanceAlongRoute > cumulative[joinIdx] }
+    return RouteWithSteps(coords, leg.steps + ahead, leg.durationSeconds)
+}
+
 /** Start / waypoint / destination markers for a ride, labelled with their names. */
 fun rideMarkers(ride: Ride): List<MapMarker> = buildList {
     val sorted = ride.waypoints.sortedBy { it.order }
