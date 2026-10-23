@@ -40,7 +40,28 @@ data class RouteOption(
     val distanceMeters: Double,
     val durationSeconds: Double,
     val label: String?,   // Routes API routeLabels, e.g. DEFAULT_ROUTE / FUEL_EFFICIENT
+    /** Routes API `description`: the main road, e.g. "NH44". For telling alternatives apart. */
+    val summary: String? = null,
 )
+
+/**
+ * Road types the leader asked to keep off (Routes API `routeModifiers`) — iOS RouteAvoidances.
+ * Planning options, not stored with the ride: the route they produce is what's saved.
+ */
+data class RouteAvoidances(val highways: Boolean = false, val tolls: Boolean = false) {
+    val isEmpty: Boolean get() = !highways && !tolls
+
+    /** The `routeModifiers` object, or null when nothing is avoided. */
+    fun requestValue(): JSONObject? =
+        if (isEmpty) null else JSONObject().apply {
+            put("avoidHighways", highways)
+            put("avoidTolls", tolls)
+        }
+
+    companion object {
+        val NONE = RouteAvoidances()
+    }
+}
 
 object DirectionsService {
 
@@ -95,6 +116,60 @@ object DirectionsService {
             val leg = parsed.routes.firstOrNull()?.legs?.firstOrNull()
                 ?: error("No route found")
             legResult(leg)
+        }
+    }
+
+    /**
+     * One route through every stop in order (start, any middle stops, destination), in a single
+     * request with `intermediates` (iOS `route(through:)`). Requesting each leg on its own and
+     * stitching them cost one call per leg and let each leg be routed without knowing how the rider
+     * arrived at its start. Google returns no alternatives once intermediates are present.
+     */
+    suspend fun routeThrough(
+        stops: List<LatLng>,
+        trafficAware: Boolean = true,
+        avoid: RouteAvoidances = RouteAvoidances.NONE,
+    ): DirectionsResult = withContext(Dispatchers.IO) {
+        require(stops.size >= 2) { "A route needs a start and a destination" }
+        val bodyJson = JSONObject().apply {
+            put("origin", latLngNode(stops.first()))
+            put("destination", latLngNode(stops.last()))
+            val middle = stops.subList(1, stops.size - 1)
+            if (middle.isNotEmpty()) {
+                put("intermediates", org.json.JSONArray().apply { middle.forEach { put(latLngNode(it)) } })
+            }
+            put("travelMode", "DRIVE")
+            put("routingPreference", if (trafficAware) "TRAFFIC_AWARE" else "TRAFFIC_UNAWARE")
+            put("polylineQuality", "HIGH_QUALITY")
+            put("computeAlternativeRoutes", false)
+            put("languageCode", "en-US")
+            put("units", "METRIC")
+            avoid.requestValue()?.let { put("routeModifiers", it) }
+        }.toString()
+
+        val request = Request.Builder()
+            .url("https://routes.googleapis.com/directions/v2:computeRoutes")
+            .addHeader("Content-Type", "application/json")
+            .addHeader("X-Goog-Api-Key", BuildConfig.MAPS_API_KEY)
+            .addHeader("X-Goog-FieldMask", STEP_FIELD_MASK)
+            .post(bodyJson.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) error("Directions HTTP ${resp.code}")
+            val parsed = json.decodeFromString(RoutesResponse.serializer(), text)
+            val legs = parsed.routes.firstOrNull()?.legs.orEmpty().map { legResult(it) }
+            if (legs.isEmpty()) error("No route found")
+            // Each leg starts on the point the previous one ended on; drop that shared vertex.
+            val coords = mutableListOf<LatLng>()
+            legs.forEachIndexed { i, leg -> coords += if (i == 0) leg.coordinates else leg.coordinates.drop(1) }
+            DirectionsResult(
+                coordinates = coords,
+                distanceMeters = legs.sumOf { it.distanceMeters },
+                durationSeconds = legs.sumOf { it.durationSeconds },
+                steps = legs.flatMap { it.steps },
+            )
         }
     }
 
@@ -185,6 +260,7 @@ object DirectionsService {
         origin: LatLng,
         destination: LatLng,
         trafficAware: Boolean = true,
+        avoid: RouteAvoidances = RouteAvoidances.NONE,
     ): List<RouteOption> = withContext(Dispatchers.IO) {
         val bodyJson = JSONObject().apply {
             put("origin", latLngNode(origin))
@@ -195,6 +271,7 @@ object DirectionsService {
             put("computeAlternativeRoutes", true)
             put("languageCode", "en-US")
             put("units", "METRIC")
+            avoid.requestValue()?.let { put("routeModifiers", it) }
         }.toString()
 
         val request = Request.Builder()
@@ -205,7 +282,7 @@ object DirectionsService {
             .addHeader(
                 "X-Goog-FieldMask",
                 "routes.polyline.encodedPolyline,routes.distanceMeters," +
-                    "routes.duration,routes.routeLabels",
+                    "routes.duration,routes.routeLabels,routes.description",
             )
             .post(bodyJson.toRequestBody("application/json".toMediaType()))
             .build()
@@ -221,6 +298,7 @@ object DirectionsService {
                     distanceMeters = (route.distanceMeters ?: 0).toDouble(),
                     durationSeconds = parseDuration(route.duration ?: "0s"),
                     label = route.routeLabels.firstOrNull(),
+                    summary = route.description?.let(::shortRouteDescription),
                 )
             }
         }
@@ -231,6 +309,15 @@ object DirectionsService {
      * views render the leader-selected route with this instead of recomputing a default (iOS
      * GoogleDirectionsService.decodedRoute) — so every rider sees the same geometry.
      */
+    /** One name per road: Google lists a road's aliases with a slash ("Doddaballapur Rd/
+     *  Doddaballapura Main Rd"), which only makes the label too long to read at a glance. */
+    private fun shortRouteDescription(raw: String): String? {
+        val roads = raw.split(" and ")
+            .map { it.substringBefore("/").trim() }
+            .filter { it.isNotEmpty() }
+        return roads.takeIf { it.isNotEmpty() }?.joinToString(" and ")
+    }
+
     fun decodedRoute(polyline: String?): List<LatLng>? {
         if (polyline.isNullOrEmpty()) return null
         val coords = decodePolyline(polyline)

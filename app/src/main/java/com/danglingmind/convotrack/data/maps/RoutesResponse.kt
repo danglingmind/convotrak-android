@@ -15,6 +15,7 @@ data class RoutesResponse(
         val distanceMeters: Int? = null,
         val duration: String? = null,
         val routeLabels: List<String> = emptyList(),
+        val description: String? = null,
     )
 
     @Serializable

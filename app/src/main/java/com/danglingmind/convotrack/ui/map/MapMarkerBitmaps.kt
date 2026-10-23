@@ -399,6 +399,60 @@ object MapMarkerBitmaps {
         return bmp
     }
 
+    /** A filled dot with a dark keyline, for the rider's position before planning or a dropped pin. */
+    fun dot(scale: Float, sizeDp: Float, color: Int): Bitmap {
+        val size = (sizeDp * scale).toInt().coerceAtLeast(1)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val stroke = 2.5f * scale
+        c.drawOval(RectF(0f, 0f, size.toFloat(), size.toFloat()), paint().apply { this.color = DsColor.sheet.toArgb() })
+        c.drawOval(RectF(stroke, stroke, size - stroke, size - stroke), paint().apply { this.color = color })
+        return bmp
+    }
+
+    /**
+     * Time bubble for a route alternative: a pill with a tail pointing at the route. Lime for the
+     * selected route, raised surface for the others — the same split as the lines (iOS
+     * RouteBubbleArt). Anchor at (0.5, 1), the tail's tip.
+     */
+    fun routeBubble(scale: Float, fontScale: Float, text: String, selected: Boolean): Bitmap {
+        val textSize = (LABEL_SP + 1f) * fontScale * scale
+        val tp = textPaint(textSize, if (selected) DsColor.onAccent.toArgb() else DsColor.textLabel.toArgb(), bold = true, mono = true)
+        val padH = 10f * scale
+        val padV = 6f * scale
+        val tail = 6f * scale
+        // Transparent margin so the bubble is a comfortable target.
+        val margin = 4f * scale
+        val textW = tp.measureText(text)
+        val fm = tp.fontMetrics
+        val pillW = textW + padH * 2
+        val pillH = (fm.descent - fm.ascent) + padV * 2
+        val w = (pillW + margin * 2).toInt()
+        val h = (pillH + tail).toInt() + 1
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val fill = paint().apply { color = if (selected) DsColor.accent.toArgb() else DsColor.raised.toArgb() }
+        val rect = RectF(margin, 0f, margin + pillW, pillH)
+        val radius = 9f * scale
+        c.drawRoundRect(rect, radius, radius, fill)
+        if (!selected) {
+            c.drawRoundRect(
+                RectF(rect.left + 0.5f * scale, rect.top + 0.5f * scale, rect.right - 0.5f * scale, rect.bottom - 0.5f * scale),
+                radius, radius,
+                paint().apply { style = Paint.Style.STROKE; strokeWidth = 1f * scale; color = DsColor.borderStrong.toArgb() },
+            )
+        }
+        val cx = w / 2f
+        c.drawPath(Path().apply {
+            moveTo(cx - 5f * scale, pillH - 1f)
+            lineTo(cx + 5f * scale, pillH - 1f)
+            lineTo(cx, pillH + tail)
+            close()
+        }, fill)
+        c.drawText(text, margin + padH, padV - fm.ascent, tp)
+        return bmp
+    }
+
     /** Greedy word wrap to at most [maxLines]; the final line is ellipsised if it still overflows. */
     private fun wrapText(text: String, p: Paint, maxWidth: Float, maxLines: Int): List<String> {
         if (p.measureText(text) <= maxWidth) return listOf(text)

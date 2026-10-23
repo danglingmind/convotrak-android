@@ -1,12 +1,11 @@
 package com.danglingmind.convotrack.ui.ride
 
-import com.danglingmind.convotrack.data.imagecache.ImageCache
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,32 +14,32 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.danglingmind.convotrack.data.imagecache.ImageCache
 import com.danglingmind.convotrack.data.maps.DirectionsService
-import com.danglingmind.convotrack.data.maps.PlaceResult
 import com.danglingmind.convotrack.data.net.Ride
 import com.danglingmind.convotrack.data.net.UpdateRideRequest
-import com.danglingmind.convotrack.data.net.Waypoint
 import com.danglingmind.convotrack.data.net.apiCall
 import com.danglingmind.convotrack.data.net.riderMessage
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.common.rememberRiderCap
 import com.danglingmind.convotrack.ui.designsystem.ConfirmDialog
-import com.danglingmind.convotrack.ui.designsystem.DestructiveButton
 import com.danglingmind.convotrack.ui.designsystem.DialogText
 import com.danglingmind.convotrack.ui.designsystem.DsScreen
 import com.danglingmind.convotrack.ui.designsystem.DsSpace
 import com.danglingmind.convotrack.ui.designsystem.ErrorState
-import com.danglingmind.convotrack.ui.designsystem.InlineError
 import com.danglingmind.convotrack.ui.designsystem.LoadingState
 import com.danglingmind.convotrack.ui.designsystem.PrimaryButton
 import com.danglingmind.convotrack.ui.designsystem.PushedHeader
-import com.google.android.gms.maps.model.LatLng
+import com.danglingmind.convotrack.ui.ride.planner.PlannerMode
+import com.danglingmind.convotrack.ui.ride.planner.PlannerState
+import com.danglingmind.convotrack.ui.ride.planner.RidePlannerScreen
 import kotlinx.coroutines.launch
 
 /**
- * Leader-only ride editor — the Android port of iOS EditRideView. Shares the ride form with Create
- * Ride, pre-filled from the ride's current waypoints, and saves via PATCH /rides/:rideId.
+ * Leader-only ride editor — the Android port of iOS EditRideView: a saved ride re-planned on the
+ * map (the planner in edit mode). Saves via PATCH /rides/:rideId; delete lives in the ⋯ menu.
  */
 @Composable
 fun EditRideScreen(
@@ -66,7 +65,7 @@ fun EditRideScreen(
 
     val r = ride
     if (r != null) {
-        EditRideForm(r, onBack, onSaved, onDeleted, onOpenMembership)
+        EditRidePlanner(r, onBack, onSaved, onDeleted, onOpenMembership)
     } else {
         DsScreen {
             Column(Modifier.fillMaxSize()) {
@@ -80,98 +79,106 @@ fun EditRideScreen(
     }
 }
 
-private fun waypointPlace(wp: Waypoint): PlaceResult =
-    PlaceResult(id = "wp_${wp.order}", name = wp.name, latLng = LatLng(wp.lat, wp.lng), address = null)
-
 @Composable
-private fun EditRideForm(ride: Ride, onBack: () -> Unit, onSaved: () -> Unit, onDeleted: () -> Unit, onOpenMembership: () -> Unit) {
+private fun EditRidePlanner(ride: Ride, onBack: () -> Unit, onSaved: () -> Unit, onDeleted: () -> Unit, onOpenMembership: () -> Unit) {
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val planner = remember(ride.id) { PlannerState(scope, context.applicationContext, ride) }
 
     // Only the ride's creator may delete it (the server enforces the same rule). Read from the
     // live auth identity so a still-loading session resolves the moment it lands.
     val amLeader = ServiceLocator.auth.userState.value?.id
         ?.takeIf { it.isNotEmpty() } == ride.leaderId
 
-    val form = remember(ride.id) {
-        val sorted = ride.waypoints.sortedBy { it.order }
-        fun stopFor(id: Long, wp: Waypoint?) = RouteStop(id).also { s ->
-            wp?.let { s.text = it.name; s.place = waypointPlace(it) }
-        }
-        RouteFormState(
-            initialTitle = ride.title,
-            initialMaxRiders = ride.maxAllowedParticipants,
-            startStop = stopFor(-1, sorted.firstOrNull { it.type == "START" }),
-            destStop = stopFor(-2, sorted.firstOrNull { it.type == "DESTINATION" }),
-            initialMiddle = sorted.filter { it.type == "WAYPOINT" }.mapIndexed { i, wp -> stopFor(1000L + i, wp) },
-        )
-    }
     var saving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val canSave = form.title.isNotBlank() && form.allResolved && form.preview != null && !saving
-
+    var saveError by remember { mutableStateOf<String?>(null) }
+    var showDiscard by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf<String?>(null) }
 
-    RideFormScaffold(title = "Edit ride", onBack = onBack) {
-        RouteFormSections(form, rememberRiderCap(), onUpgrade = onOpenMembership)
+    // Show the saved route at once, then load the alternatives and keep the leader's pick selected.
+    LaunchedEffect(ride.id) {
+        planner.fitCameraToRoute(animated = false)
+        planner.recalculateRoute(preferStoredMatch = true)
+    }
 
-        if (error != null) InlineError(error!!)
-
+    RidePlannerScreen(
+        state = planner,
+        riderCap = rememberRiderCap(),
+        mode = PlannerMode.EDIT,
+        onUpgrade = onOpenMembership,
+        onClose = { if (planner.hasChanges) showDiscard = true else onBack() },
+        onDelete = if (amLeader) ({ showDeleteConfirm = true }) else null,
+    ) {
         PrimaryButton(
-            text = "Save ride",
-            icon = Icons.Filled.Directions,
-            enabled = canSave,
+            text = "Save changes",
+            icon = Icons.Filled.Check,
+            enabled = planner.hasChanges && planner.canCommit(busy = saving || deleting),
             loading = saving,
             onClick = {
-                val p = form.preview ?: return@PrimaryButton
                 saving = true
-                error = null
                 scope.launch {
                     try {
-                        val dest = form.destStop.place!!
+                        val waypoints = planner.resolvedWaypoints() ?: return@launch
+                        val dest = waypoints.last()
                         val req = UpdateRideRequest(
-                            title = form.title.trim(),
+                            title = planner.title.trim(),
                             destinationName = dest.name,
-                            destinationLat = dest.latLng.latitude,
-                            destinationLng = dest.latLng.longitude,
-                            distanceMeters = p.distanceMeters,
-                            estimatedDurationSeconds = p.durationSeconds.toInt(),
-                            maxAllowedParticipants = form.maxRiders,
-                            routePolyline = DirectionsService.encodePolyline(p.coords),
-                            waypoints = form.waypoints(),
+                            destinationLat = dest.lat,
+                            destinationLng = dest.lng,
+                            distanceMeters = planner.distanceMeters,
+                            estimatedDurationSeconds = planner.durationSeconds.toInt(),
+                            maxAllowedParticipants = planner.maxRiders,
+                            routePolyline = DirectionsService.encodePolyline(planner.routeCoords),
+                            waypoints = waypoints,
                         )
                         apiCall { api.updateRide(ride.id, req) }
+                        // New route or destination: its cached map and summary card are stale.
+                        runCatching { ImageCache.evictOwner(ride.id) }
                         onSaved()
                     } catch (e: Exception) {
-                        error = e.riderMessage
+                        saveError = e.riderMessage
+                    } finally {
                         saving = false
                     }
                 }
             },
         )
+    }
 
-        // Delete is the leader's only way to cancel a ride outright: destructive, at the end of the
-        // form and behind a confirmation, because unlike leaving it removes the ride for everyone.
-        if (amLeader) {
-            if (deleteError != null) InlineError(deleteError!!)
-            DestructiveButton(
-                text = if (deleting) "Deleting…" else "Delete ride",
-                enabled = !deleting && !saving,
-                onClick = { showDeleteConfirm = true },
-            )
+    if (showDiscard) {
+        ConfirmDialog(
+            title = "Discard your changes?",
+            onDismiss = { showDiscard = false },
+            dismissLabel = "Keep editing",
+            confirmLabel = "Discard changes",
+            destructive = true,
+            onConfirm = {
+                showDiscard = false
+                onBack()
+            },
+        ) {
+            DialogText("The ride stays as it was saved.")
+        }
+    }
+
+    saveError?.let { message ->
+        ConfirmDialog(title = "Couldn't save ride", onDismiss = { saveError = null }, confirmLabel = "OK", dismissLabel = null, onConfirm = { saveError = null }) {
+            DialogText(message)
         }
     }
 
     if (showDeleteConfirm) {
         ConfirmDialog(
             title = "Delete this ride?",
-            onDismiss = { showDeleteConfirm = false },
-            confirmLabel = "Delete ride",
+            onDismiss = { if (!deleting) showDeleteConfirm = false },
+            confirmLabel = if (deleting) "Deleting…" else "Delete ride",
             destructive = true,
+            busy = deleting,
+            error = deleteError,
             onConfirm = {
-                showDeleteConfirm = false
                 deleting = true
                 deleteError = null
                 scope.launch {
@@ -179,11 +186,13 @@ private fun EditRideForm(ride: Ride, onBack: () -> Unit, onSaved: () -> Unit, on
                         apiCall { api.deleteRide(ride.id) }
                         // Its thumbnail, map and summary card can never be shown again.
                         runCatching { ImageCache.evictOwner(ride.id) }
+                        showDeleteConfirm = false
                         // The server broadcasts ride:deleted; every other rider's lobby surfaces
                         // "Ride Cancelled" off the back of it.
                         onDeleted()
                     } catch (e: Exception) {
                         deleteError = e.riderMessage
+                    } finally {
                         deleting = false
                     }
                 }
@@ -193,4 +202,3 @@ private fun EditRideForm(ride: Ride, onBack: () -> Unit, onSaved: () -> Unit, on
         }
     }
 }
-

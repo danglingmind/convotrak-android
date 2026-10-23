@@ -18,6 +18,10 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.danglingmind.convotrack.R
@@ -51,6 +55,9 @@ import kotlin.math.cos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -76,6 +83,16 @@ data class MapMarker(
 
 /** The rider's own position + travel heading, drawn as the navigation chevron. */
 data class UserPuck(val position: LatLng, val bearing: Float = 0f)
+
+/**
+ * A time label on a route alternative, Google Maps style (iOS RouteBubble): the selected route
+ * shows its duration, the others how they compare. Tapping one selects its route, which is far
+ * easier to hit than the line itself.
+ */
+data class RouteBubble(val routeIndex: Int, val position: LatLng, val text: String, val isSelected: Boolean)
+
+/** A plain round dot: the rider's position before planning, or a dropped pin. */
+data class MapDot(val id: String, val position: LatLng, val color: Color, val sizeDp: Float)
 
 /**
  * Where the camera target sits in the viewport.
@@ -272,6 +289,20 @@ fun ConvoTrackMap(
     alternativeRoutes: List<List<LatLng>> = emptyList(),
     selectedRouteIndex: Int = 0,
     onSelectRoute: ((Int) -> Unit)? = null,
+    /** Fixed insets for chrome floating over a full-bleed map (the planner's top card and sheet).
+     *  Camera targets, fits and the Google logo all keep to the padded area, so the route is framed
+     *  where people can see it and the logo sits above the sheet. A [MapCamera.Fit]'s own insets
+     *  are added on top. */
+    basePadding: PaddingValues? = null,
+    /** Time labels on the route alternatives; tapping one calls [onSelectRoute]. */
+    routeBubbles: List<RouteBubble> = emptyList(),
+    dots: List<MapDot> = emptyList(),
+    /** A plain tap on the map, away from any marker or line. */
+    onMapClick: ((LatLng) -> Unit)? = null,
+    /** Long-press on the map, for dropping a pin. */
+    onMapLongClick: ((LatLng) -> Unit)? = null,
+    /** The camera came to rest; carries the target, which is the centre of the padded area. */
+    onCameraIdle: ((LatLng) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -318,7 +349,16 @@ fun ConvoTrackMap(
     // screen and in landscape.
     var mapHeightPx by remember { mutableStateOf(0) }
     var mapWidthPx by remember { mutableStateOf(0) }
+    val layoutDirection = LocalLayoutDirection.current
     val contentPadding = when {
+        basePadding != null && camera is MapCamera.Fit -> PaddingValues(
+            start = basePadding.calculateStartPadding(layoutDirection) + camera.leftDp.dp,
+            top = basePadding.calculateTopPadding() + camera.topDp.dp,
+            end = basePadding.calculateEndPadding(layoutDirection) + camera.rightDp.dp,
+            bottom = basePadding.calculateBottomPadding() + camera.bottomDp.dp,
+        )
+        basePadding != null -> basePadding
+
         camera is MapCamera.Navigate && camera.framing == MapFraming.ROAD_AHEAD ->
             PaddingValues(top = with(density) { (mapHeightPx * NavCamera.ROAD_AHEAD_FRACTION).toDp() })
 
@@ -336,6 +376,8 @@ fun ConvoTrackMap(
 
         else -> PaddingValues(0.dp)
     }
+
+    val currentPadding by rememberUpdatedState(contentPadding)
 
     // AutoFit re-frames on content change, so it is keyed on the content rather than a command id.
     if (camera is MapCamera.AutoFit) {
@@ -373,29 +415,64 @@ fun ConvoTrackMap(
                 }
             }
             is MapCamera.Fit -> {
-                val points = camera.coords
-                when {
-                    points.isEmpty() -> Unit
-                    points.size == 1 ->
-                        cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 13f)
-                    else -> {
-                        val bounds = LatLngBounds.builder().apply { points.forEach { include(it) } }.build()
-                        // The insets are already applied as content padding above; this is just a
-                        // small breathing margin inside the resulting band.
-                        val pad = with(density) { 8.dp.roundToPx() }
-                        runCatching {
-                            val update = CameraUpdateFactory.newLatLngBounds(bounds, pad)
-                            if (camera.animated) cameraPositionState.animate(update, 700)
-                            else cameraPositionState.move(update)
-                        }.onFailure {
-                            cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 11f)
+                suspend fun fit(animated: Boolean) {
+                    val points = camera.coords
+                    when {
+                        points.isEmpty() -> Unit
+                        points.size == 1 ->
+                            cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 13f)
+                        else -> {
+                            val bounds = LatLngBounds.builder().apply { points.forEach { include(it) } }.build()
+                            // The insets are already applied as content padding above; this is just a
+                            // small breathing margin inside the resulting band.
+                            val pad = with(density) { 8.dp.roundToPx() }
+                            runCatching {
+                                val update = CameraUpdateFactory.newLatLngBounds(bounds, pad)
+                                if (animated) cameraPositionState.animate(update, 700)
+                                else cameraPositionState.move(update)
+                            }.onFailure {
+                                cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 11f)
+                            }
                         }
+                    }
+                }
+                val paddingAtStart = currentPadding
+                fit(camera.animated)
+                // Over a padded map the chrome often changes size in the same frame as the command —
+                // the planner's sheet header grows once the route lands, its stops card grows when a
+                // stop is added — and the map takes the new padding after this effect has already
+                // framed the route with the old one: the route ended up under the chrome. So when
+                // the padding changes shortly after, frame again. Several changes in a row (card and
+                // sheet both growing) coalesce into one re-fit once they've settled.
+                if (basePadding != null) {
+                    // The first fit animates for 700 ms; a change that landed during it is already
+                    // the current value, which the watch below would skip.
+                    if (currentPadding != paddingAtStart) {
+                        delay(60)
+                        fit(animated = true)
+                    }
+                    withTimeoutOrNull(1_500) {
+                        snapshotFlow { currentPadding }
+                            .drop(1)
+                            .collectLatest {
+                                delay(120)   // let the map apply it, and the next change land
+                                fit(animated = true)
+                            }
                     }
                 }
             }
             // Handled above (content-keyed) / nothing to do.
             is MapCamera.AutoFit -> Unit
             is MapCamera.Free -> Unit // user is panning; leave the camera where they left it
+        }
+    }
+
+    // Where the camera came to rest, for "Choose on map" and searching near what's on screen.
+    if (onCameraIdle != null) {
+        val emitIdle by rememberUpdatedState(onCameraIdle)
+        LaunchedEffect(cameraPositionState) {
+            snapshotFlow { cameraPositionState.isMoving }
+                .collect { moving -> if (!moving) emitIdle(cameraPositionState.position.target) }
         }
     }
 
@@ -459,6 +536,8 @@ fun ConvoTrackMap(
         },
         cameraPositionState = cameraPositionState,
         contentPadding = contentPadding,
+        onMapClick = { onMapClick?.invoke(it) },
+        onMapLongClick = { onMapLongClick?.invoke(it) },
         // Dark before the first tiles arrive; the SDK default is a light beige that flashes on
         // every map card.
         googleMapOptionsFactory = { GoogleMapOptions().backgroundColor(DsColor.bgBase.toArgb()) },
@@ -573,6 +652,34 @@ fun ConvoTrackMap(
 
         markers.forEach { marker ->
             BakedMarker(marker, scale, fontScale, avatars[marker.avatarUrl])
+        }
+
+        dots.forEach { dot ->
+            val icon = remember(dot.color, dot.sizeDp, scale) {
+                BitmapDescriptorFactory.fromBitmap(MapMarkerBitmaps.dot(scale, dot.sizeDp, dot.color.toArgb()))
+            }
+            val state = remember(dot.id) { MarkerState(position = dot.position) }
+            LaunchedEffect(dot.position) { state.position = dot.position }
+            Marker(state = state, icon = icon, anchor = Offset(0.5f, 0.5f), zIndex = 5f)
+        }
+
+        // Above the alternatives and riders, below the stop pins: those are the fixed landmarks.
+        routeBubbles.forEach { bubble ->
+            val icon = remember(bubble.text, bubble.isSelected, scale, fontScale) {
+                BitmapDescriptorFactory.fromBitmap(MapMarkerBitmaps.routeBubble(scale, fontScale, bubble.text, bubble.isSelected))
+            }
+            val state = remember(bubble.routeIndex) { MarkerState(position = bubble.position) }
+            LaunchedEffect(bubble.position) { state.position = bubble.position }
+            Marker(
+                state = state,
+                icon = icon,
+                anchor = Offset(0.5f, 1f),   // the tail's tip
+                zIndex = if (bubble.isSelected) 5.6f else 5.5f,
+                onClick = {
+                    onSelectRoute?.invoke(bubble.routeIndex)
+                    true
+                },
+            )
         }
 
         if (user != null) {

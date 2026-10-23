@@ -101,7 +101,9 @@ object DsColor {
     val mapRouteCore = accent
     val mapRouteGlow = Color(0x4DCDEF1E)     // 30%
     val mapRoutePlanned = Color(0x47CDEF1E)  // 28%
-    val mapRouteAlternative = Color(0x66B4B9C1)
+    /** 55%: 3.6:1 against the map. At 40% it was 2.5:1, under the 3:1 a line people have to
+     *  find and tap needs (WCAG 1.4.11). Matches iOS `DS.Map.routeAlternative`. */
+    val mapRouteAlternative = Color(0x8CB4B9C1)
     val mapStart = success
     val mapStop = accentDeep
     val mapEnd = accent
