@@ -11,6 +11,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.danglingmind.convotrack.data.analytics.Analytics
+import com.danglingmind.convotrack.data.analytics.MetaEvents
 import com.danglingmind.convotrack.data.maps.DirectionsService
 import com.danglingmind.convotrack.data.net.CreateRideRequest
 import com.danglingmind.convotrack.data.net.apiCall
@@ -80,6 +81,7 @@ fun CreateRideScreen(
                             waypoints = waypoints,
                         )
                         val resp = apiCall { api.createRide(req) }
+                        MetaEvents.rideCreated()
                         onCreated(resp.rideId)
                     } catch (e: Exception) {
                         Analytics.capture(Analytics.Event.CreateRideFailed, mapOf("plan_limit" to e.isPlanLimit))

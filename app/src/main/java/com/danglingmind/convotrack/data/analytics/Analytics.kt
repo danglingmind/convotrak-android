@@ -40,7 +40,7 @@ import java.util.UUID
  * `docs/analytics.md` in the iOS repo; keep it, [Event], and the iOS `Analytics.Event` in step.
  *
  * Off when `POSTHOG_API_KEY` (local.properties) is empty, in debug builds (unless [debugEnabled]
- * is flipped), and when the rider has opted out ([isOptedOut]).
+ * is flipped, e.g. by building with `-PanalyticsDebug=true`), and when the rider has opted out ([isOptedOut]).
  */
 object Analytics {
     /** The wire names. Past tense, snake_case, one name per meaning. */
@@ -69,7 +69,7 @@ object Analytics {
     }
 
     /** Debug builds send nothing unless this is flipped, so development never pollutes the data. */
-    @Volatile var debugEnabled = false
+    @Volatile var debugEnabled = BuildConfig.ANALYTICS_DEBUG
 
     private const val PREFS = "analytics"
     private const val KEY_OPT_OUT = "opt_out"

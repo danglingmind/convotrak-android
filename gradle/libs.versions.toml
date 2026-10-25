@@ -24,6 +24,7 @@ camerax = "1.4.1"
 mlkitBarcode = "17.3.0"
 billing = "9.1.0"
 zxing = "3.5.3"
+metaSdk = "18.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -57,6 +58,7 @@ androidx-camera-view = { group = "androidx.camera", name = "camera-view", versio
 mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
 billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+facebook-core = { group = "com.facebook.android", name = "facebook-core", version.ref = "metaSdk" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

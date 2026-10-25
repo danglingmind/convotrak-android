@@ -16,6 +16,7 @@ import com.android.billingclient.api.QueryPurchasesParams
 import com.android.billingclient.api.acknowledgePurchase
 import com.android.billingclient.api.queryProductDetails
 import com.android.billingclient.api.queryPurchasesAsync
+import com.danglingmind.convotrack.data.analytics.MetaEvents
 import com.danglingmind.convotrack.data.net.ActivateMembershipRequest
 import com.danglingmind.convotrack.data.net.ApiService
 import com.danglingmind.convotrack.data.net.NotAuthenticatedException
@@ -28,6 +29,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.math.BigDecimal
 
 /**
  * Google Play Billing client for the ConvoTrack Pro subscription — the Android analogue of
@@ -215,7 +217,23 @@ class BillingManager(
         // Play has taken the money, so the paywall unlocks now rather than waiting on a round
         // trip. The server call below is what makes the server-side plan limits agree.
         _isPremium.value = true
+        logMetaSubscription(purchase)
         activateOnServer(purchase, surfaceErrors = true)
+    }
+
+    /** The offer bought is always the base-plan offer ([purchase] launches nothing else). */
+    private fun logMetaSubscription(purchase: Purchase) {
+        val productId = purchase.products.firstOrNull() ?: return
+        val details = _products.value[productId] ?: return
+        val phase = PlanPeriod.recurringPhase(details) ?: return
+        val trial = PlanPeriod.baseOffer(details)?.pricingPhases?.pricingPhaseList
+            ?.firstOrNull()?.priceAmountMicros == 0L
+        MetaEvents.subscribed(
+            productId = productId,
+            price = BigDecimal.valueOf(phase.priceAmountMicros, 6),
+            currency = phase.priceCurrencyCode,
+            trial = trial,
+        )
     }
 
     /**

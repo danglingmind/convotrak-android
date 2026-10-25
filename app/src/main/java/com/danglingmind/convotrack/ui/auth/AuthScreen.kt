@@ -1,6 +1,7 @@
 package com.danglingmind.convotrack.ui.auth
 
 import com.danglingmind.convotrack.data.analytics.Analytics
+import com.danglingmind.convotrack.data.analytics.MetaEvents
 
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -128,6 +129,7 @@ fun AuthScreen(
             when (result) {
                 is AuthResult.Success -> {
                     Analytics.capture(Analytics.Event.SignInSucceeded, mapOf("method" to method))
+                    MetaEvents.signedIn(method)
                     onSignedIn()
                 }
                 is AuthResult.NeedsEmailCode -> onNeedsVerification(email.trim())

@@ -1,6 +1,7 @@
 package com.danglingmind.convotrack.ui.join
 
 import com.danglingmind.convotrack.data.analytics.Analytics
+import com.danglingmind.convotrack.data.analytics.MetaEvents
 
 import com.danglingmind.convotrack.ui.designsystem.GoProButton
 import androidx.compose.foundation.Canvas
@@ -125,6 +126,7 @@ fun JoinRideSheet(
         scope.launch {
             try {
                 apiCall { api.joinRide(p.rideId) }
+                MetaEvents.rideJoined()
                 onJoined(p.rideId)
             } catch (e: ApiException) {
                 // Already a participant — treat as success and open the lobby (iOS parity).

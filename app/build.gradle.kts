@@ -21,6 +21,15 @@ val mapsApiKey: String = localProps.getProperty("MAPS_API_KEY", "")
 val posthogApiKey: String = localProps.getProperty("POSTHOG_API_KEY", "")
 val posthogHost: String = localProps.getProperty("POSTHOG_HOST", "https://us.i.posthog.com")
 
+// Meta app events (ad attribution and optimisation). App ID and client token are both public, from
+// the Meta app dashboard (Settings → Basic / Advanced). Empty = Meta events are off.
+val metaAppId: String = localProps.getProperty("META_APP_ID", "")
+val metaClientToken: String = localProps.getProperty("META_CLIENT_TOKEN", "")
+
+// Debug builds send no analytics (PostHog or Meta) unless built with -PanalyticsDebug=true, the
+// Android twin of iOS's `-analyticsDebug YES` launch argument. Ignored by release builds.
+val analyticsDebug: Boolean = (findProperty("analyticsDebug") as String?)?.toBoolean() ?: false
+
 // Upload signing. Play refuses an unsigned bundle at upload, and with no signingConfig declared
 // that is exactly what `bundleRelease` produced: the signReleaseBundle task still runs, finds
 // nothing to sign with, and succeeds — so the build looked clean and the failure only appeared
@@ -63,6 +72,9 @@ android {
         buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
         buildConfigField("String", "POSTHOG_API_KEY", "\"$posthogApiKey\"")
         buildConfigField("String", "POSTHOG_HOST", "\"$posthogHost\"")
+        buildConfigField("String", "META_APP_ID", "\"$metaAppId\"")
+        buildConfigField("String", "META_CLIENT_TOKEN", "\"$metaClientToken\"")
+        buildConfigField("boolean", "ANALYTICS_DEBUG", "$analyticsDebug")
     }
 
     signingConfigs {
@@ -155,6 +167,9 @@ dependencies {
 
     // Billing
     implementation(libs.billing.ktx)
+
+    // Meta app events (ad attribution)
+    implementation(libs.facebook.core)
 
     // QR code generation (invite-code sharing)
     implementation(libs.zxing.core)

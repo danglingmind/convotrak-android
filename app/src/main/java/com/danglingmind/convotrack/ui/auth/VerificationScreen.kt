@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.danglingmind.convotrack.data.analytics.MetaEvents
 import com.danglingmind.convotrack.data.auth.AuthResult
 import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.designsystem.DsColor
@@ -65,7 +66,10 @@ fun VerificationScreen(
         busy = true
         scope.launch {
             when (val r = auth.verifyEmailCode(code)) {
-                is AuthResult.Success -> onVerified()
+                is AuthResult.Success -> {
+                    MetaEvents.signedIn("email")
+                    onVerified()
+                }
                 is AuthResult.Error -> {
                     error = r.message
                     busy = false

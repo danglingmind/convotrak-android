@@ -6,6 +6,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.danglingmind.convotrack.data.analytics.Analytics
+import com.danglingmind.convotrack.data.analytics.MetaEvents
 import com.danglingmind.convotrack.data.audio.VoiceAnnouncer
 import com.danglingmind.convotrack.data.imagecache.ImageCache
 import com.danglingmind.convotrack.di.ServiceLocator
@@ -23,6 +24,7 @@ class ConvoTrackApp : Application() {
         ImageCache.init(this)
         RideDestinationStore.init(this)
         Analytics.start(this)
+        MetaEvents.start(this)
 
         // App-level presence: when the app goes to the background, drop the socket so other
         // riders see us go offline promptly (a backgrounded Android process otherwise keeps the
