@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.6 (versionCode 15) — 2026-10-26
+
+### Changed
+- When planning a ride, the map now opens centred on you.
+- ConvoTrack now measures which of its ads bring new riders to the app, using Meta's app events. This sends Meta your device's advertising ID and a few events (app installs and opens, signing up, creating or joining a ride, and starting a trial or subscription). Your name, email, location, rides and invite codes are never sent. See convotrack.in/privacy.
+
 ## 2.0.5 (versionCode 14) — 2026-10-23
 
 ### Changed

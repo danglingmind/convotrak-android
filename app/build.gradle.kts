@@ -64,8 +64,8 @@ android {
         // Tracked against iOS rather than counted independently: the two apps are a
         // feature-parity pair, so a rider reporting "I'm on 1.1.2" means the same thing on
         // either platform, and a fix can be described once for both.
-        versionCode = 14
-        versionName = "2.0.5"
+        versionCode = 15
+        versionName = "2.0.6"
 
         // Exposed to the manifest (Maps SDK meta-data) and to code (REST services).
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
