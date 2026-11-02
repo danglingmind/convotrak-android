@@ -51,6 +51,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.danglingmind.convotrack.R
 import com.danglingmind.convotrack.data.maps.DestinationHeroPhase
+import com.danglingmind.convotrack.data.maps.DirectionsService
+import com.danglingmind.convotrack.ui.map.ConvoTrackMap
+import com.danglingmind.convotrack.ui.map.MapCamera
+import com.danglingmind.convotrack.ui.map.MapMarker
+import com.danglingmind.convotrack.ui.map.MapMarkerKind
+import com.google.android.gms.maps.model.LatLng
+import androidx.compose.ui.draw.clip
 import com.danglingmind.convotrack.data.net.Ride
 import com.danglingmind.convotrack.data.net.RideSummary
 import com.danglingmind.convotrack.data.net.SummaryParticipant
@@ -98,6 +105,7 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
     val ctx = LocalContext.current
     var state by remember { mutableStateOf<UiState<RideSummary>>(UiState.Loading) }
     var ride by remember { mutableStateOf<Ride?>(null) }
+    var plannedRoute by remember { mutableStateOf<List<LatLng>>(emptyList()) }
     var isGeneratingShare by remember { mutableStateOf(false) }
     var shareError by remember { mutableStateOf<String?>(null) }
 
@@ -114,6 +122,10 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
         // The ride itself (title, destination) changed at the end; drop any cached copy.
         RideDetailsCache.invalidate(rideId)
         ride = RideDetailsCache.get(rideId)
+    }
+    // The planned route, drawn dimmed under the ridden one (and used alone for older rides).
+    LaunchedEffect(ride?.id) {
+        plannedRoute = ride?.let { runCatching { rideRoute(it) }.getOrNull() }.orEmpty()
     }
     LaunchedEffect(rideId) { load() }
     LaunchedEffect(rideId) { Analytics.capture(Analytics.Event.RideSummaryViewed) }
@@ -158,7 +170,7 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
                     when (val s = state) {
                         is UiState.Loading -> LoadingState()
                         is UiState.Error -> ErrorState(s.message, onRetry = { scope.launch { load() } })
-                        is UiState.Success -> SummaryContent(s.data)
+                        is UiState.Success -> SummaryContent(s.data, ride, plannedRoute)
                     }
                     // Right after a ride is when Pro is easiest to want.
                     if (!plan.isPremium) {
@@ -220,7 +232,10 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
                                 // (or an edited route) hashes to a new key and re-renders.
                                 val cardKey = ShareSummaryCard.cacheKey(title, summary, r)
                                 val card = ShareSummaryCard.cachedCard(cardKey) ?: run {
-                                    val route = r?.let { runCatching { rideRoute(it) }.getOrNull() }.orEmpty()
+                                    // The ridden route when the server recorded one, else the plan.
+                                    val route = summary.actualRoute().ifEmpty {
+                                        r?.let { runCatching { rideRoute(it) }.getOrNull() }.orEmpty()
+                                    }
                                     val bitmap = ShareSummaryCard.render(context = ctx, rideTitle = title, summary = summary, routeCoordinates = route)
                                     ShareSummaryCard.saveCard(cardKey, rideId, bitmap)
                                 }
@@ -244,7 +259,7 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
 }
 
 @Composable
-private fun SummaryContent(summary: RideSummary) {
+private fun SummaryContent(summary: RideSummary, ride: Ride?, plannedRoute: List<LatLng>) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             dateLabel(summary.createdAt)?.let { MetaChip(Icons.Filled.CalendarToday, it, onPhoto = false) }
@@ -271,11 +286,62 @@ private fun SummaryContent(summary: RideSummary) {
             )
         }
 
+        RouteMapCard(summary, ride, plannedRoute)
+
         if (summary.participants.isNotEmpty()) {
             SectionHeading("Awards", Modifier.padding(top = 12.dp, bottom = 2.dp))
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 summary.participants.forEach { AwardRow(it) }
             }
+        }
+    }
+}
+
+private fun RideSummary.actualRoute(): List<LatLng> =
+    DirectionsService.decodedRoute(actualRoutePolyline).orEmpty()
+
+/** The route that was ridden (the plan, dimmed underneath, when they differ) with the leader's stops. */
+@Composable
+private fun RouteMapCard(summary: RideSummary, ride: Ride?, plannedRoute: List<LatLng>) {
+    val actual = remember(summary.actualRoutePolyline) { summary.actualRoute() }
+    val display = actual.ifEmpty { plannedRoute }
+    if (display.isEmpty()) return
+
+    val markers = remember(ride, summary.leaderStops) {
+        buildList {
+            ride?.let { addAll(rideMarkers(it)) }
+            summary.leaderStops.forEach {
+                add(MapMarker("stop_${it.id}", LatLng(it.lat, it.lng), MapMarkerKind.REGROUP, regroupType = it.type))
+            }
+        }
+    }
+    val camera = remember(display, summary.leaderStops) {
+        MapCamera.Fit(
+            id = 1L,
+            coords = display + summary.leaderStops.map { LatLng(it.lat, it.lng) },
+            topDp = 40f, leftDp = 40f, bottomDp = 40f, rightDp = 40f,
+            animated = false,
+        )
+    }
+
+    Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionHeading("Route")
+        ConvoTrackMap(
+            modifier = Modifier.fillMaxWidth().height(260.dp).clip(DsShape.md),
+            routeCoords = display,
+            // The plan stays visible, dimmed, so a detour reads as a detour.
+            fullRouteCoords = if (actual.isEmpty()) emptyList() else plannedRoute,
+            markers = markers,
+            interactive = false,
+            camera = camera,
+        )
+        if (summary.leaderStops.isNotEmpty()) {
+            val n = summary.leaderStops.size
+            Text(
+                "$n regroup stop${if (n == 1) "" else "s"} called by the leader",
+                style = DsType.body,
+                color = DsColor.textSecondary,
+            )
         }
     }
 }

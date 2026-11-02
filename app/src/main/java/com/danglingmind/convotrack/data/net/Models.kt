@@ -193,7 +193,21 @@ data class RideSummary(
     val totalRegroups: Int,
     val totalEmergencies: Int,
     val createdAt: String,
+    /** Route the leader actually rode (encoded polyline). Null for rides that ended before the
+     *  server recorded tracks, or when the server is older than this field. */
+    val actualRoutePolyline: String? = null,
+    /** Regroup stops the leader called, in order. Never includes emergencies. */
+    val leaderStops: List<LeaderStop> = emptyList(),
     val participants: List<SummaryParticipant> = emptyList(),
+)
+
+@Serializable
+data class LeaderStop(
+    val id: String,
+    val type: String, // FUEL | FOOD | SCENIC | STOP
+    val lat: Double,
+    val lng: Double,
+    val createdAt: String = "",
 )
 
 @Serializable
