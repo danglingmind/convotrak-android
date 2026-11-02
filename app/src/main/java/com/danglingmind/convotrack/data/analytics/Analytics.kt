@@ -63,6 +63,8 @@ object Analytics {
         InviteShareOpened("invite_share_opened"),
         RideSummaryViewed("ride_summary_viewed"),
         RideSummaryShared("ride_summary_shared"),
+        SharedRouteOpened("shared_route_opened"),
+        SharedRouteCloneStarted("shared_route_clone_started"),
         // Permissions
         PermissionResult("permission_result"),
         VoiceMuteToggled("voice_mute_toggled"),

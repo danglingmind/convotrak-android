@@ -39,6 +39,7 @@ import java.net.URLEncoder
 import java.net.URLDecoder
 import com.danglingmind.convotrack.ui.membership.MembershipScreen
 import com.danglingmind.convotrack.ui.ride.CreateRideScreen
+import com.danglingmind.convotrack.ui.ride.SharedRoutePreviewScreen
 import com.danglingmind.convotrack.ui.ride.EditRideScreen
 import com.danglingmind.convotrack.ui.ride.RideLobbyScreen
 import com.danglingmind.convotrack.ui.ride.RideNavigationScreen
@@ -59,6 +60,7 @@ object Routes {
     const val RIDE_NAVIGATION = "ride_navigation"
     const val RIDE_SUMMARY = "ride_summary"
     const val EDIT_RIDE = "edit_ride"
+    const val SHARED_ROUTE = "shared_route"
     const val MEMBERSHIP = "membership"
     /** The one-time paywall after first sign-in; leads to MAIN either way. */
     const val MEMBERSHIP_ONBOARDING = "membership_onboarding"
@@ -75,6 +77,7 @@ object Routes {
     fun navigation(rideId: String) = "$RIDE_NAVIGATION/$rideId"
     fun summary(rideId: String) = "$RIDE_SUMMARY/$rideId"
     fun edit(rideId: String) = "$EDIT_RIDE/$rideId"
+    fun sharedRoute(token: String) = "$SHARED_ROUTE/$token"
 }
 
 @Composable
@@ -83,6 +86,8 @@ fun AppRoot(
     onDeepLinkConsumed: () -> Unit = {},
     openRideId: String? = null,
     onOpenRideConsumed: () -> Unit = {},
+    routeToken: String? = null,
+    onRouteTokenConsumed: () -> Unit = {},
 ) {
     val nav = rememberNavController()
 
@@ -179,6 +184,9 @@ fun AppRoot(
                     onRequestedTabConsumed = { entry.savedStateHandle["tab"] = null },
                     initialInviteCode = deepLinkCode,
                     onInviteConsumed = onDeepLinkConsumed,
+                    initialRouteToken = routeToken,
+                    onRouteTokenConsumed = onRouteTokenConsumed,
+                    onOpenSharedRoute = { token -> nav.navigate(Routes.sharedRoute(token)) },
                     onCreateRide = { nav.navigate(Routes.CREATE_RIDE) },
                     onOpenLobby = { rideId -> nav.navigate(Routes.rideGraph(rideId)) },
                     onOpenSummary = { rideId -> nav.navigate(Routes.summary(rideId)) },
@@ -188,6 +196,20 @@ fun AppRoot(
                         nav.navigate(Routes.AUTH) {
                             popUpTo(Routes.MAIN) { inclusive = true }
                         }
+                    },
+                )
+            }
+            composable(
+                route = "${Routes.SHARED_ROUTE}/{token}",
+                arguments = listOf(navArgument("token") { type = NavType.StringType }),
+            ) { entry ->
+                SharedRoutePreviewScreen(
+                    token = entry.arguments?.getString("token").orEmpty(),
+                    onClose = { nav.popBackStack() },
+                    // The preview is replaced, not stacked under the planner: back from Create Ride
+                    // returns to the tabs.
+                    onRide = {
+                        nav.navigate(Routes.CREATE_RIDE) { popUpTo("${Routes.SHARED_ROUTE}/{token}") { inclusive = true } }
                     },
                 )
             }

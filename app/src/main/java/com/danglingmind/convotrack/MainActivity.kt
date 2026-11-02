@@ -28,10 +28,14 @@ class MainActivity : ComponentActivity() {
     // https App Link). Read by AppRoot; cleared once the join sheet consumes it.
     private val deepLinkCode = mutableStateOf<String?>(null)
 
+    // Pending shared-route token (https://convotrack.in/route/<token> or convotrack://route/<token>).
+    private val routeToken = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        deepLinkCode.value = inviteCodeFrom(intent)
+        routeToken.value = routeTokenFrom(intent)
+        deepLinkCode.value = if (routeToken.value == null) inviteCodeFrom(intent) else null
         openRideId.value = intent?.getStringExtra(EXTRA_OPEN_RIDE_ID)
         // Debug only: `adb shell am start -n …/.MainActivity --es paywallState trial|lastday|expired|pro|free`
         // forces an access state for design review (iOS `-paywallState`).
@@ -45,6 +49,8 @@ class MainActivity : ComponentActivity() {
                 AppRoot(
                     deepLinkCode = deepLinkCode.value,
                     onDeepLinkConsumed = { deepLinkCode.value = null },
+                    routeToken = routeToken.value,
+                    onRouteTokenConsumed = { routeToken.value = null },
                     openRideId = openRideId.value,
                     onOpenRideConsumed = { openRideId.value = null },
                 )
@@ -56,8 +62,22 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        inviteCodeFrom(intent)?.let { deepLinkCode.value = it }
+        val token = routeTokenFrom(intent)
+        if (token != null) routeToken.value = token else inviteCodeFrom(intent)?.let { deepLinkCode.value = it }
         intent.getStringExtra(EXTRA_OPEN_RIDE_ID)?.let { openRideId.value = it }
+    }
+
+    /** Share tokens are 10 characters from the backend's no-lookalikes alphabet. Checked before the
+     *  invite-code scan, which would otherwise read the first 6 characters of a route link. */
+    private fun routeTokenFrom(intent: Intent?): String? {
+        val uri = intent?.data ?: return null
+        val isRoute = (uri.scheme == "convotrack" && uri.host == "route") ||
+            (uri.scheme == "https" && uri.host == "convotrack.in" && uri.path?.startsWith("/route/") == true)
+        if (!isRoute) return null
+        val token = uri.lastPathSegment.orEmpty().uppercase().filter { it in "ABCDEFGHJKMNPQRSTUVWXYZ23456789" }
+        if (token.length != 10) return null
+        Analytics.capture(Analytics.Event.DeepLinkOpened, mapOf("kind" to "route"))
+        return token
     }
 
     private fun inviteCodeFrom(intent: Intent?): String? {

@@ -70,6 +70,8 @@ data class CreateRideRequest(
     val maxAllowedParticipants: Int,
     val routePolyline: String,
     val waypoints: List<CreateWaypoint>,
+    /** Share token of the ride this one was cloned from, when it was. */
+    val sourceShareToken: String? = null,
 )
 
 @Serializable
@@ -199,6 +201,41 @@ data class RideSummary(
     /** Regroup stops the leader called, in order. Never includes emergencies. */
     val leaderStops: List<LeaderStop> = emptyList(),
     val participants: List<SummaryParticipant> = emptyList(),
+)
+
+/**
+ * Public data behind a shared route link (`GET /shared-routes/:token`). The start of the route is
+ * withheld server-side, so there is no START waypoint.
+ */
+@Serializable
+data class SharedRoute(
+    val title: String,
+    val plannedRoutePolyline: String? = null,
+    val actualRoutePolyline: String? = null,
+    val distanceMeters: Double = 0.0,
+    val durationSeconds: Int? = null,
+    val destinationName: String = "",
+    val waypoints: List<Waypoint> = emptyList(),
+    val leaderStops: List<SharedStop> = emptyList(),
+    val viaPoints: List<SharedPoint> = emptyList(),
+    val riderCount: Int = 0,
+    val sharedBy: SharedBy? = null,
+)
+
+@Serializable
+data class SharedStop(val id: String, val type: String, val lat: Double, val lng: Double)
+
+@Serializable
+data class SharedPoint(val lat: Double, val lng: Double)
+
+@Serializable
+data class SharedBy(val firstName: String)
+
+@Serializable
+data class ShareLink(
+    val token: String,
+    /** Canonical link, e.g. https://convotrack.in/route/<token> */
+    val url: String,
 )
 
 @Serializable

@@ -42,7 +42,11 @@ fun CreateRideScreen(
     val api = remember { ServiceLocator.api }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val planner = remember { PlannerState(scope, context.applicationContext) }
+    // A shared route handed over by the preview ("Ride this route"); read once.
+    val clone = remember { PendingRouteClone.take() }
+    val planner = remember {
+        PlannerState(scope, context.applicationContext, template = clone?.route, templateStops = clone?.stops.orEmpty())
+    }
     var creating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     /** The last create was refused for a plan reason (trial over / monthly rides used up). */
@@ -79,6 +83,7 @@ fun CreateRideScreen(
                             maxAllowedParticipants = planner.maxRiders,
                             routePolyline = DirectionsService.encodePolyline(planner.routeCoords),
                             waypoints = waypoints,
+                            sourceShareToken = clone?.token,
                         )
                         val resp = apiCall { api.createRide(req) }
                         MetaEvents.rideCreated()

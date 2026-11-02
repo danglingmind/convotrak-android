@@ -62,6 +62,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="convotrack" android:host="join" />
+                <data android:scheme="convotrack" android:host="route" />
             </intent-filter>
 
             <!-- HTTPS App Link: https://convotrack.in/join/CODE
@@ -83,6 +84,9 @@
                 <data android:scheme="https"
                     android:host="convotrack.in"
                     android:pathPrefix="/join" />
+                <data android:scheme="https"
+                    android:host="convotrack.in"
+                    android:pathPrefix="/route" />
             </intent-filter>
         </activity>
 

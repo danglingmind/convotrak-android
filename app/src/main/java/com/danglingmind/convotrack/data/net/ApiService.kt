@@ -53,6 +53,14 @@ interface ApiService {
     @GET("/rides/{rideId}/summary")
     suspend fun getRideSummary(@Path("rideId") rideId: String): RideSummary
 
+    /** Public route data behind a shared link. Needs no sign-in on the server. */
+    @GET("/shared-routes/{token}")
+    suspend fun getSharedRoute(@Path("token") token: String): SharedRoute
+
+    /** Creates (or returns the existing) public share link for a completed ride. */
+    @POST("/rides/{rideId}/share")
+    suspend fun shareRoute(@Path("rideId") rideId: String): ShareLink
+
     /**
      * @param status comma-separated ride statuses to include; null means every status.
      *

@@ -9,6 +9,7 @@ import com.danglingmind.convotrack.ui.common.PlanState
 import com.danglingmind.convotrack.ui.common.PaywallSource
 import com.danglingmind.convotrack.ui.common.Paywall
 import com.danglingmind.convotrack.ui.common.Access
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
@@ -107,6 +109,7 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
     var ride by remember { mutableStateOf<Ride?>(null) }
     var plannedRoute by remember { mutableStateOf<List<LatLng>>(emptyList()) }
     var isGeneratingShare by remember { mutableStateOf(false) }
+    var isCreatingRouteLink by remember { mutableStateOf(false) }
     var shareError by remember { mutableStateOf<String?>(null) }
 
     suspend fun load() {
@@ -248,6 +251,39 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
                                 shareError = "Couldn't create the summary image. Try again."
                             } finally {
                                 isGeneratingShare = false
+                            }
+                        }
+                    },
+                )
+                // Public link to the route (ridden path + the leader's stops) that anyone can open,
+                // edit and clone into their own ride.
+                SquareIconButton(
+                    Icons.Filled.Link,
+                    "Share route",
+                    size = 56.dp,
+                    shape = DsShape.lg,
+                    busy = isCreatingRouteLink,
+                    onClick = {
+                        if (isCreatingRouteLink) return@SquareIconButton
+                        isCreatingRouteLink = true
+                        shareError = null
+                        scope.launch {
+                            try {
+                                val link = apiCall { api.shareRoute(rideId) }
+                                val title = ride?.title ?: "a ride"
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, "Ride $title with me on ConvoTrack\n${link.url}")
+                                }
+                                ctx.startActivity(
+                                    Intent.createChooser(intent, "Share route").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                shareError = "Couldn't create the link. Try again."
+                            } finally {
+                                isCreatingRouteLink = false
                             }
                         }
                     },

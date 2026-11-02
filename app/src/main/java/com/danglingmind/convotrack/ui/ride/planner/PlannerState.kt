@@ -17,7 +17,11 @@ import com.danglingmind.convotrack.data.maps.RouteOption
 import com.danglingmind.convotrack.data.maps.reverseGeocode
 import com.danglingmind.convotrack.data.net.CreateWaypoint
 import com.danglingmind.convotrack.data.net.Ride
+import com.danglingmind.convotrack.data.net.SharedRoute
+import com.danglingmind.convotrack.data.net.SharedStop
+import android.location.Location
 import com.danglingmind.convotrack.ui.map.MapCamera
+import com.danglingmind.convotrack.ui.ride.regroupStopLabel
 import com.danglingmind.convotrack.ui.map.MapFraming
 import com.danglingmind.convotrack.ui.map.NavCamera
 import com.google.android.gms.maps.model.LatLng
@@ -55,6 +59,9 @@ class PlannerState(
     private val scope: CoroutineScope,
     private val appContext: Context,
     ride: Ride? = null,
+    /** Ride this route: a shared route becomes a new plan the rider leads. */
+    template: SharedRoute? = null,
+    templateStops: List<SharedStop> = emptyList(),
 ) {
     companion object {
         /** Start and destination plus up to eight stops between. The Routes API allows 25
@@ -157,6 +164,62 @@ class PlannerState(
             }
             savedSnapshot = snapshot
         }
+        if (template != null) applyTemplate(template, templateStops)
+    }
+
+    /**
+     * The shared start is withheld, so the plan starts from the rider's own location. The stops after
+     * it (waypoints, the roads the leader detoured onto, and any leader stops the rider ticked) keep
+     * the order they had along the route; routing then runs through them as for any new ride.
+     */
+    private fun applyTemplate(route: SharedRoute, extra: List<SharedStop>) {
+        title = route.title
+        val reference = DirectionsService.decodedRoute(route.actualRoutePolyline)
+            ?: DirectionsService.decodedRoute(route.plannedRoutePolyline).orEmpty()
+        val cumulative = DoubleArray(reference.size)
+        for (i in 1 until reference.size) cumulative[i] = cumulative[i - 1] + distanceBetween(reference[i - 1], reference[i])
+        // Distance along the route to the vertex nearest [p], to order stops from different lists.
+        fun along(p: LatLng): Double {
+            if (reference.isEmpty()) return 0.0
+            var best = 0
+            var bestD = Double.MAX_VALUE
+            for (i in reference.indices) {
+                val d = distanceBetween(p, reference[i])
+                if (d < bestD) { bestD = d; best = i }
+            }
+            return cumulative[best]
+        }
+
+        val middle = mutableListOf<Pair<Double, PlaceResult>>()
+        route.waypoints.filter { it.type == "WAYPOINT" }.forEach { wp ->
+            val p = LatLng(wp.lat, wp.lng)
+            middle += along(p) to PlaceResult("tpl_wp_${wp.order}", wp.name, p, null)
+        }
+        route.viaPoints.forEachIndexed { i, v ->
+            val p = LatLng(v.lat, v.lng)
+            middle += along(p) to PlaceResult("tpl_via_$i", "Via", p, null)
+        }
+        extra.forEach { s ->
+            val p = LatLng(s.lat, s.lng)
+            middle += along(p) to PlaceResult("tpl_stop_${s.id}", regroupStopLabel(s.type), p, null)
+        }
+        middle.sortBy { it.first }
+
+        val built = mutableListOf(PlannerStop(newId(), isCurrentLocation = true))
+        middle.take(MAX_STOPS - 2).forEach { built += PlannerStop(newId(), it.second) }
+        val dest = route.waypoints.firstOrNull { it.type == "DESTINATION" }
+        built += if (dest != null) {
+            PlannerStop(newId(), PlaceResult("tpl_dest", dest.name, LatLng(dest.lat, dest.lng), null))
+        } else PlannerStop(newId())
+        stops.clear()
+        stops.addAll(built)
+        suggestedTitle = null
+    }
+
+    private fun distanceBetween(a: LatLng, b: LatLng): Double {
+        val out = FloatArray(1)
+        Location.distanceBetween(a.latitude, a.longitude, b.latitude, b.longitude, out)
+        return out[0].toDouble()
     }
 
     // MARK: Derived

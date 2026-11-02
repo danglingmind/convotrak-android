@@ -39,6 +39,9 @@ object ApiClient {
     // apps and fall back to a web page when the app isn't installed.
     const val JOIN_LINK_HOST = "convotrack.in"
 
+    /** Path prefix of shared-route links on [JOIN_LINK_HOST], e.g. /route/<token>. */
+    const val ROUTE_LINK_PATH = "/route"
+
     /** Canonical shareable invite link, e.g. https://convotrack.in/join/ABC123 */
     fun joinLink(code: String): String = "https://$JOIN_LINK_HOST/join/$code"
 

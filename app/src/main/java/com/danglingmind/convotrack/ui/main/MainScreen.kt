@@ -46,6 +46,10 @@ fun MainScreen(
     onSignOut: () -> Unit,
     initialInviteCode: String? = null,
     onInviteConsumed: () -> Unit = {},
+    /** A shared-route link (https://convotrack.in/route/<token>); opens its preview. */
+    initialRouteToken: String? = null,
+    onRouteTokenConsumed: () -> Unit = {},
+    onOpenSharedRoute: (token: String) -> Unit = {},
     /** A tab picked from the bottom nav on a screen outside the tabs (the lobby). */
     requestedTab: DsTab? = null,
     onRequestedTabConsumed: () -> Unit = {},
@@ -80,6 +84,15 @@ fun MainScreen(
         if (!code.isNullOrEmpty()) {
             openJoin(code)
             onInviteConsumed()
+        }
+    }
+
+    // A shared-route link opens its preview. Consumed once, like the invite code above.
+    LaunchedEffect(initialRouteToken) {
+        val token = initialRouteToken
+        if (!token.isNullOrEmpty()) {
+            onOpenSharedRoute(token)
+            onRouteTokenConsumed()
         }
     }
 
