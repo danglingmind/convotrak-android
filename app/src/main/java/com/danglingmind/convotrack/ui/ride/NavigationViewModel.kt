@@ -1085,6 +1085,9 @@ class NavigationViewModel : ViewModel() {
     fun canDismissEmergency(emergency: SocketEmergency): Boolean =
         emergency.userId == myUserId || amILeader
 
+    /** True when the signed-in rider raised this emergency; they get their own copy, not "You needs help". */
+    fun isMyEmergency(emergency: SocketEmergency): Boolean = emergency.userId == myUserId
+
     /** Only the rider who called the regroup or the ride leader may clear it early (the server
      *  enforces the same rule); it otherwise stays until every active rider has arrived. */
     fun canDismissRegroup(regroup: RegroupEvent): Boolean =

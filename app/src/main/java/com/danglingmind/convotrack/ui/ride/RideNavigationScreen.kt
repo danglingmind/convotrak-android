@@ -420,7 +420,8 @@ fun RideNavigationScreen(
         if (!wasQuiet) SirenPlayer.play(SirenPlayer.Sound.EMERGENCY)
         if (announce) {
             VoiceAnnouncer.announce(
-                "Emergency. ${vm.emergencyReporterName(ev)} needs help.",
+                if (vm.isMyEmergency(ev)) "Help requested. Your group can see your location."
+                else "Emergency. ${vm.emergencyReporterName(ev)} needs help.",
                 delayMs = SirenPlayer.Sound.EMERGENCY.durationMs + 200,
                 priority = VoicePriority.EMERGENCY,
             )
@@ -583,7 +584,7 @@ fun RideNavigationScreen(
     val destinationName = ride?.destinationName ?: "Destination"
 
     val emergencyItems = activeEmergencies.map {
-        EmergencyAlertItem(it.emergencyId, vm.emergencyReporterName(it), it.message, vm.canDismissEmergency(it))
+        EmergencyAlertItem(it.emergencyId, vm.emergencyReporterName(it), it.message, vm.canDismissEmergency(it), vm.isMyEmergency(it))
     }
     val regroupItems = activeRegroups.map {
         RegroupAlertItem(it.regroupId, it.type, vm.riderName(it.createdBy), it.regroupId in arrivedRegroupIds, vm.canDismissRegroup(it))

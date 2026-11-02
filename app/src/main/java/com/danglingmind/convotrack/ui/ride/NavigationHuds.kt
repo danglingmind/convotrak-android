@@ -161,6 +161,7 @@ private fun AlertSlot(
             is NavAlert.Emergency -> emergencies.firstOrNull { it.id == current.id }?.let { e ->
                 EmergencyBanner(
                     reporterName = e.reporter,
+                    isMine = e.isMine,
                     message = e.message,
                     onShow = { onShowEmergency(e.id) },
                     // No dismiss control unless you raised it or you lead: the server enforces the

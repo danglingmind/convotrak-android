@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.0 (versionCode 16) — 2026-11-02
+
+### Added
+- Share a finished ride's route. Tap the link button on the ride summary to send a link; whoever opens it sees the route that was ridden, the stops along it and the places the leader called regroups, and can tap Ride this route to turn it into their own ride, starting from their location. The first 500 m of the route is left out of shared links.
+- The ride summary now shows a map of the route you rode, with the leader's regroup stops marked.
+
+### Changed
+- When you raise an emergency, the alert now tells you your group can see your location instead of saying you need help.
+
 ## 2.0.6 (versionCode 15) — 2026-10-26
 
 ### Changed

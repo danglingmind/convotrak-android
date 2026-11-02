@@ -464,7 +464,14 @@ fun RegroupAlertBanner(
 }
 
 /** One open emergency, as the alert slot shows it. */
-data class EmergencyAlertItem(val id: String, val reporter: String, val message: String, val canDismiss: Boolean)
+data class EmergencyAlertItem(
+    val id: String,
+    val reporter: String,
+    val message: String,
+    val canDismiss: Boolean,
+    /** Raised by the signed-in rider: the banner speaks to them, not about them. */
+    val isMine: Boolean,
+)
 
 /** One open regroup, as the alert slot shows it. */
 data class RegroupAlertItem(
@@ -518,6 +525,7 @@ fun RegroupNoticeBanner(notice: RegroupNoticeUi, modifier: Modifier = Modifier) 
 @Composable
 fun EmergencyBanner(
     reporterName: String,
+    isMine: Boolean,
     message: String,
     onShow: () -> Unit,
     onDismiss: (() -> Unit)?,
@@ -529,7 +537,8 @@ fun EmergencyBanner(
         border = DsColor.danger,
         icon = Icons.Filled.Warning,
         eyebrow = "EMERGENCY",
-        message = "$reporterName needs help — head to their location",
+        message = if (isMine) "Help requested — your group can see your location"
+        else "$reporterName needs help — head to their location",
         detail = message.takeIf { it.isNotBlank() && it != "Emergency" },
         modifier = modifier,
         trailing = {
