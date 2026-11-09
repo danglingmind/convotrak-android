@@ -3,8 +3,9 @@
     <!-- Base theme applied before Compose takes over. Dark, edge-to-edge, Dark Glass accent.
          Compose owns all real styling — this only controls the pre-inflation window. -->
     <style name="Theme.ConvoTrack" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- No statusBarColor / navigationBarColor: both are deprecated from API 35 and ignored when
+             edge-to-edge is enforced (target 35+). MainActivity.enableEdgeToEdge() makes the bars
+             transparent on every API level instead. -->
         <item name="android:windowBackground">@color/background_base</item>
         <item name="android:colorAccent">@color/accent</item>
     </style>

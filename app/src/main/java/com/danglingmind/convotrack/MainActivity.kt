@@ -7,6 +7,8 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import android.graphics.Color
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableStateOf
 import com.danglingmind.convotrack.ui.AppRoot
@@ -33,7 +35,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The app is dark-only, so pin the bar style. The default (auto) follows the system theme
+        // and would draw dark icons on our dark background when the phone is in light mode.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         routeToken.value = routeTokenFrom(intent)
         deepLinkCode.value = if (routeToken.value == null) inviteCodeFrom(intent) else null
         openRideId.value = intent?.getStringExtra(EXTRA_OPEN_RIDE_ID)
