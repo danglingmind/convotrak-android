@@ -57,6 +57,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -426,16 +427,26 @@ fun ConvoTrackMap(
                             // The insets are already applied as content padding above; this is just a
                             // small breathing margin inside the resulting band.
                             val pad = with(density) { 8.dp.roundToPx() }
-                            runCatching {
+                            suspend fun attempt() = runCatching {
                                 val update = CameraUpdateFactory.newLatLngBounds(bounds, pad)
                                 if (animated) cameraPositionState.animate(update, 700)
                                 else cameraPositionState.move(update)
-                            }.onFailure {
-                                cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 11f)
+                            }
+                            // The map view can still be unlaid-out for a frame after its container
+                            // has a size; one short retry covers that before giving up.
+                            if (attempt().isFailure) {
+                                delay(200)
+                                attempt().onFailure {
+                                    cameraPositionState.position = CameraPosition.fromLatLngZoom(points.first(), 11f)
+                                }
                             }
                         }
                     }
                 }
+                // A bounds fit throws on a map that hasn't been measured yet, and the fallback below
+                // is a city-wide zoom. A command issued as the screen opens (a summary card, a
+                // cloned ride's first route) lands before layout, so wait for a size first.
+                withTimeoutOrNull(2_000) { snapshotFlow { mapWidthPx > 0 && mapHeightPx > 0 }.first { it } }
                 val paddingAtStart = currentPadding
                 fit(camera.animated)
                 // Over a padded map the chrome often changes size in the same frame as the command —

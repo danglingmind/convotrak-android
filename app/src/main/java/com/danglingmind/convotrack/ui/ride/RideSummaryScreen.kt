@@ -273,7 +273,7 @@ fun RideSummaryScreen(rideId: String, onDone: () -> Unit) {
                                 val title = ride?.title ?: "a ride"
                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, "Ride $title with me on ConvoTrack\n${link.url}")
+                                    putExtra(Intent.EXTRA_TEXT, "$title: ride this route with me on ConvoTrack\n${link.url}")
                                 }
                                 ctx.startActivity(
                                     Intent.createChooser(intent, "Share route").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -351,11 +351,12 @@ private fun RouteMapCard(summary: RideSummary, ride: Ride?, plannedRoute: List<L
             }
         }
     }
-    val camera = remember(display, summary.leaderStops) {
+    // Everything drawn: both lines and every pin, with room for pin heads above and labels below.
+    val camera = remember(display, plannedRoute, markers) {
         MapCamera.Fit(
             id = 1L,
-            coords = display + summary.leaderStops.map { LatLng(it.lat, it.lng) },
-            topDp = 40f, leftDp = 40f, bottomDp = 40f, rightDp = 40f,
+            coords = display + plannedRoute + markers.map { it.position },
+            topDp = 64f, leftDp = 32f, bottomDp = 56f, rightDp = 32f,
             animated = false,
         )
     }

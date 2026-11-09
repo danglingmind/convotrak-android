@@ -126,11 +126,13 @@ private fun Content(route: SharedRoute, token: String, chosen: MutableList<Strin
             }
         }
     }
-    val camera = remember(route) {
+    // Both lines and every pin. Pins stand above their point and labels hang below it, so the
+    // insets leave room for both; the top one also clears the close button.
+    val camera = remember(route, markers) {
         MapCamera.Fit(
             id = 1L,
-            coords = ridden.ifEmpty { planned } + route.leaderStops.map { LatLng(it.lat, it.lng) },
-            topDp = 72f, leftDp = 40f, bottomDp = 40f, rightDp = 40f, animated = false,
+            coords = ridden + planned + markers.map { it.position },
+            topDp = 96f, leftDp = 40f, bottomDp = 56f, rightDp = 40f, animated = false,
         )
     }
 
@@ -189,6 +191,10 @@ private fun Content(route: SharedRoute, token: String, chosen: MutableList<Strin
 private fun stats(route: SharedRoute): String {
     val parts = mutableListOf("%.0f km".format(route.distanceMeters / 1000))
     route.durationSeconds?.let { parts += RideDuration.inline(it) }
-    if (route.leaderStops.isNotEmpty()) parts += "${route.leaderStops.size} regroup stops"
+    when (val n = route.leaderStops.size) {
+        0 -> Unit
+        1 -> parts += "1 regroup stop"
+        else -> parts += "$n regroup stops"
+    }
     return parts.joinToString(" · ")
 }
