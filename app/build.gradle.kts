@@ -94,7 +94,11 @@ android {
             // for checking that the thing compiles. The warning below is what stops that being
             // mistaken for an uploadable artifact again.
             signingConfig = if (hasReleaseSigning) signingConfigs.getByName("release") else null
-            isMinifyEnabled = false
+            // R8 shrinking, optimisation and obfuscation. Play vitals' "DEX code optimization"
+            // finding scores these; with minify off all three read as 0%. The mapping file is
+            // bundled into the .aab automatically, so Play de-obfuscates crash stacks.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
