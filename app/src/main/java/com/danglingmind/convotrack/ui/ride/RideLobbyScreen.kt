@@ -158,6 +158,11 @@ fun RideLobbyScreen(
     onEdit: (rideId: String) -> Unit,
     /** A tab picked from the bottom nav, which stays visible in the lobby. */
     onTab: (DsTab) -> Unit = {},
+    /** Entered from a push tap: go straight on to navigation once the ride is known to be live. */
+    autoResume: Boolean = false,
+    onAutoResumeHandled: () -> Unit = {},
+    /** A push-tapped ride that turned out to be over: open its summary instead of the lobby. */
+    onRideEnded: () -> Unit = {},
 ) {
     val api = remember { ServiceLocator.api }
     val auth = remember { ServiceLocator.auth }
@@ -184,6 +189,17 @@ fun RideLobbyScreen(
     var leaveError by remember { mutableStateOf<String?>(null) }
     // Invite code whose QR is showing; opened from the top menu or the roster header.
     var showQrFor by remember { mutableStateOf<String?>(null) }
+
+    // Push tap: go on to navigation once the ride is known to be live, or to the summary if over.
+    val resumeLive = liveStatus == "ACTIVE" || liveStatus == "IN_PROGRESS" ||
+        ride?.status == "ACTIVE" || ride?.status == "IN_PROGRESS"
+    LaunchedEffect(autoResume, resumeLive, ride?.status) {
+        if (!autoResume) return@LaunchedEffect
+        when {
+            resumeLive -> { onAutoResumeHandled(); onStartRide() }
+            ride?.status == "COMPLETED" || ride?.status == "ENDED" -> { onAutoResumeHandled(); onRideEnded() }
+        }
+    }
 
     // Fetches the ride and starts the shared session. Idempotent, so re-entering the lobby from
     // navigation just re-joins the room rather than resetting the live roster.

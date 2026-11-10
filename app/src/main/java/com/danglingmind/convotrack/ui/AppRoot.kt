@@ -6,6 +6,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.danglingmind.convotrack.ui.designsystem.DsTab
 
 import androidx.compose.foundation.layout.fillMaxSize
@@ -146,6 +147,9 @@ fun AppRoot(
             }
         }
     }
+    // Ride a push tap opened: its lobby moves on to navigation (or the summary) once the ride's
+    // state is known, instead of leaving the rider on the lobby screen.
+    var pushResumeRideId by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     // Push tap: RIDE_STARTED -> the ride, RIDE_ENDED -> its summary.
     LaunchedEffect(pushTap, backStack) {
         val (type, id) = pushTap ?: return@LaunchedEffect
@@ -154,12 +158,14 @@ fun AppRoot(
         when (type) {
             "RIDE_ENDED" -> nav.navigate(Routes.summary(id))
             "RIDE_STARTED" -> {
+                pushResumeRideId = id
                 nav.navigate(Routes.rideGraph(id))
                 if (ServiceLocator.location.activeRideId.value == id) nav.navigate(Routes.navigation(id))
             }
             "REGROUP_CALLED", "EMERGENCY" -> {
                 // Same as RIDE_STARTED: the ride screen only while it is still active here.
                 if (!(route == "${Routes.RIDE_NAVIGATION}/{rideId}" && backStack?.arguments?.getString("rideId") == id)) {
+                    pushResumeRideId = id
                     nav.navigate(Routes.rideGraph(id))
                     if (ServiceLocator.location.activeRideId.value == id) nav.navigate(Routes.navigation(id))
                 }
@@ -296,6 +302,9 @@ fun AppRoot(
                             nav.popBackStack()
                         },
                         onStartRide = { nav.navigate(Routes.navigation(rideId)) },
+                        autoResume = pushResumeRideId == rideId,
+                        onAutoResumeHandled = { pushResumeRideId = null },
+                        onRideEnded = { nav.navigate(Routes.summary(rideId)) },
                         onEdit = { editRideId -> nav.navigate(Routes.edit(editRideId)) },
                         // The bottom nav stays visible in the lobby; picking a tab leaves the ride
                         // flow (like back) and opens that tab.
