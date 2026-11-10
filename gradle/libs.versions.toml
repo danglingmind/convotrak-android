@@ -25,8 +25,12 @@ mlkitBarcode = "17.3.0"
 billing = "9.1.0"
 zxing = "3.5.3"
 metaSdk = "18.3.0"
+firebaseBom = "33.7.0"
+googleServices = "4.4.2"
 
 [libraries]
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycleRuntimeKtx" }
@@ -61,6 +65,7 @@ zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" 
 facebook-core = { group = "com.facebook.android", name = "facebook-core", version.ref = "metaSdk" }
 
 [plugins]
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

@@ -86,6 +86,8 @@ fun AppRoot(
     onDeepLinkConsumed: () -> Unit = {},
     openRideId: String? = null,
     onOpenRideConsumed: () -> Unit = {},
+    pushTap: Pair<String, String>? = null,
+    onPushTapConsumed: () -> Unit = {},
     routeToken: String? = null,
     onRouteTokenConsumed: () -> Unit = {},
 ) {
@@ -117,6 +119,46 @@ fun AppRoot(
                 nav.navigate(Routes.membership(source))
             }
         }
+    }
+    val pushContext = androidx.compose.ui.platform.LocalContext.current
+    val notifPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) com.danglingmind.convotrack.data.push.Push.register(pushContext) }
+
+    // Push: register the token at every app open while signed in; unregistered at sign-out.
+    LaunchedEffect(Unit) {
+        ServiceLocator.auth.userState.filterNotNull().distinctUntilChanged().collect {
+            com.danglingmind.convotrack.data.push.Push.register(pushContext)
+        }
+    }
+    // Which ride screen is showing, so a push for that ride is not shown on top of it.
+    LaunchedEffect(backStack) {
+        val route = backStack?.destination?.route.orEmpty()
+        val onRide = listOf(Routes.RIDE_LOBBY, Routes.RIDE_NAVIGATION, Routes.RIDE_SUMMARY).any { route.startsWith(it) }
+        com.danglingmind.convotrack.data.push.Push.foregroundRideId =
+            if (onRide) backStack?.arguments?.getString("rideId") else null
+        // Permission is asked once, right after the rider first joins or creates a ride.
+        if (route.startsWith(Routes.RIDE_LOBBY)) {
+            if (com.danglingmind.convotrack.data.push.Push.shouldAskPermission(pushContext)) {
+                notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                com.danglingmind.convotrack.data.push.Push.register(pushContext)
+            }
+        }
+    }
+    // Push tap: RIDE_STARTED -> the ride, RIDE_ENDED -> its summary.
+    LaunchedEffect(pushTap, backStack) {
+        val (type, id) = pushTap ?: return@LaunchedEffect
+        val route = backStack?.destination?.route ?: return@LaunchedEffect
+        if (route == Routes.SPLASH || route == Routes.AUTH || route.startsWith(Routes.VERIFY)) return@LaunchedEffect
+        when (type) {
+            "RIDE_ENDED" -> nav.navigate(Routes.summary(id))
+            "RIDE_STARTED" -> {
+                nav.navigate(Routes.rideGraph(id))
+                if (ServiceLocator.location.activeRideId.value == id) nav.navigate(Routes.navigation(id))
+            }
+        }
+        onPushTapConsumed()
     }
     LaunchedEffect(openRideId, backStack) {
         val id = openRideId ?: return@LaunchedEffect

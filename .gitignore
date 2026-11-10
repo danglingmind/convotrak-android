@@ -16,3 +16,5 @@ local.properties
 # what Play rejected once. Use `./gradlew bundleRelease` and upload from
 # app/build/outputs/bundle/release/ instead.
 app/release/
+
+app/google-services.json

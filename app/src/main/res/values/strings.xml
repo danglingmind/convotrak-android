@@ -3,6 +3,12 @@
     <string name="app_name">ConvoTrack</string>
 
     <!-- Ride status notification -->
+    <string name="notif_channel_updates">Ride updates</string>
+    <string name="notif_channel_updates_desc">When a ride you joined starts or ends.</string>
+    <string name="push_ride_started_title">Ride started</string>
+    <string name="push_ride_started_body">%1$s has started. Tap to join in.</string>
+    <string name="push_ride_ended_title">Ride ended</string>
+    <string name="push_ride_ended_body">%1$s has ended. Tap for the summary.</string>
     <string name="notif_channel_ride">Live ride tracking</string>
     <string name="notif_channel_ride_desc">Next turn, arrival time and convoy status while a ride is live.</string>
     <string name="notif_channel_emergency">Ride emergencies</string>

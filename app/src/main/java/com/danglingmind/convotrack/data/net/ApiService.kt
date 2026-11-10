@@ -4,6 +4,7 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
+import retrofit2.http.PUT
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -101,6 +102,13 @@ interface ApiService {
      */
     @DELETE("/users/me")
     suspend fun deleteAccount()
+
+    // Push devices (docs/notifications-plan.md)
+    @PUT("/devices")
+    suspend fun registerDevice(@Body request: RegisterDeviceRequest)
+
+    @DELETE("/devices/{token}")
+    suspend fun unregisterDevice(@Path("token") token: String)
 
     // Membership
     @POST("/memberships/activate")

@@ -205,6 +205,8 @@ class ClerkAuthRepository(private val app: Application) : AuthRepository {
 
     override suspend fun signOut() {
         pendingCodeFlow = null
+        // Needs the session token, so before it is cleared. Never blocks sign-out.
+        com.danglingmind.convotrack.data.push.Push.unregister()
         Clerk.auth.signOut()
         // Cached avatars, destination photos, maps and summary cards belong to this rider's
         // account; none of it may be visible to whoever signs in next on this device.

@@ -123,6 +123,9 @@ kotlin {
 }
 
 dependencies {
+    // FCM. Safe without a Firebase project: every call is guarded by Push.isConfigured.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     testImplementation("junit:junit:4.13.2")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -188,4 +191,10 @@ if (!hasReleaseSigning) {
             "[signing] Set RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and " +
             "RELEASE_KEY_PASSWORD in local.properties (or as env vars).\n",
     )
+}
+
+// Firebase config is owner-supplied (app/google-services.json, gitignored). Without it the plugin is
+// not applied, the build passes, and push stays off at runtime.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }

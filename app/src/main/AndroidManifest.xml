@@ -103,6 +103,15 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- FCM: token refresh and data-only ride messages (RIDE_STARTED / RIDE_ENDED). -->
+        <service
+            android:name=".data.push.ConvoFirebaseService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- Broadcasts the rider's position during an active ride. -->
         <service
             android:name=".data.location.RideLocationService"

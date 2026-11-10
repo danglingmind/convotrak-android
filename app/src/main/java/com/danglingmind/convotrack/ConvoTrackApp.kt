@@ -23,6 +23,7 @@ class ConvoTrackApp : Application() {
         // Gives the image cache an app context and registers its memory-pressure listener.
         ImageCache.init(this)
         RideDestinationStore.init(this)
+        com.danglingmind.convotrack.data.push.Push.init(this)
         Analytics.start(this)
         MetaEvents.start(this)
 

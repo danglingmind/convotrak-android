@@ -20,11 +20,16 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Set by the ride-status notifications; asks the app to open that ride's live navigation. */
         const val EXTRA_OPEN_RIDE_ID = "openRideId"
+        /** Set by push notification taps: type (RIDE_STARTED / RIDE_ENDED) and the ride. */
+        const val EXTRA_PUSH_TYPE = "pushType"
+        const val EXTRA_PUSH_RIDE_ID = "pushRideId"
     }
 
     // Ride to jump into from a notification tap. Deliberately an extra, not intent data:
     // extractInviteCode() scans data for 6-character codes and would misread a ride URL.
     private val openRideId = mutableStateOf<String?>(null)
+
+    private val pushTap = mutableStateOf<Pair<String, String>?>(null)
 
     // Pending ride-invite code from a deep link (convotrack://join/CODE or the
     // https App Link). Read by AppRoot; cleared once the join sheet consumes it.
@@ -44,6 +49,7 @@ class MainActivity : ComponentActivity() {
         routeToken.value = routeTokenFrom(intent)
         deepLinkCode.value = if (routeToken.value == null) inviteCodeFrom(intent) else null
         openRideId.value = intent?.getStringExtra(EXTRA_OPEN_RIDE_ID)
+        if (savedInstanceState == null) pushTap.value = pushTapFrom(intent)
         // Debug only: `adb shell am start -n …/.MainActivity --es paywallState trial|lastday|expired|pro|free`
         // forces an access state for design review (iOS `-paywallState`).
         if (BuildConfig.DEBUG) {
@@ -60,6 +66,8 @@ class MainActivity : ComponentActivity() {
                     onRouteTokenConsumed = { routeToken.value = null },
                     openRideId = openRideId.value,
                     onOpenRideConsumed = { openRideId.value = null },
+                    pushTap = pushTap.value,
+                    onPushTapConsumed = { pushTap.value = null },
                 )
             }
         }
@@ -72,6 +80,13 @@ class MainActivity : ComponentActivity() {
         val token = routeTokenFrom(intent)
         if (token != null) routeToken.value = token else inviteCodeFrom(intent)?.let { deepLinkCode.value = it }
         intent.getStringExtra(EXTRA_OPEN_RIDE_ID)?.let { openRideId.value = it }
+        pushTapFrom(intent)?.let { pushTap.value = it }
+    }
+
+    private fun pushTapFrom(intent: Intent?): Pair<String, String>? {
+        val type = intent?.getStringExtra(EXTRA_PUSH_TYPE) ?: return null
+        val rideId = intent.getStringExtra(EXTRA_PUSH_RIDE_ID) ?: return null
+        return type to rideId
     }
 
     /** Share tokens are 10 characters from the backend's no-lookalikes alphabet. Checked before the
