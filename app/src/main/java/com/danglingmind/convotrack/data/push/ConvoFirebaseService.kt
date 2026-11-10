@@ -21,21 +21,26 @@ class ConvoFirebaseService : FirebaseMessagingService() {
         val type = message.data["type"] ?: return
         val rideId = message.data["rideId"] ?: return
         val rideName = message.data["rideName"].orEmpty()
-        val (title, body) = when (type) {
-            "RIDE_STARTED" -> getString(R.string.push_ride_started_title) to getString(R.string.push_ride_started_body, rideName)
-            "RIDE_ENDED" -> getString(R.string.push_ride_ended_title) to getString(R.string.push_ride_ended_body, rideName)
-            else -> return
-        }
+        val riderName = message.data["riderName"].orEmpty()
+        val spec = PushSpec.from(type, message.data["reason"]) ?: return
+        val title = getString(spec.titleRes)
+        val body = getString(spec.bodyRes, *spec.args(rideName, riderName))
         // Already looking at that ride: the screen says it all.
         if (Push.appInForeground() && Push.foregroundRideId == rideId) return
         if (!Push.hasPermission(this)) return
 
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, getString(R.string.notif_channel_updates), NotificationManager.IMPORTANCE_HIGH).apply {
+        val channelId = spec.channelId
+        val channel = if (spec.safety) {
+            NotificationChannel(channelId, getString(R.string.notif_channel_safety), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = getString(R.string.notif_channel_safety_desc)
+            }
+        } else {
+            NotificationChannel(channelId, getString(R.string.notif_channel_updates), NotificationManager.IMPORTANCE_HIGH).apply {
                 description = getString(R.string.notif_channel_updates_desc)
-            },
-        )
+            }
+        }
+        manager.createNotificationChannel(channel)
         val tap = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(MainActivity.EXTRA_PUSH_TYPE, type)
@@ -45,18 +50,16 @@ class ConvoFirebaseService : FirebaseMessagingService() {
             this, "$type-$rideId".hashCode(), tap,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_stat_ride)
             .setContentTitle(title)
             .setContentText(body)
             .setAutoCancel(true)
             .setContentIntent(pending)
             .build()
-        // Collapse per ride, like the server's collapse id.
-        manager.notify("ride-$rideId", 0, notification)
-    }
-
-    private companion object {
-        const val CHANNEL_ID = "ride_updates"
+        // Started/ended collapse per ride, like the server's collapse id; regroup and emergency are
+        // unique per event so they never replace an earlier push.
+        if (spec.collapses) manager.notify("ride-$rideId", 0, notification)
+        else manager.notify(System.currentTimeMillis().toInt(), notification)
     }
 }

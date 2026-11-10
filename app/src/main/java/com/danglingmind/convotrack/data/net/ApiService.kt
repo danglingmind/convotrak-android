@@ -103,6 +103,12 @@ interface ApiService {
     @DELETE("/users/me")
     suspend fun deleteAccount()
 
+    @GET("/users/me/notification-preferences")
+    suspend fun getNotificationPreferences(): NotificationPreferences
+
+    @PUT("/users/me/notification-preferences")
+    suspend fun updateNotificationPreferences(@Body request: NotificationPreferencesUpdate): NotificationPreferences
+
     // Push devices (docs/notifications-plan.md)
     @PUT("/devices")
     suspend fun registerDevice(@Body request: RegisterDeviceRequest)

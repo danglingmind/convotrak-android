@@ -444,3 +444,16 @@ fun displayTitle(raw: String?): String = when (raw) {
     "FORMATION_RIDER" -> "FORMATION RIDER"
     else -> raw ?: ""
 }
+
+@Serializable
+data class NotificationPreferences(
+    val rideUpdates: Boolean = true,
+    val regroup: Boolean = true,
+)
+
+/** Partial update: null fields are left out of the body (`explicitNulls = false`) and stay unchanged. */
+@Serializable
+data class NotificationPreferencesUpdate(
+    val rideUpdates: Boolean? = null,
+    val regroup: Boolean? = null,
+)

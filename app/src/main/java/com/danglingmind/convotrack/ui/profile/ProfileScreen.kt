@@ -34,6 +34,14 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import com.danglingmind.convotrack.data.net.NotificationPreferences
+import com.danglingmind.convotrack.data.net.NotificationPreferencesUpdate
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.danglingmind.convotrack.R
@@ -251,17 +260,8 @@ private fun ProfileContent(
 
     // Every row goes somewhere: a settings row that renders a chevron and does nothing reads as a
     // broken app, and the two legal rows are documents the store requires be reachable in-app.
+    NotificationsSection()
     SettingsGroup {
-        SettingsRow(Icons.Filled.Notifications, "Notifications", external = true) {
-            // The ride-tracking notification is the only one the app posts, and its channel is
-            // owned by the system — so this hands over to the place that can actually change it.
-            runCatching {
-                context.startActivity(
-                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
-                )
-            }
-        }
-        SettingsDivider()
         SettingsRow(Icons.Filled.CreditCard, "Membership & Billing", onClick = onOpenMembership)
         SettingsDivider()
         SettingsRow(Icons.Filled.Shield, "Privacy Policy", external = true) { uriHandler.openUri(ApiClient.PRIVACY_URL) }
@@ -320,3 +320,104 @@ private fun SettingsRow(
     }
 }
 
+
+/** Notification categories (docs/notifications-plan.md, Phase 2). Safety alerts are never switchable. */
+@Composable
+private fun NotificationsSection() {
+    val context = LocalContext.current
+    val api = remember { ServiceLocator.api }
+    val scope = rememberCoroutineScope()
+    var prefs by remember { mutableStateOf<NotificationPreferences?>(null) }
+    var allowed by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        allowed = NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+    LaunchedEffect(Unit) {
+        prefs = runCatching { apiCall { api.getNotificationPreferences() } }.getOrNull()
+    }
+
+    // Optimistic: flip now, PUT, and put the old value back if the call fails.
+    // Only the toggled key is changed/reverted, so overlapping toggles don't undo each other.
+    fun change(
+        update: NotificationPreferencesUpdate,
+        get: (NotificationPreferences) -> Boolean,
+        set: (NotificationPreferences, Boolean) -> NotificationPreferences,
+    ) {
+        val before = prefs ?: return
+        val old = get(before)
+        val wanted = update.rideUpdates ?: update.regroup ?: return
+        prefs = set(before, wanted)
+        scope.launch {
+            runCatching { apiCall { api.updateNotificationPreferences(update) } }
+                .onSuccess { r -> prefs = prefs?.let { set(it, get(r)) } }
+                .onFailure { prefs = prefs?.let { set(it, old) } }
+        }
+    }
+
+    SettingsGroup {
+        Text(
+            stringResource(R.string.notif_prefs_title).uppercase(),
+            style = DsType.statLabel, color = DsColor.textMuted,
+            modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp),
+        )
+        PrefToggle(Icons.Filled.Notifications, stringResource(R.string.notif_prefs_ride_updates), prefs?.rideUpdates, prefs != null) { on ->
+            change(NotificationPreferencesUpdate(rideUpdates = on), { it.rideUpdates }) { p, v -> p.copy(rideUpdates = v) }
+        }
+        SettingsDivider()
+        PrefToggle(Icons.Filled.Flag, stringResource(R.string.notif_prefs_regroup), prefs?.regroup, prefs != null) { on ->
+            change(NotificationPreferencesUpdate(regroup = on), { it.regroup }) { p, v -> p.copy(regroup = v) }
+        }
+        SettingsDivider()
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Icon(Icons.Filled.Shield, null, tint = DsColor.textSecondary, modifier = Modifier.size(20.dp))
+            Text(stringResource(R.string.notif_prefs_safety), style = DsType.body, color = DsColor.textSecondary, modifier = Modifier.weight(1f))
+        }
+        if (!allowed) {
+            SettingsDivider()
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.notif_prefs_denied_hint), style = DsType.body, color = DsColor.textSecondary)
+                Text(
+                    stringResource(R.string.notif_prefs_open_settings),
+                    style = DsType.body, color = DsColor.accent,
+                    modifier = Modifier.dsClickable(pressedScale = 1f) {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+                            )
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PrefToggle(icon: ImageVector, label: String, checked: Boolean?, enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Icon(icon, null, tint = DsColor.textSecondary, modifier = Modifier.size(20.dp))
+        Text(label, style = DsType.body, color = DsColor.textPrimary, modifier = Modifier.weight(1f))
+        Switch(
+            checked = checked ?: true,
+            enabled = enabled,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = DsColor.accent,
+                checkedThumbColor = DsColor.onAccent,
+                uncheckedTrackColor = DsColor.field,
+                uncheckedThumbColor = DsColor.textSecondary,
+                uncheckedBorderColor = DsColor.border,
+            ),
+        )
+    }
+}

@@ -157,6 +157,13 @@ fun AppRoot(
                 nav.navigate(Routes.rideGraph(id))
                 if (ServiceLocator.location.activeRideId.value == id) nav.navigate(Routes.navigation(id))
             }
+            "REGROUP_CALLED", "EMERGENCY" -> {
+                // Same as RIDE_STARTED: the ride screen only while it is still active here.
+                if (!(route == "${Routes.RIDE_NAVIGATION}/{rideId}" && backStack?.arguments?.getString("rideId") == id)) {
+                    nav.navigate(Routes.rideGraph(id))
+                    if (ServiceLocator.location.activeRideId.value == id) nav.navigate(Routes.navigation(id))
+                }
+            }
         }
         onPushTapConsumed()
     }
