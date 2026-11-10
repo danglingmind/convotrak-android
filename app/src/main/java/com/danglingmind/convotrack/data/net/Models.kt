@@ -379,6 +379,15 @@ data class RegisterDeviceRequest(
 )
 
 @Serializable
+data class UpdateNameRequest(val name: String)
+
+@Serializable
+data class UpdateNameResponse(val name: String)
+
+@Serializable
+data class UploadPhotoResponse(val avatarUrl: String)
+
+@Serializable
 data class SyncProfileRequest(
     val name: String,
     val avatarUrl: String? = null,

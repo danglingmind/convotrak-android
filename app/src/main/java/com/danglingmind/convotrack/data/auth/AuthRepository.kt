@@ -7,7 +7,13 @@ data class AuthUser(
     val id: String,
     val name: String,
     val avatarUrl: String? = null,
+    /** The address the rider signed in with, shown read-only on Profile. */
+    val email: String? = null,
+    val signInMethod: SignInMethod = SignInMethod.EMAIL,
 )
+
+/** How the rider authenticated, so Profile can name it ("Signed in with Google"). */
+enum class SignInMethod { GOOGLE, APPLE, EMAIL }
 
 /** Outcome of an auth attempt. */
 sealed interface AuthResult {
@@ -72,4 +78,10 @@ interface AuthRepository {
     suspend fun signInWithGoogle(): AuthResult
 
     suspend fun signOut()
+
+    /**
+     * Re-fetches the Clerk user so [userState] reflects a name or photo the server just wrote to
+     * Clerk. Without it the launch-time profile sync would push the old values back.
+     */
+    suspend fun reloadUser()
 }

@@ -89,6 +89,14 @@ interface ApiService {
     @PATCH("/users/me")
     suspend fun updateProfile(@Body request: UpdateProfileRequest)
 
+    /** The name other riders see. The server writes Clerk too; call `auth.reloadUser()` after. */
+    @PUT("/users/me/name")
+    suspend fun updateName(@Body request: UpdateNameRequest): UpdateNameResponse
+
+    /** Raw `image/jpeg` body. Returns the hosted URL other riders now load. */
+    @PUT("/users/me/photo")
+    suspend fun uploadProfilePhoto(@Body jpeg: okhttp3.RequestBody): UploadPhotoResponse
+
     /**
      * Erases the signed-in rider's account and everything attached to it.
      *

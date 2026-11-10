@@ -20,6 +20,8 @@ import com.clerk.api.signup.attemptVerification
 import com.clerk.api.signup.prepareVerification
 import com.clerk.api.sso.OAuthProvider
 import com.clerk.api.user.User
+import com.clerk.api.user.reload
+import com.clerk.api.network.model.client.Client
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -223,6 +225,13 @@ class ClerkAuthRepository(private val app: Application) : AuthRepository {
         }.onFailure { Log.w("ClerkAuthRepository", "clearCredentialState failed", it) }
     }
 
+    override suspend fun reloadUser() {
+        // `reload` refreshes the user; `Client.get` refreshes the client the SDK's flows are built
+        // from. Either alone has been enough on some SDK versions; both is cheap and certain.
+        runCatching { Clerk.user?.reload() }
+        runCatching { Client.get() }
+    }
+
     // MARK: - Helpers
 
     private fun ClerkResult<*, ClerkErrorResponse>.toAuthResult(): AuthResult = when (this) {
@@ -238,6 +247,14 @@ class ClerkAuthRepository(private val app: Application) : AuthRepository {
             .filter { it.isNotBlank() }
             .joinToString(" ")
             .ifBlank { username ?: "Rider" }
-        return AuthUser(id = id, name = fullName, avatarUrl = imageUrl.ifBlank { null })
+        val providers = externalAccounts.orEmpty().map { it.provider.lowercase() }
+        val method = when {
+            providers.any { "google" in it } -> SignInMethod.GOOGLE
+            providers.any { "apple" in it } -> SignInMethod.APPLE
+            else -> SignInMethod.EMAIL
+        }
+        val email = primaryEmailAddress?.emailAddress?.ifBlank { null }
+            ?: externalAccounts?.firstOrNull()?.emailAddress?.ifBlank { null }
+        return AuthUser(id = id, name = fullName, avatarUrl = imageUrl.ifBlank { null }, email = email, signInMethod = method)
     }
 }

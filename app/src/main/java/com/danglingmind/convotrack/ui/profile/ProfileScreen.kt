@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -25,6 +26,19 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.text.selection.SelectionContainer
+import com.danglingmind.convotrack.data.auth.AuthUser
+import com.danglingmind.convotrack.data.auth.SignInMethod
+import com.danglingmind.convotrack.ui.designsystem.SquareIconButton
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.NorthEast
@@ -112,6 +126,8 @@ fun ProfileScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf<String?>(null) }
+    var showEdit by remember { mutableStateOf(false) }
+    val authUser by auth.userState.collectAsState()
 
     LaunchedEffect(Unit) { billing.start() }
 
@@ -165,7 +181,9 @@ fun ProfileScreen(
                         is UiState.Error -> ErrorState(s.message, onRetry = { scope.launch { load() } })
                         is UiState.Success -> ProfileContent(
                             data = s.data,
+                            account = authUser,
                             plan = plan,
+                            onEditProfile = { showEdit = true },
                             onOpenMembership = onOpenMembership,
                             onSignOut = { scope.launch { Analytics.reset(); auth.signOut(); onSignedOut() } },
                             onDeleteAccount = { showDeleteConfirm = true },
@@ -175,6 +193,17 @@ fun ProfileScreen(
             }
         }
         StatusBarScrim()
+    }
+
+    val loaded = (state as? UiState.Success)?.data
+    if (showEdit && loaded != null) {
+        EditProfileSheet(
+            userId = loaded.userId,
+            initialName = loaded.name,
+            currentAvatarUrl = loaded.avatarUrl,
+            onDismiss = { showEdit = false },
+            onSaved = { showEdit = false; scope.launch { load() } },
+        )
     }
 
     if (showDeleteConfirm) {
@@ -227,7 +256,9 @@ private fun profilePromoMessage(plan: PlanState): String = when (plan.access) {
 @Composable
 private fun ProfileContent(
     data: ProfileData,
+    account: AuthUser?,
     plan: PlanState,
+    onEditProfile: () -> Unit,
     onOpenMembership: () -> Unit,
     onSignOut: () -> Unit,
     onDeleteAccount: () -> Unit,
@@ -237,9 +268,23 @@ private fun ProfileContent(
     val photo = rememberAvatarPhoto(data.avatarUrl)
 
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Avatar(data.name, size = 96.dp, photo = photo, colorKey = data.userId, ring = DsColor.accent)
+        // The photo is the obvious place to change the photo; it opens the same sheet as the pencil.
+        Box(
+            Modifier
+                .semantics(mergeDescendants = true) { contentDescription = "Change profile photo"; role = Role.Button }
+                .dsClickable(onClick = onEditProfile),
+        ) {
+            Avatar(data.name, size = 96.dp, photo = photo, colorKey = data.userId, ring = DsColor.accent)
+            AvatarEditBadge(Modifier.align(Alignment.BottomEnd).offset(x = 2.dp, y = 2.dp))
+        }
         Spacer(Modifier.height(14.dp))
-        Text(data.name, style = DsType.titleLarge, color = DsColor.textPrimary, textAlign = TextAlign.Center)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                data.name, style = DsType.titleLarge, color = DsColor.textPrimary, textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f, fill = false).semantics { heading() },
+            )
+            SquareIconButton(Icons.Filled.Edit, contentDescription = "Edit profile", onClick = onEditProfile, size = 44.dp)
+        }
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -268,10 +313,45 @@ private fun ProfileContent(
         SettingsDivider()
         SettingsRow(Icons.Filled.Description, "Terms of Service", external = true) { uriHandler.openUri(ApiClient.TERMS_URL) }
     }
-    SettingsGroup {
-        SettingsRow(Icons.AutoMirrored.Filled.Logout, "Sign out", destructive = true, onClick = onSignOut)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "ACCOUNT", style = DsType.statLabel, color = DsColor.textMuted,
+            modifier = Modifier.padding(start = 4.dp).semantics { heading() },
+        )
+        SettingsGroup {
+            SignedInRow(account)
+            SettingsDivider()
+            SettingsRow(Icons.AutoMirrored.Filled.Logout, "Sign out", destructive = true, onClick = onSignOut)
         SettingsDivider()
-        SettingsRow(Icons.Filled.DeleteForever, "Delete account", destructive = true, onClick = onDeleteAccount)
+            SettingsRow(Icons.Filled.DeleteForever, "Delete account", destructive = true, onClick = onDeleteAccount)
+        }
+    }
+}
+
+/** How and as whom the rider is signed in. Read-only; it names the method, not just "Signed in". */
+@Composable
+private fun SignedInRow(account: AuthUser?) {
+    val method = when (account?.signInMethod) {
+        SignInMethod.GOOGLE -> "Signed in with Google"
+        SignInMethod.APPLE -> "Signed in with Apple"
+        else -> "Signed in with email"
+    }
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 12.dp)
+            .semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Icon(Icons.Outlined.AccountCircle, null, tint = DsColor.textSecondary, modifier = Modifier.size(20.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(method, style = DsType.bodySmall, color = DsColor.textSecondary)
+            SelectionContainer {
+                Text(
+                    account?.email ?: "—", style = DsType.body, color = DsColor.textPrimary,
+                    maxLines = 1, overflow = TextOverflow.MiddleEllipsis,
+                )
+            }
+        }
     }
 }
 

@@ -78,6 +78,10 @@ object UserFacingError {
             "Another rider got there first. Pick a different name."
         "USER_NOT_FOUND" ->
             "We couldn't find that rider."
+        "UNSUPPORTED_IMAGE_TYPE", "IMAGE_REQUIRED" ->
+            "That photo couldn't be read. Try a different one."
+        "NAME_REQUIRED" ->
+            "Your name can't be empty. Other riders need something to call you."
 
         // Purchases
         "INVALID_PRODUCT_ID", "INVALID_TRANSACTION", "INVALID_TRANSACTION_PAYLOAD" ->
@@ -140,7 +144,8 @@ object UserFacingError {
         "RIDE_FULL", "ALREADY_JOINED", "INVITE_CODE_NOT_FOUND", "RIDE_NOT_FOUND", "RIDE_ENDED",
         "RIDE_NOT_COMPLETED", "RIDE_NOT_ACTIVE_OR_PAUSED", "RIDE_NOT_ACTIVE", "RIDE_NOT_IN_LOBBY",
         "RIDE_NOT_LOBBY", "RIDE_NOT_PAUSED", "MISSING_REQUIRED_FIELDS", "INVALID_WAYPOINTS",
-        "USERNAME_TAKEN", "USER_NOT_FOUND", "INVALID_PRODUCT_ID", "INVALID_TRANSACTION_PAYLOAD",
+        "USERNAME_TAKEN", "USER_NOT_FOUND", "UNSUPPORTED_IMAGE_TYPE", "IMAGE_REQUIRED", "NAME_REQUIRED",
+        "INVALID_PRODUCT_ID", "INVALID_TRANSACTION_PAYLOAD",
         "INVALID_TRANSACTION", "TRANSACTION_EXPIRED", "SANDBOX_TRANSACTION_IN_PRODUCTION",
         "PURCHASE_ALREADY_CLAIMED", "PLAY_VERIFICATION_UNAVAILABLE", "PURCHASE_NOT_FOUND",
         "PURCHASE_NOT_ACTIVE",
