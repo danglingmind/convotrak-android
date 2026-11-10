@@ -112,6 +112,7 @@ object Push {
             ServiceLocator.api.registerDevice(
                 RegisterDeviceRequest(
                     token = token,
+                    platform = "android",
                     locale = Locale.getDefault().toLanguageTag(),
                     appVersion = BuildConfig.VERSION_NAME,
                 ),

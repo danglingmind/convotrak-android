@@ -373,7 +373,7 @@ data class UpdateProfileRequest(
 @Serializable
 data class RegisterDeviceRequest(
     val token: String,
-    val platform: String = "android",
+    val platform: String,
     val locale: String? = null,
     val appVersion: String? = null,
 )
