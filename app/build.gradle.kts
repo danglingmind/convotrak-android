@@ -198,3 +198,18 @@ if (!hasReleaseSigning) {
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
+
+// ...but a RELEASE built without it would ship with push silently off for every user, so refuse.
+// Debug builds are unaffected.
+if (!file("google-services.json").exists() &&
+    gradle.startParameter.taskNames.any {
+        it.contains("Release", ignoreCase = true) &&
+            (it.contains("bundle", ignoreCase = true) || it.contains("assemble", ignoreCase = true))
+    }
+) {
+    throw GradleException(
+        "app/google-services.json is missing. A release build without it ships with push " +
+            "notifications OFF. Copy the file from the Firebase console (project convotrack-ee5ce, " +
+            "Android app com.danglingmind.convotrack) into app/ and build again.",
+    )
+}

@@ -39,4 +39,9 @@ Never skip the version question, and never reuse a versionCode.
 - **Build command:** the Gradle daemon needs a JetBrains JDK 21 and can't download one on
   macOS arm64, so use Android Studio's bundled JBR:
   `J="/Applications/Android Studio.app/Contents/jbr/Contents/Home"; JAVA_HOME="$J" ./gradlew -Porg.gradle.java.installations.paths="$J" clean bundleRelease`
+- **Push needs `app/google-services.json` (gitignored):** Firebase config for project
+  `convotrack-ee5ce`, app `com.danglingmind.convotrack`, from the Firebase console. Without it
+  the build still succeeds and push is silently OFF at runtime, so `bundleRelease` /
+  `assembleRelease` now fail when the file is missing. Release builds must be made from a checkout
+  that has it (this Mac does). A fresh clone or CI needs the file copied in first. Never commit it.
 - **Bundle output:** `app/build/outputs/bundle/release/app-release.aab`
