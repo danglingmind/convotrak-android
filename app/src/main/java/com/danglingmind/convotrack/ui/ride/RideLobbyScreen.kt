@@ -142,6 +142,7 @@ import com.danglingmind.convotrack.ui.map.MapCamera
 import com.danglingmind.convotrack.ui.map.NavCamera
 import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.launch
+import com.danglingmind.convotrack.data.net.getRideRetrying
 
 /**
  * Ride lobby. All realtime state — roster, presence, ride status, removed/deleted — comes from the
@@ -199,6 +200,23 @@ fun RideLobbyScreen(
             resumeLive -> { onAutoResumeHandled(); onStartRide() }
             ride?.status == "COMPLETED" || ride?.status == "ENDED" -> { onAutoResumeHandled(); onRideEnded() }
         }
+    }
+
+    // A ride that ends while the app is in the background is never announced to it (the socket
+    // event is missed). On every return to this screen ask the server once; an ended ride goes to
+    // its summary instead of staying on a lobby that still reads "Riding".
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    val currentOnRideEnded by androidx.compose.runtime.rememberUpdatedState(onRideEnded)
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner, rideId) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event != androidx.lifecycle.Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
+            scope.launch {
+                val status = api.getRideRetrying(rideId, attempts = 1)?.status
+                if (status == "COMPLETED" || status == "ENDED") currentOnRideEnded()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Fetches the ride and starts the shared session. Idempotent, so re-entering the lobby from

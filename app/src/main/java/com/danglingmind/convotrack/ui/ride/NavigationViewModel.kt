@@ -1,5 +1,6 @@
 package com.danglingmind.convotrack.ui.ride
 
+import com.danglingmind.convotrack.data.net.getRideRetrying
 import android.location.Location
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -203,6 +204,18 @@ class NavigationViewModel : ViewModel() {
 
     private val _rideCompleted = MutableStateFlow(false)
     val rideCompleted: StateFlow<Boolean> = _rideCompleted.asStateFlow()
+
+    /**
+     * A ride that ends while the app is in the background is never announced to it (the socket
+     * event is missed), so on return ask the server once and finish the same way the broadcast would.
+     */
+    fun checkEndedWhileAway() {
+        if (rideId.isEmpty() || _rideCompleted.value) return
+        viewModelScope.launch {
+            val status = ServiceLocator.api.getRideRetrying(rideId, attempts = 1)?.status
+            if (status == "COMPLETED" || status == "ENDED") _rideCompleted.value = true
+        }
+    }
 
     // MARK: - Private route state
 

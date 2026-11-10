@@ -311,6 +311,7 @@ fun RideNavigationScreen(
     DisposableEffect(lifecycleOwner, rideId) {
         val observer = LifecycleEventObserver { _, event ->
             if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
+            vm.checkEndedWhileAway()
             val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED
             if (granted && !locationController.active.value) {
