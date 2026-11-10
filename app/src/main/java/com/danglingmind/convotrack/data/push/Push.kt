@@ -36,7 +36,29 @@ object Push {
     /** The ride whose screen is on top (lobby/navigation/summary), or null. Set by AppRoot. */
     @Volatile private var appContext: Context? = null
 
-    fun init(context: Context) { appContext = context.applicationContext }
+    fun init(context: Context) {
+        appContext = context.applicationContext
+        ensureChannels(context.applicationContext)
+    }
+
+    /** Created at start (not on first push) so they show in system settings before any push arrives. */
+    fun ensureChannels(context: Context) {
+        val manager = context.getSystemService(android.app.NotificationManager::class.java) ?: return
+        manager.createNotificationChannel(
+            android.app.NotificationChannel(
+                PushSpec.CHANNEL_SAFETY,
+                context.getString(com.danglingmind.convotrack.R.string.notif_channel_safety),
+                android.app.NotificationManager.IMPORTANCE_HIGH,
+            ).apply { description = context.getString(com.danglingmind.convotrack.R.string.notif_channel_safety_desc) },
+        )
+        manager.createNotificationChannel(
+            android.app.NotificationChannel(
+                PushSpec.CHANNEL_UPDATES,
+                context.getString(com.danglingmind.convotrack.R.string.notif_channel_updates),
+                android.app.NotificationManager.IMPORTANCE_HIGH,
+            ).apply { description = context.getString(com.danglingmind.convotrack.R.string.notif_channel_updates_desc) },
+        )
+    }
 
     private suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { c ->
         addOnSuccessListener { c.resume(it) }
