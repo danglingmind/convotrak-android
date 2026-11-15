@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.1 (versionCode 18) — 2026-11-15
+
+### Changed
+- Pro riders now see a Pro badge under their name on Profile instead of the "Pro active" card.
+
+### Fixed
+- Opening Membership & Billing as a Pro rider no longer shows a "Get Pro" button or a welcome screen. It shows a Manage subscription button instead.
+
 ## 2.2.0 (versionCode 17) — 2026-11-15
 
 ### Added
