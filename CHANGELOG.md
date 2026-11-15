@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.2.0 (versionCode 17) — 2026-11-15
+
+### Added
+- Push notifications. You're told when a ride you're in starts or ends, when someone calls a regroup, and when a rider raises an emergency. Tapping one opens the live ride, or the summary if the ride has ended.
+- Notification settings in Profile: turn ride updates and regroup alerts on or off. Emergency alerts always come through.
+- Edit your profile: change your name and photo from Profile. Profile also shows the email and sign-in method you used.
+
+### Changed
+- Cleaner round logo, without the thin green rim around the edge.
+- Smaller, faster app download.
+
+### Fixed
+- Coming back to the app after a ride ended in the background now takes you to its summary.
+- Shared-route maps open framed on the whole route instead of zoomed out over the city, and the stop count and share text read correctly.
+
 ## 2.1.0 (versionCode 16) — 2026-11-02
 
 ### Added
