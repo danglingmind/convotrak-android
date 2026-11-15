@@ -1,6 +1,17 @@
 package com.danglingmind.convotrack.ui.ride.planner
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.sp
+import com.danglingmind.convotrack.data.maps.DestinationPhoto
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,11 +80,16 @@ internal fun PlannerPlaceCard(
     actions: List<PlaceAction>,
     onClose: () -> Unit,
     emptyMessage: String = "Move the map to choose a spot",
+    /** What Google shows for the spot, when it has a photo; its credit is shown with it. */
+    photo: DestinationPhoto? = null,
 ) {
     val ready = candidate != null && !candidate.resolving
+    // The close button floats over the card's top-right corner, over the photo when there is one.
+    Box {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        photo?.let { PlacePhotoBanner(it) }
         Row(verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.weight(1f).padding(end = if (photo == null) 52.dp else 0.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(eyebrow.uppercase(Locale.getDefault()), style = DsType.eyebrow, color = DsColor.accent)
                 if (candidate != null) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -99,14 +115,6 @@ internal fun PlannerPlaceCard(
                     Text(emptyMessage, style = DsType.rowTitle, color = DsColor.textSecondary)
                 }
             }
-            Box(
-                Modifier.size(44.dp).dsClickable(onClickLabel = "Close", onClick = onClose).semantics { contentDescription = "Close" },
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(Modifier.size(30.dp).clip(CircleShape).background(Color(0x24FFFFFF)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Close, null, tint = DsColor.textPrimary, modifier = Modifier.size(16.dp))
-                }
-            }
         }
         actions.firstOrNull()?.let { primary ->
             PrimaryButton(text = primary.title, icon = primary.icon, enabled = ready, onClick = primary.onClick)
@@ -117,6 +125,32 @@ internal fun PlannerPlaceCard(
                     SecondaryButton(text = action.title, icon = action.icon, enabled = ready, onClick = action.onClick, modifier = Modifier.weight(1f))
                 }
             }
+        }
+    }
+            Box(
+                Modifier.align(Alignment.TopEnd).size(44.dp).dsClickable(onClickLabel = "Close", onClick = onClose).semantics { contentDescription = "Close" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.size(30.dp).clip(CircleShape).background(if (photo == null) Color(0x24FFFFFF) else Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Close, null, tint = DsColor.textPrimary, modifier = Modifier.size(16.dp))
+                }
+            }
+    }
+}
+
+@Composable
+private fun PlacePhotoBanner(photo: DestinationPhoto) {
+    Box(Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(16.dp)).clearAndSetSemantics {}) {
+        Image(photo.bitmap.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(36.dp)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)))),
+        )
+        photo.attribution?.let {
+            Text(
+                "Photo: $it · Google", color = Color.White, fontSize = 9.sp, maxLines = 1,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp),
+            )
         }
     }
 }

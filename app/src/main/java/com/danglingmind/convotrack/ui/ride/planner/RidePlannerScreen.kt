@@ -55,6 +55,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -107,7 +109,11 @@ import com.danglingmind.convotrack.ui.designsystem.FloatingButton
 import com.danglingmind.convotrack.ui.designsystem.FloatingTone
 import com.danglingmind.convotrack.ui.designsystem.dsClickable
 import com.danglingmind.convotrack.ui.designsystem.dsHaptic
+import com.danglingmind.convotrack.di.ServiceLocator
 import com.danglingmind.convotrack.ui.map.ConvoTrackMap
+import com.danglingmind.convotrack.data.maps.DestinationPhoto
+import com.danglingmind.convotrack.data.maps.PlacePhotoService
+import com.danglingmind.convotrack.ui.map.HeadingDot
 import com.danglingmind.convotrack.ui.map.MapDot
 import com.danglingmind.convotrack.ui.map.MapMarker
 import com.danglingmind.convotrack.ui.map.MapMarkerKind
@@ -156,8 +162,16 @@ internal fun RidePlannerScreen(
     var stopsExpanded by remember { mutableStateOf(false) }
     var searchCategory by remember { mutableStateOf<PlaceCategory?>(null) }
     var mapTarget by remember { mutableStateOf<LatLng?>(null) }
-    /** A pin dropped with a long-press, waiting for the rider to say what it is. */
+    /** A pin dropped by tapping the map, waiting for the rider to say what it is. */
     var droppedPin by remember { mutableStateOf<PlaceCandidate?>(null) }
+    var droppedPhoto by remember { mutableStateOf<DestinationPhoto?>(null) }
+    // Which way the phone faces, for the location marker's view cone.
+    val locationController = remember { ServiceLocator.location }
+    val compassHeading by locationController.compassHeading.collectAsState()
+    DisposableEffect(Unit) {
+        locationController.startCompass(context, scope)
+        onDispose { locationController.stopCompass() }
+    }
     /** The stop being placed by moving the map under a fixed pin ("Choose on map"). */
     var choosingStopId by remember { mutableStateOf<Long?>(null) }
     var mapCenter by remember { mutableStateOf<PlaceCandidate?>(null) }
@@ -208,6 +222,7 @@ internal fun RidePlannerScreen(
         focusManager.clearFocus()
         geocodeJob?.cancel()
         droppedPin = null
+        droppedPhoto = null
         mapBottomPadding = sheetRestingHeight
         searchStopId = id
     }
@@ -244,9 +259,14 @@ internal fun RidePlannerScreen(
         view.dsHaptic(DsHaptic.Primary)
         focusManager.clearFocus()
         droppedPin = PlaceCandidate(at)
+        droppedPhoto = null
         detent = SheetDetent.LOW
         lookUp(at, 0) { place ->
             if (droppedPin?.position == at) droppedPin = droppedPin?.copy(place = place, resolving = false)
+            if (place != null) scope.launch {
+                val photo = PlacePhotoService.photo(place.name, at)
+                if (droppedPin?.position == at) droppedPhoto = photo
+            }
         }
     }
 
@@ -334,11 +354,10 @@ internal fun RidePlannerScreen(
             ),
             routeBubbles = routeBubbles(state),
             dots = buildList {
-                if (!state.hasDestination) state.userLocation?.let { add(MapDot("me", it, DsColor.mapStart, 16f)) }
                 droppedPin?.let { add(MapDot("dropped", it.position, DsColor.accent, 20f)) }
             },
-            onMapClick = { if (droppedPin != null) clearPin() },
-            onMapLongClick = { dropPin(it) },
+            headingDot = if (state.hasDestination) null else state.userLocation?.let { HeadingDot(it, compassHeading ?: 0f) },
+            onMapClick = { dropPin(it) },
             onCameraIdle = { mapCameToRest(it) },
         )
 
@@ -399,6 +418,7 @@ internal fun RidePlannerScreen(
                             droppedPin != null -> PlannerPlaceCard(
                                 eyebrow = "Dropped pin",
                                 candidate = droppedPin,
+                                photo = droppedPhoto,
                                 actions = droppedPinActions(state, ::usePin),
                                 onClose = ::clearPin,
                             )

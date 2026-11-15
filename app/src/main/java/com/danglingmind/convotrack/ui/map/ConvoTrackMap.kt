@@ -2,7 +2,12 @@ package com.danglingmind.convotrack.ui.map
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -91,6 +96,13 @@ data class UserPuck(val position: LatLng, val bearing: Float = 0f)
  * easier to hit than the line itself.
  */
 data class RouteBubble(val routeIndex: Int, val position: LatLng, val text: String, val isSelected: Boolean)
+
+/**
+ * The rider's position with a view cone toward [heading] (compass degrees), for screens where they
+ * stand still. Drawn in Compose over the map rather than as a marker, so a tap anywhere on the
+ * cone still reaches the map.
+ */
+data class HeadingDot(val position: LatLng, val heading: Float)
 
 /** A plain round dot: the rider's position before planning, or a dropped pin. */
 data class MapDot(val id: String, val position: LatLng, val color: Color, val sizeDp: Float)
@@ -298,6 +310,7 @@ fun ConvoTrackMap(
     /** Time labels on the route alternatives; tapping one calls [onSelectRoute]. */
     routeBubbles: List<RouteBubble> = emptyList(),
     dots: List<MapDot> = emptyList(),
+    headingDot: HeadingDot? = null,
     /** A plain tap on the map, away from any marker or line. */
     onMapClick: ((LatLng) -> Unit)? = null,
     /** Long-press on the map, for dropping a pin. */
@@ -540,8 +553,9 @@ fun ConvoTrackMap(
         }
     }
 
+    Box(modifier) {
     GoogleMap(
-        modifier = modifier.onSizeChanged {
+        modifier = Modifier.fillMaxSize().onSizeChanged {
             mapWidthPx = it.width
             mapHeightPx = it.height
         },
@@ -708,6 +722,34 @@ fun ConvoTrackMap(
                 zIndex = 10f,
             )
         }
+    }
+    headingDot?.let { HeadingDotOverlay(it, cameraPositionState) }
+    }
+}
+
+/** Lime dot, white keyline and a translucent cone fading out along the heading (iOS `.headingDot`). */
+@Composable
+private fun HeadingDotOverlay(dot: HeadingDot, cameraPositionState: CameraPositionState) {
+    val bearing = cameraPositionState.position.bearing   // read so the dot follows the camera
+    val at = cameraPositionState.projection?.toScreenLocation(dot.position) ?: return
+    Canvas(Modifier.fillMaxSize()) {
+        val c = Offset(at.x.toFloat(), at.y.toFloat())
+        val dotR = 9.dp.toPx()
+        val ring = 3.dp.toPx()
+        val reach = 60.dp.toPx()
+        val cone = androidx.compose.ui.graphics.Path().apply {
+            moveTo(c.x, c.y)
+            arcTo(androidx.compose.ui.geometry.Rect(c, reach), -90f - 34f, 68f, false)
+            close()
+        }
+        rotate(dot.heading - bearing, pivot = c) {
+            drawPath(cone, Brush.radialGradient(
+                0f to DsColor.accent.copy(alpha = 0.6f), 1f to Color.Transparent, center = c, radius = reach,
+            ))
+        }
+        drawCircle(Color.Black.copy(alpha = 0.35f), dotR + ring, c + Offset(0f, 1.5.dp.toPx()))
+        drawCircle(Color.White, dotR + ring, c)
+        drawCircle(DsColor.accent, dotR, c)
     }
 }
 
