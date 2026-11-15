@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.2 (versionCode 19) — 2026-11-15
+
+### Changed
+- Planning a ride: tap the map to drop a pin (no more long-press). Your location now shows as a dot with a cone for the direction you're facing.
+- The dropped-pin card shows Google's photo of the place when there is one.
+
 ## 2.2.1 (versionCode 18) — 2026-11-15
 
 ### Changed
