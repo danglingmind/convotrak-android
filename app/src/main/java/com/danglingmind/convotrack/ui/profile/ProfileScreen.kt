@@ -3,6 +3,8 @@ package com.danglingmind.convotrack.ui.profile
 import com.danglingmind.convotrack.data.analytics.Analytics
 
 import com.danglingmind.convotrack.ui.designsystem.PromoBanner
+import com.danglingmind.convotrack.ui.designsystem.PlanBadge
+import com.danglingmind.convotrack.ui.designsystem.PlanBadgeKind
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.background
@@ -246,7 +248,7 @@ fun ProfileScreen(
 
 /** The trial leads; the generic pitch is only for riders with no enforced trial (iOS parity). */
 private fun profilePromoMessage(plan: PlanState): String = when (plan.access) {
-    Access.Pro -> "Your membership is active"
+    Access.Pro -> "Unlimited rides & bigger packs"
     is Access.Trial -> plan.trialDaysLeft?.takeIf { it > 1 }?.let { "$it days left in your free trial" }
         ?: "Your free trial ends today"
     Access.TrialExpired -> "Your free trial has ended. Go Pro to keep riding."
@@ -285,6 +287,8 @@ private fun ProfileContent(
             )
             SquareIconButton(Icons.Filled.Edit, contentDescription = "Edit profile", onClick = onEditProfile, size = 44.dp)
         }
+        // Beside the identity text, never over the photo.
+        if (plan.isPremium) PlanBadge(PlanBadgeKind.Pro)
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -293,13 +297,12 @@ private fun ProfileContent(
         ProfileStat(Icons.Outlined.Groups, data.led.toString(), "Rides led", Modifier.weight(1f))
     }
 
-    // Membership card: the gold Go Pro card for non-Pro riders (the only Pro prompt on this
-    // screen; the badge under the name was redundant with it), the plain card for subscribers.
-    PromoBanner(
+    // Pro riders carry a badge under their name; the gold card is only the Go Pro prompt.
+    if (!plan.isPremium) PromoBanner(
         message = profilePromoMessage(plan),
-        actionLabel = if (plan.isPremium) "Active" else "Go Pro",
+        actionLabel = "Go Pro",
         onAction = onOpenMembership,
-        subscribed = plan.isPremium,
+        subscribed = false,
         goProStyle = true,
     )
 

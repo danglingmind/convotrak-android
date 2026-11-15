@@ -132,7 +132,9 @@ fun MembershipScreen(
         if (!isPremium) return@LaunchedEffect
         // A rider who turns out to be Pro already (entitlement loaded after sign-in) skips straight
         // in; the "You're in" overlay is for a purchase made here.
-        if (onboarding && !purchaseStarted) onClose() else showSuccess = true
+        if (onboarding && !purchaseStarted) onClose()
+        // Opened by a rider who is already Pro: show the membership, not a "You're in" welcome.
+        else if (purchaseStarted) showSuccess = true
     }
 
     // Funnel events (iOS parity). "Converted" only when Pro arrived while this paywall was open;
@@ -196,6 +198,14 @@ fun MembershipScreen(
                         placeholder = awaitingPlan,
                     )
                     BenefitsGrid(planState.proRiderCap)
+                    if (isPremium) {
+                        val uriHandler = LocalUriHandler.current
+                        GoProButton(
+                            "Manage subscription",
+                            onClick = { uriHandler.openUri("https://play.google.com/store/account/subscriptions?package=${context.packageName}") },
+                            icon = Icons.Filled.WorkspacePremium,
+                        )
+                    } else {
                     PlansSection(
                         plans = plans,
                         selectedProductId = selectedProductId,
@@ -222,6 +232,7 @@ fun MembershipScreen(
                         onRestore = {
                             if (restoring) return@CtaStack
                             restoring = true
+                            purchaseStarted = true
                             restoreNotice = null
                             scope.launch {
                                 restoreNotice = when (billing.restorePurchases()) {
@@ -233,6 +244,7 @@ fun MembershipScreen(
                             }
                         },
                     )
+                    }
                 }
             }
         }
