@@ -112,6 +112,21 @@ fun AppRoot(
             }
     }
 
+    // A session that expired or was revoked while the app sat idle: show only sign-in (iOS parity).
+    // Re-checked with Clerk's server on every foreground so the expiry is noticed without a restart.
+    val foregrounds by com.danglingmind.convotrack.data.upsell.AppForeground.foregrounds.collectAsState()
+    LaunchedEffect(foregrounds) { ServiceLocator.auth.revalidate() }
+    LaunchedEffect(Unit) {
+        ServiceLocator.auth.userState.collect { user ->
+            val route = nav.currentDestination?.route ?: return@collect
+            val onEntry = route == Routes.SPLASH || route == Routes.AUTH || route.startsWith(Routes.VERIFY)
+            if (user == null && !onEntry) {
+                ServiceLocator.socket.disconnect()
+                nav.navigate(Routes.AUTH) { popUpTo(0); launchSingleTop = true }
+            }
+        }
+    }
+
     // The one paywall entry point (iOS `PaywallPresenter`): any screen calls `Paywall.present`.
     // A second request while the paywall is already up is dropped rather than stacking another.
     LaunchedEffect(Unit) {
@@ -200,6 +215,7 @@ fun AppRoot(
                     // wrongly route a signed-in user to Auth. Bounded so we never hang.
                     scope.launch {
                         withTimeoutOrNull(4000) { ServiceLocator.auth.isReady.first { it } }
+                        ServiceLocator.auth.revalidate()
                         val signedIn = ServiceLocator.auth.userState.value != null
                         // Already signed in (includes everyone who installed before this paywall
                         // existed): never show them the first-sign-in paywall (iOS parity).
@@ -250,6 +266,7 @@ fun AppRoot(
                         ServiceLocator.socket.disconnect()
                         nav.navigate(Routes.AUTH) {
                             popUpTo(Routes.MAIN) { inclusive = true }
+                            launchSingleTop = true
                         }
                     },
                 )

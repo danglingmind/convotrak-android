@@ -84,4 +84,10 @@ interface AuthRepository {
      * Clerk. Without it the launch-time profile sync would push the old values back.
      */
     suspend fun reloadUser()
+
+    /**
+     * Asks Clerk's server whether the stored session is still alive, so an expired one drops
+     * [userState] to null. Bounded; an offline failure changes nothing.
+     */
+    suspend fun revalidate()
 }

@@ -70,10 +70,16 @@ class ClerkAuthRepository(private val app: Application) : AuthRepository {
 
     private enum class PendingCodeFlow { SIGN_IN, SIGN_UP }
 
+    // Signed in only while the session is alive. After weeks idle Clerk keeps the cached user with
+    // an EXPIRED session, so `user != null` alone shows an empty app and "not signed in" errors.
+    private fun alive(s: com.clerk.api.session.Session?) =
+        s?.status == com.clerk.api.session.Session.SessionStatus.ACTIVE ||
+            s?.status == com.clerk.api.session.Session.SessionStatus.PENDING
+
     override val userState: StateFlow<AuthUser?> =
-        Clerk.userFlow
-            .map { it?.toAuthUser() }
-            .stateIn(scope, SharingStarted.Eagerly, Clerk.user?.toAuthUser())
+        kotlinx.coroutines.flow.combine(Clerk.userFlow, Clerk.sessionFlow) { u, s ->
+            if (alive(s)) u?.toAuthUser() else null
+        }.stateIn(scope, SharingStarted.Eagerly, if (alive(Clerk.session)) Clerk.user?.toAuthUser() else null)
 
     override val isReady: StateFlow<Boolean> = Clerk.isInitialized
 
@@ -224,6 +230,11 @@ class ClerkAuthRepository(private val app: Application) : AuthRepository {
         runCatching {
             CredentialManager.create(app).clearCredentialState(ClearCredentialStateRequest())
         }.onFailure { Log.w("ClerkAuthRepository", "clearCredentialState failed", it) }
+    }
+
+    override suspend fun revalidate() {
+        if (Clerk.user == null) return
+        kotlinx.coroutines.withTimeoutOrNull(5_000) { runCatching { Client.get() } }
     }
 
     override suspend fun reloadUser() {

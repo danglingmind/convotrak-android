@@ -128,6 +128,11 @@ fun MainScreen(
             trial = PlanGate.trial.value,
             nowMillis = System.currentTimeMillis(),
         )
+        // Trial over: skip the soft nudge and open the same paywall Create Ride would (iOS parity).
+        if (!forced && access == Access.TrialExpired) {
+            Paywall.present(PaywallSource.AppOpen)
+            return@LaunchedEffect
+        }
         if ((forced && access != Access.Pro) || UpsellPolicy.shouldShowAppOpenNudge(upsell.inputs(access))) {
             PlanGate.debugForceNudge = false
             upsell.recordNudgeShown()
