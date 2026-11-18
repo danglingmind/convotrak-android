@@ -208,8 +208,9 @@ class ClerkAuthRepository(private val app: Application) : AuthRepository {
     override suspend fun signOut() {
         pendingCodeFlow = null
         // Needs the session token, so before it is cleared. Never blocks sign-out.
-        com.danglingmind.convotrack.data.push.Push.unregister()
-        Clerk.auth.signOut()
+        // Bounded: with an expired session these calls can stall and leave Sign Out spinning.
+        kotlinx.coroutines.withTimeoutOrNull(3_000) { com.danglingmind.convotrack.data.push.Push.unregister() }
+        kotlinx.coroutines.withTimeoutOrNull(5_000) { Clerk.auth.signOut() }
         // Cached avatars, destination photos, maps and summary cards belong to this rider's
         // account; none of it may be visible to whoever signs in next on this device.
         runCatching { ImageCache.clearAll() }
